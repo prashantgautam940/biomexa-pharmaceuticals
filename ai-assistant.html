@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Biomexa AI Assistant | Smart Medicine Guidance</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/ai-system.css">
+</head>
+<body>
+    <!-- App Container -->
+    <div class="app-container">
+
+        <!-- Header -->
+        <header class="app-header">
+            <a href="index.html" class="app-logo" style="text-decoration: none; color: inherit;">
+                <div class="logo-icon">⚕</div>
+                <span>Biomexa AI</span>
+            </a>
+            <a href="index.html" style="color: rgba(255,255,255,0.7); font-size: 0.8rem; text-decoration: none;">
+                ← Back to Website
+            </a>
+        </header>
+
+        <!-- Main Content Area -->
+        <main class="app-main">
+
+            <!-- Welcome Screen -->
+            <section class="screen active" id="welcomeScreen">
+                <div class="welcome-hero">
+                    <div class="welcome-icon">🤖</div>
+                    <h1>Your AI Medicine Assistant</h1>
+                    <p>Scan your medicine, get AI audio guidance, and never miss a dose.</p>
+                </div>
+                <div class="quick-actions">
+                    <button class="action-btn primary" onclick="showScreen('scanScreen')">
+                        <span class="btn-icon">📷</span>
+                        <span class="btn-text">Scan Medicine</span>
+                    </button>
+                    <button class="action-btn" onclick="showScreen('remindersScreen')">
+                        <span class="btn-icon">⏰</span>
+                        <span class="btn-text">My Reminders</span>
+                    </button>
+                    <button class="action-btn" onclick="showScreen('historyScreen')">
+                        <span class="btn-icon">📊</span>
+                        <span class="btn-text">My History</span>
+                    </button>
+                </div>
+                <div class="recent-scans">
+                    <h3>Recently Scanned</h3>
+                    <div class="scan-list" id="recentScanList">
+                        <!-- Populated by JS -->
+                    </div>
+                </div>
+            </section>
+
+            <!-- Scan Screen -->
+            <section class="screen" id="scanScreen">
+                <div class="screen-header">
+                    <button class="back-btn" onclick="showScreen('welcomeScreen')">← Back</button>
+                    <h2>Scan Medicine</h2>
+                </div>
+                <div class="scan-area">
+                    <div class="camera-frame" id="cameraFrame">
+                        <div class="corner tl"></div>
+                        <div class="corner tr"></div>
+                        <div class="corner bl"></div>
+                        <div class="corner br"></div>
+                        <div class="scan-line"></div>
+                        <div class="scan-text">Point camera at QR code</div>
+                    </div>
+                    <div class="scan-samples">
+                        <p>Or tap a sample medicine below:</p>
+                        <div class="sample-meds">
+                            <button class="sample-med" onclick="scanMedicine('metformin')">
+                                <div class="med-icon">💊</div>
+                                <span>Metformin 500mg</span>
+                                <small>Diabetes</small>
+                            </button>
+                            <button class="sample-med" onclick="scanMedicine('amlodipine')">
+                                <div class="med-icon">💊</div>
+                                <span>Amlodipine 5mg</span>
+                                <small>Hypertension</small>
+                            </button>
+                            <button class="sample-med" onclick="scanMedicine('doxycycline')">
+                                <div class="med-icon">💊</div>
+                                <span>Doxycycline 100mg</span>
+                                <small>Antibiotic</small>
+                            </button>
+                            <button class="sample-med" onclick="scanMedicine('atorvastatin')">
+                                <div class="med-icon">💊</div>
+                                <span>Atorvastatin 20mg</span>
+                                <small>Cholesterol</small>
+                            </button>
+                            <button class="sample-med" onclick="scanMedicine('levothyroxine')">
+                                <div class="med-icon">💊</div>
+                                <span>Levothyroxine 50mcg</span>
+                                <small>Thyroid</small>
+                            </button>
+                            <button class="sample-med" onclick="scanMedicine('prenatal')">
+                                <div class="med-icon">🤰</div>
+                                <span>Prenatal Vitamins</span>
+                                <small>Pregnancy</small>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Medicine Info Screen -->
+            <section class="screen" id="medicineScreen">
+                <div class="screen-header">
+                    <button class="back-btn" onclick="showScreen('scanScreen')">← Back</button>
+                    <h2>Medicine Details</h2>
+                </div>
+                <div class="medicine-card" id="medicineCard">
+                    <div class="med-header">
+                        <div class="med-icon-large" id="medIcon">💊</div>
+                        <div class="med-title">
+                            <h3 id="medName">Medicine Name</h3>
+                            <span class="med-dosage" id="medDosage">Dosage</span>
+                        </div>
+                    </div>
+
+                    <div class="med-section">
+                        <h4>🔬 Composition</h4>
+                        <p id="medComposition">Loading...</p>
+                    </div>
+
+                    <div class="med-section">
+                        <h4>🎯 Indications</h4>
+                        <p id="medIndications">Loading...</p>
+                    </div>
+
+                    <div class="med-section highlight">
+                        <h4>⏰ Dosage Instructions</h4>
+                        <p id="medDosageInstr">Loading...</p>
+                    </div>
+
+                    <div class="med-section warning">
+                        <h4>⚠️ Food Interactions</h4>
+                        <p id="medFoodAlert">Loading...</p>
+                    </div>
+
+                    <div class="med-section">
+                        <h4>🛡️ Safety Precautions</h4>
+                        <p id="medSafety">Loading...</p>
+                    </div>
+
+                    <!-- Audio Player -->
+                    <div class="audio-player">
+                        <button class="audio-btn" id="playAudioBtn" onclick="playMedicineAudio()">
+                            <span class="audio-icon">🔊</span>
+                            <span class="audio-text">Listen to AI Audio Guidance</span>
+                        </button>
+                        <div class="audio-visualizer" id="audioVisualizer">
+                            <div class="bar"></div>
+                            <div class="bar"></div>
+                            <div class="bar"></div>
+                            <div class="bar"></div>
+                            <div class="bar"></div>
+                        </div>
+                    </div>
+
+                    <!-- Action Buttons -->
+                    <div class="med-actions">
+                        <button class="action-btn primary" onclick="setReminder()">
+                            <span class="btn-icon">⏰</span>
+                            <span class="btn-text">Set Reminder</span>
+                        </button>
+                        <button class="action-btn" onclick="markTaken()">
+                            <span class="btn-icon">✓</span>
+                            <span class="btn-text">Mark as Taken</span>
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Reminders Screen -->
+            <section class="screen" id="remindersScreen">
+                <div class="screen-header">
+                    <button class="back-btn" onclick="showScreen('welcomeScreen')">← Back</button>
+                    <h2>My Reminders</h2>
+                </div>
+                <div class="reminders-container">
+                    <div class="reminder-filters">
+                        <button class="filter-btn active" data-filter="all">All</button>
+                        <button class="filter-btn" data-filter="pending">Pending</button>
+                        <button class="filter-btn" data-filter="taken">Taken</button>
+                        <button class="filter-btn" data-filter="missed">Missed</button>
+                    </div>
+                    <div class="reminders-list" id="remindersList">
+                        <!-- Populated by JS -->
+                    </div>
+                </div>
+                <button class="fab" onclick="showScreen('scanScreen')">+</button>
+            </section>
+
+            <!-- History Screen -->
+            <section class="screen" id="historyScreen">
+                <div class="screen-header">
+                    <button class="back-btn" onclick="showScreen('welcomeScreen')">← Back</button>
+                    <h2>My History</h2>
+                </div>
+                <div class="history-stats">
+                    <div class="stat-card">
+                        <span class="stat-value" id="adherenceRate">0%</span>
+                        <span class="stat-label">Adherence Rate</span>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-value" id="streakDays">0</span>
+                        <span class="stat-label">Day Streak</span>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-value" id="totalDoses">0</span>
+                        <span class="stat-label">Total Doses</span>
+                    </div>
+                </div>
+                <div class="history-chart">
+                    <h3>Last 7 Days</h3>
+                    <div class="chart-bars" id="historyChart"></div>
+                </div>
+                <div class="history-list" id="historyList"></div>
+            </section>
+
+        </main>
+
+        <!-- Notification Toast -->
+        <div class="toast-container" id="toastContainer"></div>
+
+        <!-- Reminder Modal -->
+        <div class="modal" id="reminderModal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>⏰ Set Reminder</h3>
+                    <button class="modal-close" onclick="closeModal()">×</button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label>Medicine</label>
+                        <input type="text" id="reminderMedName" readonly>
+                    </div>
+                    <div class="form-group">
+                        <label>Time</label>
+                        <input type="time" id="reminderTime" value="08:00">
+                    </div>
+                    <div class="form-group">
+                        <label>Frequency</label>
+                        <select id="reminderFreq">
+                            <option value="daily">Daily</option>
+                            <option value="twice">Twice Daily</option>
+                            <option value="thrice">Thrice Daily</option>
+                            <option value="weekly">Weekly</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Notification Type</label>
+                        <div class="notification-types">
+                            <label class="notif-type">
+                                <input type="checkbox" checked id="notifPush">
+                                <span>🔔 Push Notification</span>
+                            </label>
+                            <label class="notif-type">
+                                <input type="checkbox" id="notifSMS">
+                                <span>💬 SMS</span>
+                            </label>
+                            <label class="notif-type">
+                                <input type="checkbox" id="notifWhatsApp">
+                                <span>📱 WhatsApp</span>
+                            </label>
+                            <label class="notif-type">
+                                <input type="checkbox" id="notifAudio">
+                                <span>🔊 AI Audio</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn-secondary" onclick="closeModal()">Cancel</button>
+                    <button class="btn-primary" onclick="saveReminder()">Save Reminder</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Simulated Notification -->
+        <div class="simulated-notification" id="simNotification">
+            <div class="notif-app">
+                <div class="notif-icon">⚕</div>
+                <span>Biomexa</span>
+            </div>
+            <div class="notif-title">Medicine Reminder</div>
+            <div class="notif-body" id="notifBody">Time to take your medicine!</div>
+            <div class="notif-actions">
+                <button class="notif-btn confirm" onclick="confirmDose()">✓ Taken</button>
+                <button class="notif-btn snooze" onclick="snoozeReminder()">⏰ Snooze</button>
+            </div>
+        </div>
+
+    </div>
+
+    <script src="js/ai-system.js"></script>
+</body>
+</html>
