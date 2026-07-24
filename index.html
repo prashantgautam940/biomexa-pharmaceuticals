@@ -1,679 +1,501 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Biomexa Pharmaceuticals | AI-Enabled Medicine Adherence & Treatment Intelligence</title>
-    <meta name="description" content="Biomexa Pharmaceuticals - AI-enabled medicine adherence & treatment intelligence platform. Improving outcomes through connected medicines, patient engagement, and real-world evidence.">
-    <meta name="keywords" content="medicine adherence, connected medicine, AI healthcare, drug interaction, patient engagement, real-world evidence, pharmaceutical technology">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="css/style.css">
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚕</text></svg>">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TELEX AM & DIABMEXA M | Biomexa Pharmaceuticals</title>
+<meta name="description" content="TELEX AM (Telmisartan 40mg + Amlodipine 5mg) and DIABMEXA M (Metformin 500mg + Glimepiride 1mg) — connected medicines from Biomexa Pharmaceuticals with smart QR patient guidance.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0A1A22;
+    --bg-alt:#0E212B;
+    --surface:#123039;
+    --surface-2:#0F2831;
+    --paper:#F3F6F4;
+    --paper-dim:#DCE6E2;
+    --ink:#E9F2EF;
+    --ink-dim:#93AFB2;
+    --teal:#22C3AC;
+    --am:#FF6E52;
+    --am-dim:#5A362E;
+    --m:#5C8FF0;
+    --m-dim:#2C3B5C;
+    --line:rgba(233,242,239,0.12);
+    --radius:14px;
+    --disp: 'Space Grotesk', sans-serif;
+    --body: 'IBM Plex Sans', sans-serif;
+    --mono: 'IBM Plex Mono', monospace;
+  }
+  *{box-sizing:border-box;}
+  html{scroll-behavior:smooth;}
+  @media (prefers-reduced-motion: reduce){
+    html{scroll-behavior:auto;}
+    *{animation-duration:0.001ms !important; transition-duration:0.001ms !important;}
+  }
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--ink);
+    font-family:var(--body);
+    line-height:1.55;
+    -webkit-font-smoothing:antialiased;
+  }
+  a{color:inherit;}
+  img,svg{display:block;max-width:100%;}
+  .wrap{max-width:1120px;margin:0 auto;padding:0 24px;}
+  h1,h2,h3,h4{font-family:var(--disp);margin:0;letter-spacing:-0.01em;}
+  .eyebrow{
+    font-family:var(--mono);
+    font-size:0.72rem;
+    letter-spacing:0.14em;
+    text-transform:uppercase;
+    color:var(--teal);
+    display:flex;align-items:center;gap:8px;
+    margin-bottom:14px;
+  }
+  .eyebrow::before{content:"";width:18px;height:1px;background:var(--teal);display:inline-block;}
+
+  /* ---------- NAV ---------- */
+  header.site{
+    position:sticky;top:0;z-index:50;
+    background:rgba(10,26,34,0.86);
+    backdrop-filter:blur(10px);
+    border-bottom:1px solid var(--line);
+  }
+  nav{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:16px 24px;max-width:1120px;margin:0 auto;
+  }
+  .brand{
+    display:flex;align-items:center;gap:10px;
+    font-family:var(--disp);font-weight:600;font-size:1rem;
+    text-decoration:none;color:var(--ink);
+  }
+  .brand .mark{
+    width:28px;height:28px;border-radius:8px;
+    background:linear-gradient(135deg,var(--teal),var(--m));
+    display:flex;align-items:center;justify-content:center;
+    font-size:0.85rem;
+  }
+  .navlinks{display:flex;gap:28px;list-style:none;margin:0;padding:0;font-size:0.86rem;}
+  .navlinks a{text-decoration:none;color:var(--ink-dim);transition:color .2s;}
+  .navlinks a:hover,.navlinks a:focus-visible{color:var(--ink);}
+  .navlinks{}
+  @media (max-width:760px){ .navlinks{display:none;} }
+
+  /* ---------- HERO ---------- */
+  .hero{padding:76px 0 60px;}
+  .hero-top{max-width:640px;}
+  .hero h1{font-size:clamp(2rem,4.4vw,3.1rem);font-weight:600;line-height:1.08;}
+  .hero p.lead{color:var(--ink-dim);font-size:1.05rem;margin-top:18px;max-width:520px;}
+  .hero-cta{display:flex;gap:14px;margin-top:30px;flex-wrap:wrap;}
+  .btn{
+    font-family:var(--body);font-weight:600;font-size:0.9rem;
+    padding:12px 22px;border-radius:999px;text-decoration:none;
+    display:inline-flex;align-items:center;gap:8px;
+    border:1px solid transparent;transition:transform .15s ease, background .2s;
+  }
+  .btn:hover{transform:translateY(-1px);}
+  .btn-primary{background:var(--teal);color:#04211D;}
+  .btn-ghost{border-color:var(--line);color:var(--ink);}
+  .btn-ghost:hover{border-color:var(--teal);}
+
+  /* ---------- DIGITAL LABEL CARDS (signature element) ---------- */
+  .label-row{
+    display:grid;grid-template-columns:1fr 1fr;gap:26px;margin-top:56px;
+    perspective:1600px;
+  }
+  @media (max-width:720px){ .label-row{grid-template-columns:1fr;} }
+
+  .label-card{
+    position:relative;height:390px;
+  }
+  .label-inner{
+    position:relative;width:100%;height:100%;
+    transition:transform .7s cubic-bezier(.2,.8,.2,1);
+    transform-style:preserve-3d;
+  }
+  .label-card.flipped .label-inner{transform:rotateY(180deg);}
+  @media (prefers-reduced-motion: reduce){
+    .label-inner{transition:opacity .01s;}
+    .label-card .face-back{transform:rotateY(0deg) !important;}
+    .label-card .face-front{position:absolute;}
+    .label-card:not(.flipped) .face-back{display:none;}
+    .label-card.flipped .face-front{display:none;}
+  }
+  .face{
+    position:absolute;inset:0;
+    backface-visibility:hidden;
+    border-radius:var(--radius);
+    padding:26px 24px;
+    display:flex;flex-direction:column;
+  }
+  .face-front{
+    background:var(--paper);color:#12211E;
+    border:1.5px dashed rgba(18,33,30,0.25);
+    background-image:
+      radial-gradient(circle at 14px 14px, rgba(18,33,30,0.18) 1.6px, transparent 1.6px);
+    background-size:14px 14px, auto;
+  }
+  .face-back{
+    background:var(--surface);
+    border:1px solid var(--line);
+    transform:rotateY(180deg);
+    color:var(--ink);
+  }
+  .label-card[data-tone="am"] .face-front{border-color:var(--am);}
+  .label-card[data-tone="m"] .face-front{border-color:var(--m);}
+
+  .qr{
+    width:34px;height:34px;border-radius:4px;
+    background:
+      linear-gradient(#12211E,#12211E) 0 0/6px 6px,
+      linear-gradient(#12211E,#12211E) 8px 0/6px 6px,
+      linear-gradient(#12211E,#12211E) 16px 0/6px 6px,
+      linear-gradient(#12211E,#12211E) 0 8px/6px 6px,
+      linear-gradient(#12211E,#12211E) 16px 8px/6px 6px,
+      linear-gradient(#12211E,#12211E) 0 16px/6px 6px,
+      linear-gradient(#12211E,#12211E) 8px 16px/6px 6px,
+      linear-gradient(#12211E,#12211E) 16px 16px/6px 6px;
+    background-repeat:no-repeat;
+    opacity:0.85;
+  }
+  .label-top{display:flex;justify-content:space-between;align-items:flex-start;}
+  .label-name{font-family:var(--disp);font-weight:700;font-size:1.5rem;margin-top:14px;}
+  .label-strength{font-family:var(--mono);font-size:0.78rem;color:#4A5C58;margin-top:2px;}
+  .label-cat{font-size:0.82rem;color:#4A5C58;margin-top:8px;}
+  .label-comp{
+    margin-top:auto;padding-top:14px;border-top:1px dashed rgba(18,33,30,0.25);
+    font-family:var(--mono);font-size:0.78rem;color:#12211E;
+  }
+  .label-comp div{display:flex;justify-content:space-between;padding:3px 0;}
+  .scan-btn{
+    margin-top:16px;align-self:flex-start;
+    font-family:var(--mono);font-size:0.72rem;letter-spacing:0.08em;text-transform:uppercase;
+    background:none;border:1px solid rgba(18,33,30,0.3);color:#12211E;
+    padding:8px 14px;border-radius:999px;cursor:pointer;transition:background .2s;
+  }
+  .scan-btn:hover{background:rgba(18,33,30,0.08);}
+  .face-back .scan-btn{border-color:var(--line);color:var(--ink);}
+  .face-back .scan-btn:hover{background:rgba(233,242,239,0.06);}
+
+  .back-eyebrow{font-family:var(--mono);font-size:0.7rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink-dim);}
+  .back-msg{margin-top:12px;font-size:0.92rem;color:var(--ink);}
+  .back-flags{margin-top:16px;display:flex;flex-wrap:wrap;gap:8px;}
+  .flag{font-size:0.72rem;padding:5px 10px;border-radius:999px;background:var(--surface-2);border:1px solid var(--line);color:var(--ink-dim);}
+
+  /* ---------- PRODUCT SECTIONS ---------- */
+  .product{padding:90px 0;border-top:1px solid var(--line);}
+  .product-head{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;flex-wrap:wrap;margin-bottom:44px;}
+  .product-head h2{font-size:clamp(1.7rem,3.2vw,2.4rem);}
+  .pill{
+    font-family:var(--mono);font-size:0.72rem;letter-spacing:0.08em;text-transform:uppercase;
+    padding:6px 12px;border-radius:999px;border:1px solid;
+  }
+  [data-tone="am"] .pill{color:var(--am);border-color:var(--am-dim);background:rgba(255,110,82,0.08);}
+  [data-tone="m"] .pill{color:var(--m);border-color:var(--m-dim);background:rgba(92,143,240,0.08);}
+
+  .product-grid{display:grid;grid-template-columns:1.1fr 1fr;gap:36px;}
+  @media (max-width:820px){ .product-grid{grid-template-columns:1fr;} }
+
+  .rx-panel{
+    background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+    padding:26px;
+  }
+  .rx-panel h4{font-size:0.78rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink-dim);font-family:var(--mono);font-weight:500;margin-bottom:16px;}
+  .rx-row{display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px dashed var(--line);font-family:var(--mono);font-size:0.86rem;}
+  .rx-row:last-child{border-bottom:none;}
+  .rx-row span:first-child{color:var(--ink-dim);}
+
+  .info-list{list-style:none;margin:0;padding:0;}
+  .info-list li{
+    position:relative;padding-left:22px;margin-bottom:14px;font-size:0.95rem;color:var(--ink);
+  }
+  .info-list li::before{
+    content:"";position:absolute;left:0;top:8px;width:8px;height:8px;border-radius:50%;
+  }
+  [data-tone="am"] .info-list li::before{background:var(--am);}
+  [data-tone="m"] .info-list li::before{background:var(--m);}
+
+  .guidance-card{
+    margin-top:24px;
+    border-radius:var(--radius);
+    border:1px solid var(--line);
+    background:var(--surface-2);
+    padding:22px 24px;
+  }
+  .guidance-card .tag{
+    font-family:var(--mono);font-size:0.7rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--teal);
+  }
+  .guidance-card p{margin:10px 0 0;font-size:0.94rem;color:var(--ink);}
+
+  /* ---------- COMPARE TABLE ---------- */
+  .compare{padding:90px 0;border-top:1px solid var(--line);}
+  table.compare-table{width:100%;border-collapse:collapse;margin-top:36px;font-size:0.92rem;}
+  .compare-table th,.compare-table td{
+    text-align:left;padding:14px 16px;border-bottom:1px solid var(--line);
+  }
+  .compare-table th{
+    font-family:var(--mono);font-size:0.72rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--ink-dim);font-weight:500;
+  }
+  .compare-table td.am-col{color:var(--am);}
+  .compare-table td.m-col{color:var(--m);}
+  .compare-table{overflow-x:auto;display:block;white-space:nowrap;}
+  @media(min-width:700px){ .compare-table{display:table;white-space:normal;} }
+
+  /* ---------- DISCLAIMER ---------- */
+  .disclaimer{padding:50px 0;border-top:1px solid var(--line);background:var(--bg-alt);}
+  .disclaimer .wrap{font-size:0.85rem;color:var(--ink-dim);max-width:820px;}
+  .disclaimer strong{color:var(--ink);}
+
+  /* ---------- CTA / FOOTER ---------- */
+  .cta{padding:90px 0;text-align:center;border-top:1px solid var(--line);}
+  .cta h2{font-size:clamp(1.6rem,3.4vw,2.3rem);max-width:640px;margin:0 auto;}
+  .cta p{color:var(--ink-dim);margin-top:16px;}
+  .cta .hero-cta{justify-content:center;margin-top:28px;}
+
+  footer{padding:40px 0;border-top:1px solid var(--line);}
+  footer .wrap{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;font-size:0.82rem;color:var(--ink-dim);}
+  footer a{text-decoration:none;color:var(--ink-dim);}
+  footer a:hover{color:var(--teal);}
+
+  .reveal{opacity:0;transform:translateY(18px);transition:opacity .6s ease, transform .6s ease;}
+  .reveal.in{opacity:1;transform:translateY(0);}
+  @media (prefers-reduced-motion: reduce){ .reveal{opacity:1;transform:none;} }
+</style>
 </head>
 <body>
-    <!-- Navigation -->
-    <nav class="navbar" id="navbar">
-        <a href="#home" class="logo">
-            <div class="logo-icon">⚕</div>
-            <span>Biomexa Pharmaceuticals</span>
-        </a>
-        <ul class="nav-links" id="navLinks">
-            <li><a href="#challenge" class="nav-link">The Challenge</a></li>
-            <li><a href="#journey" class="nav-link">Patient Journey</a></li>
-            <li><a href="#solution" class="nav-link">Solution</a></li>
-            <li><a href="ai-assistant.html" class="nav-link" style="color: #20b2aa;">🤖 AI Assistant</a></li>
-            <li><a href="#ecosystem" class="nav-link">Ecosystem</a></li>
-            <li><a href="#dashboard" class="nav-link">Dashboard</a></li>
-            <li><a href="#contact" class="nav-link">Contact</a></li>
-        </ul>
-        <a href="#contact" class="cta-btn nav-cta">Get Started</a>
-        <button class="mobile-menu-btn" id="mobileMenuBtn" aria-label="Toggle menu">
-            <span></span><span></span><span></span>
-        </button>
-    </nav>
 
-    <!-- Mobile Menu -->
-    <div class="mobile-menu" id="mobileMenu">
-        <a href="#challenge">The Challenge</a>
-        <a href="#journey">Patient Journey</a>
-        <a href="#solution">Solution</a>
-        <a href="ai-assistant.html">🤖 AI Assistant</a>
-        <a href="#ecosystem">Ecosystem</a>
-        <a href="#dashboard">Dashboard</a>
-        <a href="#contact">Contact</a>
+<header class="site">
+  <nav>
+    <a class="brand" href="#top"><span class="mark">⚕</span> Biomexa</a>
+    <ul class="navlinks">
+      <li><a href="#telex-am">TELEX AM</a></li>
+      <li><a href="#diabmexa-m">DIABMEXA M</a></li>
+      <li><a href="#compare">Compare</a></li>
+      <li><a href="https://biomexapharmaceuticals.com">Main Site ↗</a></li>
+    </ul>
+  </nav>
+</header>
+
+<main id="top">
+
+  <!-- HERO -->
+  <section class="hero">
+    <div class="wrap">
+      <div class="hero-top">
+        <div class="eyebrow">Connected Medicine Line</div>
+        <h1>Two tablets. One scan away from clear instructions.</h1>
+        <p class="lead">TELEX AM and DIABMEXA M carry Biomexa's smart QR label — so every patient gets dosage timing, food interactions, and plain-language guidance the moment they scan the pack.</p>
+        <div class="hero-cta">
+          <a class="btn btn-primary" href="#telex-am">View TELEX AM</a>
+          <a class="btn btn-ghost" href="#diabmexa-m">View DIABMEXA M</a>
+        </div>
+      </div>
+
+      <div class="label-row">
+        <div class="label-card" data-tone="am" id="card-am">
+          <div class="label-inner">
+            <div class="face face-front">
+              <div class="label-top">
+                <div class="pill">Antihypertensive</div>
+                <div class="qr"></div>
+              </div>
+              <div class="label-name">TELEX AM</div>
+              <div class="label-strength">40 / 5 mg · Oral Tablet</div>
+              <div class="label-cat">Telmisartan + Amlodipine</div>
+              <div class="label-comp">
+                <div><span>Telmisartan</span><span>40 mg</span></div>
+                <div><span>Amlodipine</span><span>5 mg</span></div>
+              </div>
+              <button class="scan-btn" data-flip="card-am">Scan QR →</button>
+            </div>
+            <div class="face face-back">
+              <div class="back-eyebrow">Patient guidance</div>
+              <p class="back-msg">Take once daily at the same time each day. Avoid grapefruit juice and limit alcohol. Don't use potassium supplements or salt substitutes unless your doctor advises it. Follow a heart-healthy, low-salt diet and check your blood pressure regularly.</p>
+              <div class="back-flags">
+                <span class="flag">No grapefruit</span>
+                <span class="flag">Once daily</span>
+                <span class="flag">Monitor BP</span>
+              </div>
+              <button class="scan-btn" data-flip="card-am">← Back to label</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="label-card" data-tone="m" id="card-m">
+          <div class="label-inner">
+            <div class="face face-front">
+              <div class="label-top">
+                <div class="pill">Antidiabetic</div>
+                <div class="qr"></div>
+              </div>
+              <div class="label-name">DIABMEXA M</div>
+              <div class="label-strength">500 / 1 mg · Oral Tablet</div>
+              <div class="label-cat">Metformin HCl + Glimepiride</div>
+              <div class="label-comp">
+                <div><span>Metformin HCl</span><span>500 mg</span></div>
+                <div><span>Glimepiride</span><span>1 mg</span></div>
+              </div>
+              <button class="scan-btn" data-flip="card-m">Scan QR →</button>
+            </div>
+            <div class="face face-back">
+              <div class="back-eyebrow">Patient guidance</div>
+              <p class="back-msg">Take with food as directed — don't skip meals. Avoid excessive alcohol and limit sugary foods. Monitor your blood sugar regularly, and watch for signs of low blood sugar such as sweating, shaking, hunger, or dizziness.</p>
+              <div class="back-flags">
+                <span class="flag">Take with food</span>
+                <span class="flag">Watch for lows</span>
+                <span class="flag">Monitor glucose</span>
+              </div>
+              <button class="scan-btn" data-flip="card-m">← Back to label</button>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
+  </section>
 
-    <!-- Hero Section -->
-    <section class="hero" id="home">
-        <div class="hero-particles" id="particles"></div>
-        <div class="hero-content">
-            <div class="hero-tag">
-                <span class="pulse-dot"></span>
-                Connected Medicine · AI Adherence · Real-World Evidence
-            </div>
-            <h1 class="hero-title">
-                The Future of<br><span class="gradient-text">Medication Adherence</span>
-            </h1>
-            <p class="hero-subtitle">
-                AI-enabled medicine adherence & treatment intelligence platform. Improving outcomes through connected medicines, patient engagement, and real-world evidence.
-            </p>
-            <div class="hero-cta-group">
-                <a href="#journey" class="cta-btn primary">Explore Patient Journey</a>
-                <a href="#contact" class="cta-btn secondary">Partner With Us</a>
-            </div>
-            <div class="hero-stats">
-                <div class="stat-item">
-                    <span class="stat-number" data-count="50">0</span><span class="stat-suffix">%</span>
-                    <div class="stat-label">of patients don't take meds as prescribed</div>
-                </div>
-                <div class="stat-item">
-                    <span class="stat-number" data-count="300">0</span><span class="stat-suffix">B</span>
-                    <div class="stat-label">Annual cost of non-adherence</div>
-                </div>
-                <div class="stat-item">
-                    <span class="stat-number" data-count="125">0</span><span class="stat-suffix">K</span>
-                    <div class="stat-label">Deaths per year from non-adherence</div>
-                </div>
-            </div>
+  <!-- TELEX AM -->
+  <section class="product" id="telex-am" data-tone="am">
+    <div class="wrap">
+      <div class="product-head reveal">
+        <div>
+          <div class="eyebrow" style="color:var(--am)">Product 01</div>
+          <h2>TELEX AM <span style="color:var(--ink-dim);font-weight:400;font-size:0.6em;">40/5 mg</span></h2>
         </div>
-        <div class="scroll-indicator">
-            <div class="mouse">
-                <div class="wheel"></div>
-            </div>
-            <span>Scroll to explore</span>
-        </div>
-    </section>
+        <div class="pill">Angiotensin Receptor Blocker + CCB</div>
+      </div>
 
-    <!-- The Challenge -->
-    <section class="section problem-section" id="challenge">
-        <div class="section-header fade-in">
-            <span class="section-tag">The Challenge</span>
-            <h2 class="section-title">Medication Non-Adherence Is a Silent Crisis</h2>
-            <p class="section-subtitle">From prescription to poor outcomes — the broken chain that costs lives and billions in healthcare spending.</p>
-        </div>
-        <div class="problem-grid fade-in">
-            <div class="problem-card">
-                <div class="problem-icon">📝</div>
-                <h4>Prescription</h4>
-                <p>Doctor writes the prescription</p>
-            </div>
-            <div class="problem-arrow">→</div>
-            <div class="problem-card">
-                <div class="problem-icon">💊</div>
-                <h4>Medicine Dispensed</h4>
-                <p>Patient collects from pharmacy</p>
-            </div>
-            <div class="problem-arrow">→</div>
-            <div class="problem-card highlight">
-                <div class="problem-icon">❌</div>
-                <h4>Missed Doses</h4>
-                <p>No tracking or reminders</p>
-            </div>
-            <div class="problem-arrow">→</div>
-            <div class="problem-card">
-                <div class="problem-icon">📉</div>
-                <h4>Poor Outcomes</h4>
-                <p>Disease progression worsens</p>
-            </div>
-            <div class="problem-arrow">→</div>
-            <div class="problem-card">
-                <div class="problem-icon">💰</div>
-                <h4>Higher Costs</h4>
-                <p>Hospitalizations & complications</p>
-            </div>
-        </div>
-        <div class="vulnerable-patients fade-in">
-            <div class="vp-icon">👥</div>
-            <div class="vp-content">
-                <h4>Vulnerable Patients Need More</h4>
-                <p>Elderly patients managing complex regimens. Visually impaired patients unable to read instructions. Pregnant women needing safe medication guidance. Tuberculosis patients requiring strict, observed therapy.</p>
-            </div>
-        </div>
-    </section>
+      <div class="product-grid reveal">
+        <div>
+          <ul class="info-list">
+            <li>Indicated for essential hypertension (high blood pressure).</li>
+            <li>For patients requiring combination therapy for blood pressure control.</li>
+            <li>Supports reduction of cardiovascular risk associated with uncontrolled hypertension, as determined by the treating physician.</li>
+          </ul>
 
-    <!-- Patient Journey -->
-    <section class="section journey-section" id="journey">
-        <div class="section-header fade-in">
-            <span class="section-tag">The Experience</span>
-            <h2 class="section-title">Complete Patient Journey</h2>
-            <p class="section-subtitle">See how Biomexa transforms the entire treatment experience from prescription to recovery.</p>
+          <div class="guidance-card">
+            <div class="tag">QR Patient Summary</div>
+            <p>Take once daily at the same time each day. Avoid grapefruit juice, limit alcohol, and don't use potassium supplements or salt substitutes unless advised by your doctor. Follow a heart-healthy, low-salt diet and monitor your blood pressure regularly.</p>
+          </div>
         </div>
 
-        <div class="disease-tabs fade-in">
-            <button class="disease-tab active" data-disease="diabetes">
-                <span class="tab-icon">🩸</span>Diabetes
-            </button>
-            <button class="disease-tab" data-disease="hypertension">
-                <span class="tab-icon">🫀</span>Hypertension
-            </button>
-            <button class="disease-tab" data-disease="tb">
-                <span class="tab-icon">🫁</span>Tuberculosis
-            </button>
-            <button class="disease-tab" data-disease="pregnancy">
-                <span class="tab-icon">🤰</span>Pregnancy Care
-            </button>
-            <button class="disease-tab" data-disease="cholesterol">
-                <span class="tab-icon">🧬</span>Cholesterol
-            </button>
+        <div class="rx-panel">
+          <h4>Composition</h4>
+          <div class="rx-row"><span>Telmisartan</span><span>40 mg</span></div>
+          <div class="rx-row"><span>Amlodipine</span><span>5 mg</span></div>
+          <div class="rx-row"><span>Dosage form</span><span>Oral tablet</span></div>
+          <div class="rx-row"><span>Category</span><span>ARB + CCB</span></div>
+          <div class="rx-row"><span>Current strength</span><span>40/5 mg</span></div>
+          <div class="rx-row"><span>Future line</span><span>40/10, 80/5, 80/10 mg</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- DIABMEXA M -->
+  <section class="product" id="diabmexa-m" data-tone="m">
+    <div class="wrap">
+      <div class="product-head reveal">
+        <div>
+          <div class="eyebrow" style="color:var(--m)">Product 02</div>
+          <h2>DIABMEXA M <span style="color:var(--ink-dim);font-weight:400;font-size:0.6em;">500/1 mg</span></h2>
+        </div>
+        <div class="pill">Biguanide + Sulfonylurea</div>
+      </div>
+
+      <div class="product-grid reveal">
+        <div>
+          <ul class="info-list">
+            <li>Indicated for the management of Type 2 Diabetes Mellitus.</li>
+            <li>For patients whose blood glucose is not adequately controlled by diet, exercise, or monotherapy, as prescribed by a healthcare professional.</li>
+          </ul>
+
+          <div class="guidance-card">
+            <div class="tag">QR Patient Summary</div>
+            <p>Take with food as directed. Don't skip meals. Avoid excessive alcohol, limit sugary foods, and monitor your blood sugar regularly. Be aware of signs of low blood sugar — sweating, shaking, hunger, or dizziness — and seek advice if these occur.</p>
+          </div>
         </div>
 
-        <div class="journey-timeline fade-in">
-            <div class="timeline-line"></div>
-            <div class="journey-steps" id="journeySteps"></div>
+        <div class="rx-panel">
+          <h4>Composition</h4>
+          <div class="rx-row"><span>Metformin HCl</span><span>500 mg</span></div>
+          <div class="rx-row"><span>Glimepiride</span><span>1 mg</span></div>
+          <div class="rx-row"><span>Dosage form</span><span>Oral tablet</span></div>
+          <div class="rx-row"><span>Category</span><span>Biguanide + Sulfonylurea</span></div>
+          <div class="rx-row"><span>Current strength</span><span>500/1 mg</span></div>
         </div>
+      </div>
+    </div>
+  </section>
 
-        <div id="journeyDetail"></div>
-    </section>
+  <!-- COMPARE -->
+  <section class="compare" id="compare">
+    <div class="wrap">
+      <div class="eyebrow reveal">Side by side</div>
+      <h2 class="reveal">At a glance</h2>
+      <table class="compare-table reveal">
+        <thead>
+          <tr><th>&nbsp;</th><th>TELEX AM</th><th>DIABMEXA M</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Category</td><td class="am-col">Antihypertensive</td><td class="m-col">Antidiabetic</td></tr>
+          <tr><td>Composition</td><td class="am-col">Telmisartan 40mg + Amlodipine 5mg</td><td class="m-col">Metformin 500mg + Glimepiride 1mg</td></tr>
+          <tr><td>Dosage form</td><td class="am-col">Oral tablet</td><td class="m-col">Oral tablet</td></tr>
+          <tr><td>Typical timing</td><td class="am-col">Once daily, same time</td><td class="m-col">With food, don't skip meals</td></tr>
+          <tr><td>Key caution</td><td class="am-col">Avoid grapefruit juice</td><td class="m-col">Watch for low blood sugar</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
 
-    <!-- Solution -->
-    <section class="section solution-section" id="solution">
-        <div class="section-header fade-in">
-            <span class="section-tag">Our Solution</span>
-            <h2 class="section-title">How Biomexa Works</h2>
-            <p class="section-subtitle">From QR-coded packaging to AI-powered insights — a complete connected medicine ecosystem.</p>
-        </div>
-        <div class="solution-grid fade-in">
-            <div class="solution-card">
-                <div class="solution-icon">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 12h8M12 8v8"/></svg>
-                </div>
-                <h3>Smart QR Packaging</h3>
-                <p>Every medicine package is QR-coded. Patients scan to get personalized medicine info, dosage instructions, safety precautions, and AI audio guidance in their local language.</p>
-                <div class="solution-features">
-                    <span class="feature-tag">Composition</span>
-                    <span class="feature-tag">Indications</span>
-                    <span class="feature-tag">Audio Guidance</span>
-                </div>
-            </div>
-            <div class="solution-card">
-                <div class="solution-icon">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
-                </div>
-                <h3>AI Reminder System</h3>
-                <p>Automated WhatsApp/SMS reminders at scheduled dose times. Patients confirm intake with a single tap. Missed doses trigger follow-up alerts and escalation protocols.</p>
-                <div class="solution-features">
-                    <span class="feature-tag">WhatsApp</span>
-                    <span class="feature-tag">SMS</span>
-                    <span class="feature-tag">One-Tap Confirm</span>
-                </div>
-            </div>
-            <div class="solution-card">
-                <div class="solution-icon">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M2 12h20"/><circle cx="12" cy="12" r="8"/></svg>
-                </div>
-                <h3>Biological Clock Timing</h3>
-                <p>Circadian-aware reminders aligned with optimal dosing schedules. Blood pressure meds at bedtime, statins in the evening — personalized to each patient's biological rhythm.</p>
-                <div class="solution-features">
-                    <span class="feature-tag">Circadian</span>
-                    <span class="feature-tag">Personalized</span>
-                    <span class="feature-tag">Optimal Timing</span>
-                </div>
-            </div>
-            <div class="solution-card">
-                <div class="solution-icon">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/><path d="M12 8v4M12 16h.01"/></svg>
-                </div>
-                <h3>Drug-Food Interaction Alerts</h3>
-                <p>QR safety alerts display food-related precautions. Reminders include timing instructions like "take with food" or "avoid dairy for 2 hours." Patient education improves understanding.</p>
-                <div class="solution-features">
-                    <span class="feature-tag">Food Alerts</span>
-                    <span class="feature-tag">Timing Guide</span>
-                    <span class="feature-tag">Education</span>
-                </div>
-            </div>
-            <div class="solution-card">
-                <div class="solution-icon">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M18 9l-5 5-4-4-3 3"/></svg>
-                </div>
-                <h3>Therapeutic Effect Analysis</h3>
-                <p>AI calculates therapeutic effect scores from adherence data, lab markers, and patient-reported symptoms. Early signals for regimen adjustment before outcomes deteriorate.</p>
-                <div class="solution-features">
-                    <span class="feature-tag">AI Scoring</span>
-                    <span class="feature-tag">Lab Sync</span>
-                    <span class="feature-tag">Early Warning</span>
-                </div>
-            </div>
-            <div class="solution-card">
-                <div class="solution-icon">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-                </div>
-                <h3>Doctor Dashboard</h3>
-                <p>Consolidates adherence scores, missed dose trends, therapeutic effect trends, risk alerts, and treatment recommendations into one clinical view for evidence-based decisions.</p>
-                <div class="solution-features">
-                    <span class="feature-tag">Real-Time</span>
-                    <span class="feature-tag">Risk Alerts</span>
-                    <span class="feature-tag">Clinical View</span>
-                </div>
-            </div>
-        </div>
-    </section>
+  <!-- CTA -->
+  <section class="cta">
+    <div class="wrap">
+      <div class="eyebrow" style="justify-content:center;">Get in touch</div>
+      <h2>Partner with us on connected adherence</h2>
+      <p>Reach out for prescribing information, distribution partnerships, or clinic pilots.</p>
+      <div class="hero-cta">
+        <a class="btn btn-primary" href="mailto:partnerships@biomexapharma.com">Email Us</a>
+        <a class="btn btn-ghost" href="https://biomexapharmaceuticals.com">Back to Main Site</a>
+      </div>
+    </div>
+  </section>
 
-    <!-- Food Interaction Table -->
-    <section class="section food-section" id="food">
-        <div class="section-header fade-in">
-            <span class="section-tag">Safety Intelligence</span>
-            <h2 class="section-title">Drug-Food Interaction Management</h2>
-            <p class="section-subtitle">Biomexa guides patients on meals, beverages, and supplements to maximize drug effectiveness and safety.</p>
-        </div>
-        <div class="fade-in">
-            <div class="food-table-wrapper">
-                <table class="food-table">
-                    <thead>
-                        <tr>
-                            <th>Medicine</th>
-                            <th>Food Interaction</th>
-                            <th>Biomexa Patient Guidance</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr>
-                            <td class="medicine-name">Levothyroxine</td>
-                            <td class="warning">Food can reduce absorption</td>
-                            <td>Take on an empty stomach before breakfast. Reminder: <em>"Take at 6:00 AM with water. Wait 30 min before eating."</em></td>
-                        </tr>
-                        <tr>
-                            <td class="medicine-name">Tetracycline Antibiotics</td>
-                            <td class="warning">Dairy products reduce absorption</td>
-                            <td>Avoid milk or calcium-rich foods close to dose. QR alert: <em>"Avoid dairy within 2 hours of this dose."</em></td>
-                        </tr>
-                        <tr>
-                            <td class="medicine-name">Warfarin</td>
-                            <td class="warning">Vitamin K affects anticoagulation</td>
-                            <td>Maintain consistent leafy green intake. Dashboard flags sudden dietary changes for clinician review.</td>
-                        </tr>
-                        <tr>
-                            <td class="medicine-name">Metformin</td>
-                            <td class="warning">Food affects GI tolerance</td>
-                            <td>Take with meals if prescribed. Audio: <em>"Take with your evening meal to reduce stomach upset."</em></td>
-                        </tr>
-                        <tr>
-                            <td class="medicine-name">Statins</td>
-                            <td class="warning">Grapefruit may increase drug levels</td>
-                            <td>Avoid grapefruit products when advised. Reminder includes food timing for optimal cholesterol control.</td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-        <div class="food-example fade-in">
-            <div class="example-icon">💡</div>
-            <div class="example-content">
-                <h4>Real-World Example</h4>
-                <p>A patient prescribed <strong>doxycycline</strong> scans their QR package. The system says: <em>"Avoid taking this medicine with milk or calcium supplements within 2 hours of the dose."</em> Their 8:00 AM reminder reads: <em>"Take doxycycline with water. Avoid dairy products around this dose."</em> <strong>Result:</strong> Improved drug absorption and better treatment effectiveness.</p>
-            </div>
-        </div>
-    </section>
+  <!-- DISCLAIMER -->
+  <section class="disclaimer">
+    <div class="wrap">
+      <strong>Important:</strong> The information above is a generic patient-friendly summary intended for use with Biomexa's QR-code guidance system. It is not a substitute for the approved prescribing information for the specific formulation marketed in your region, and does not replace advice from a qualified healthcare professional. Always consult your doctor or pharmacist before starting, stopping, or changing any medication.
+    </div>
+  </section>
 
-    <!-- The Ecosystem -->
-    <section class="section ecosystem-section" id="ecosystem">
-        <div class="section-header fade-in">
-            <span class="section-tag">The Complete Picture</span>
-            <h2 class="section-title">The Biomexa Ecosystem</h2>
-            <p class="section-subtitle">One connected system — from manufacturing to measurable patient outcomes.</p>
-        </div>
-        <div class="ecosystem-container fade-in">
-            <div class="ecosystem-center">
-                <div class="ecosystem-hub">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
-                </div>
-                <span class="hub-label">Biomexa<br>Platform</span>
-            </div>
-            <div class="ecosystem-ring">
-                <div class="ecosystem-item" data-pos="0">
-                    <div class="eco-icon">🏭</div>
-                    <span>Medicine<br>Manufacturing</span>
-                </div>
-                <div class="ecosystem-item" data-pos="1">
-                    <div class="eco-icon">📦</div>
-                    <span>QR<br>Packaging</span>
-                </div>
-                <div class="ecosystem-item" data-pos="2">
-                    <div class="eco-icon">📱</div>
-                    <span>Patient<br>Scan</span>
-                </div>
-                <div class="ecosystem-item" data-pos="3">
-                    <div class="eco-icon">🤖</div>
-                    <span>AI<br>Guidance</span>
-                </div>
-                <div class="ecosystem-item" data-pos="4">
-                    <div class="eco-icon">🍽️</div>
-                    <span>Biological Clock<br>& Food Alerts</span>
-                </div>
-                <div class="ecosystem-item" data-pos="5">
-                    <div class="eco-icon">⏰</div>
-                    <span>Reminder<br>System</span>
-                </div>
-                <div class="ecosystem-item" data-pos="6">
-                    <div class="eco-icon">📊</div>
-                    <span>Adherence<br>Data</span>
-                </div>
-                <div class="ecosystem-item" data-pos="7">
-                    <div class="eco-icon">🧬</div>
-                    <span>Therapeutic Effect<br>Calculation</span>
-                </div>
-                <div class="ecosystem-item" data-pos="8">
-                    <div class="eco-icon">👨‍⚕️</div>
-                    <span>Doctor<br>Dashboard</span>
-                </div>
-                <div class="ecosystem-item" data-pos="9">
-                    <div class="eco-icon">📈</div>
-                    <span>RWE<br>Generation</span>
-                </div>
-                <div class="ecosystem-item" data-pos="10">
-                    <div class="eco-icon">🎯</div>
-                    <span>Commercialization<br>& Outcomes</span>
-                </div>
-            </div>
-        </div>
-    </section>
+</main>
 
-    <!-- Dashboard Preview -->
-    <section class="section dashboard-section" id="dashboard">
-        <div class="section-header fade-in">
-            <span class="section-tag">Clinical Intelligence</span>
-            <h2 class="section-title">Doctor & Healthcare Dashboard</h2>
-            <p class="section-subtitle">Real-time visibility into treatment response. Data-driven clinical decisions.</p>
-        </div>
-        <div class="dashboard-preview fade-in">
-            <div class="dash-header">
-                <div class="dash-title">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
-                    Biomexa Clinical Dashboard
-                </div>
-                <div class="dash-filters">
-                    <button class="dash-filter active">Today</button>
-                    <button class="dash-filter">Week</button>
-                    <button class="dash-filter">Month</button>
-                    <button class="dash-filter">Quarter</button>
-                </div>
-            </div>
-            <div class="dash-grid">
-                <div class="dash-metric">
-                    <div class="dash-metric-value" data-count="87">0</div>
-                    <div class="dash-metric-suffix">%</div>
-                    <div class="dash-metric-label">Avg Adherence</div>
-                    <div class="dash-metric-trend up">↑ 4.2%</div>
-                </div>
-                <div class="dash-metric">
-                    <div class="dash-metric-value" data-count="12">0</div>
-                    <div class="dash-metric-label">At-Risk Patients</div>
-                    <div class="dash-metric-trend down">↓ 3</div>
-                </div>
-                <div class="dash-metric">
-                    <div class="dash-metric-value" data-count="94">0</div>
-                    <div class="dash-metric-suffix">%</div>
-                    <div class="dash-metric-label">Dose Confirmation</div>
-                    <div class="dash-metric-trend up">↑ 2.1%</div>
-                </div>
-                <div class="dash-metric">
-                    <div class="dash-metric-value" data-count="3">0</div>
-                    <div class="dash-metric-label">Interventions Today</div>
-                    <div class="dash-metric-trend neutral">—</div>
-                </div>
-                <div class="dash-chart-area">
-                    <div class="chart-header">
-                        <span>Adherence Trend (Last 7 Days)</span>
-                        <span class="chart-legend"><span class="legend-dot"></span>Confirmed Doses</span>
-                    </div>
-                    <div class="chart-bar-container" id="adherenceChart"></div>
-                </div>
-                <div class="dash-chart-area">
-                    <div class="chart-header">
-                        <span>Therapeutic Effect Score</span>
-                        <span class="chart-legend"><span class="legend-dot teal"></span>Effect Score</span>
-                    </div>
-                    <div class="chart-bar-container" id="therapeuticChart"></div>
-                </div>
-            </div>
-            <div class="dash-patients">
-                <div class="dash-patients-header">
-                    <h4>Patients Requiring Attention</h4>
-                    <a href="#" class="view-all">View All →</a>
-                </div>
-                <div class="patient-row">
-                    <div class="patient-avatar">RK</div>
-                    <div class="patient-info">
-                        <span class="patient-name">Ravi Kumar</span>
-                        <span class="patient-condition">Hypertension · 3 missed doses</span>
-                    </div>
-                    <div class="patient-risk high">High Risk</div>
-                    <button class="patient-action">Intervene</button>
-                </div>
-                <div class="patient-row">
-                    <div class="patient-avatar">SP</div>
-                    <div class="patient-info">
-                        <span class="patient-name">Sunita Patel</span>
-                        <span class="patient-condition">Diabetes · Timing issue</span>
-                    </div>
-                    <div class="patient-risk medium">Medium Risk</div>
-                    <button class="patient-action">Review</button>
-                </div>
-                <div class="patient-row">
-                    <div class="patient-avatar">AM</div>
-                    <div class="patient-info">
-                        <span class="patient-name">Amit Mishra</span>
-                        <span class="patient-condition">TB · Food interaction alert</span>
-                    </div>
-                    <div class="patient-risk medium">Medium Risk</div>
-                    <button class="patient-action">Review</button>
-                </div>
-            </div>
-        </div>
-    </section>
+<footer>
+  <div class="wrap">
+    <span>© 2026 Biomexa Pharmaceuticals. All rights reserved.</span>
+    <a href="mailto:partnerships@biomexapharma.com">partnerships@biomexapharma.com</a>
+  </div>
+</footer>
 
-    <!-- Path to Scale -->
-    <section class="section scale-section" id="scale">
-        <div class="section-header fade-in">
-            <span class="section-tag">Go-To-Market</span>
-            <h2 class="section-title">Path to Scale</h2>
-            <p class="section-subtitle">From prototype to commercial partnerships — our strategic roadmap.</p>
-        </div>
-        <div class="scale-timeline fade-in">
-            <div class="scale-phase" data-phase="1">
-                <div class="phase-num">1</div>
-                <div class="phase-icon">🔧</div>
-                <h4>Prototype</h4>
-                <p>Platform development and initial QR packaging integration</p>
-                <div class="phase-status">In Progress</div>
-            </div>
-            <div class="scale-connector"></div>
-            <div class="scale-phase" data-phase="2">
-                <div class="phase-num">2</div>
-                <div class="phase-icon">🧪</div>
-                <h4>Pilot</h4>
-                <p>Diabetes & hypertension medicine pilots with partner clinics</p>
-                <div class="phase-status">Planned</div>
-            </div>
-            <div class="scale-connector"></div>
-            <div class="scale-phase" data-phase="3">
-                <div class="phase-num">3</div>
-                <div class="phase-icon">✅</div>
-                <h4>Validation</h4>
-                <p>Integration with clinics, pharmacies, and health systems</p>
-                <div class="phase-status">Planned</div>
-            </div>
-            <div class="scale-connector"></div>
-            <div class="scale-phase" data-phase="4">
-                <div class="phase-num">4</div>
-                <div class="phase-icon">📈</div>
-                <h4>Scale-Up</h4>
-                <p>Expansion to TB, pregnancy care, and chronic disease</p>
-                <div class="phase-status">Planned</div>
-            </div>
-            <div class="scale-connector"></div>
-            <div class="scale-phase" data-phase="5">
-                <div class="phase-num">5</div>
-                <div class="phase-icon">🤝</div>
-                <h4>Commercial</h4>
-                <p>RWE reporting and pharma partnerships at scale</p>
-                <div class="phase-status">Planned</div>
-            </div>
-        </div>
-    </section>
+<script>
+  document.querySelectorAll('[data-flip]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const card = document.getElementById(btn.getAttribute('data-flip'));
+      card.classList.toggle('flipped');
+    });
+  });
 
-    <!-- Business Model -->
-    <section class="section business-section" id="business">
-        <div class="section-header fade-in">
-            <span class="section-tag">Commercialization</span>
-            <h2 class="section-title">Business Model & Revenue Streams</h2>
-            <p class="section-subtitle">Diversified and defensible — multiple non-overlapping revenue streams.</p>
-        </div>
-        <div class="revenue-grid fade-in">
-            <div class="revenue-card">
-                <div class="rev-icon">📦</div>
-                <h3>QR-Enabled Packaging</h3>
-                <p>Revenue from QR-coded medicine packaging services for pharmaceutical manufacturers and pharmacies.</p>
-                <div class="rev-arrow">→ Platform Services</div>
-            </div>
-            <div class="revenue-card">
-                <div class="rev-icon">💳</div>
-                <h3>Platform Subscriptions</h3>
-                <p>Recurring subscription fees for the adherence platform from hospitals, clinics, and healthcare providers.</p>
-                <div class="rev-arrow">→ Patient Data</div>
-            </div>
-            <div class="revenue-card">
-                <div class="rev-icon">📈</div>
-                <h3>RWE & Analytics</h3>
-                <p>Real-world evidence reports and analytics products for pharmaceutical companies and regulators.</p>
-                <div class="rev-arrow">→ Analytics Products</div>
-            </div>
-            <div class="revenue-card">
-                <div class="rev-icon">🔬</div>
-                <h3>AI Technology Licensing</h3>
-                <p>Licensing of AI reminder, therapeutic analysis, and drug interaction technology to healthcare platforms.</p>
-                <div class="rev-arrow">→ Pharma & Healthcare</div>
-            </div>
-            <div class="revenue-card">
-                <div class="rev-icon">🤝</div>
-                <h3>Strategic Partnerships</h3>
-                <p>Partnerships with hospitals, clinics, government health programs, and insurance providers.</p>
-                <div class="rev-arrow">→ Revenue</div>
-            </div>
-            <div class="revenue-card highlight">
-                <div class="rev-icon">🌍</div>
-                <h3>Value Chain Impact</h3>
-                <p>Better adherence → Better outcomes → Lower costs → Higher drug effectiveness across the ecosystem.</p>
-                <div class="rev-arrow">→ Shared Value</div>
-            </div>
-        </div>
-    </section>
+  const io = new IntersectionObserver((entries)=>{
+    entries.forEach(e=>{
+      if(e.isIntersecting){ e.target.classList.add('in'); }
+    });
+  }, {threshold:0.15});
+  document.querySelectorAll('.reveal').forEach(el=>io.observe(el));
+</script>
 
-    <!-- Value Proposition -->
-    <section class="section value-section" id="value">
-        <div class="section-header fade-in">
-            <span class="section-tag">Value Proposition</span>
-            <h2 class="section-title">Right Medicine · Right Time · Right Way · Right Outcome</h2>
-            <p class="section-subtitle">Biomexa enables safer and smarter medication use across the entire care continuum.</p>
-        </div>
-        <div class="value-grid fade-in">
-            <div class="value-card">
-                <div class="value-num">01</div>
-                <div class="value-icon">✓</div>
-                <h3>Right Medicine</h3>
-                <p>QR-coded packaging identifies the prescribed drug and regimen. No confusion, no wrong medication.</p>
-            </div>
-            <div class="value-card">
-                <div class="value-num">02</div>
-                <div class="value-icon">⏰</div>
-                <h3>Right Time</h3>
-                <p>Biological clock–aligned reminders support optimal dosing schedules. Circadian-aware for maximum efficacy.</p>
-            </div>
-            <div class="value-card">
-                <div class="value-num">03</div>
-                <div class="value-icon">🍽️</div>
-                <h3>Right Way</h3>
-                <p>Drug-food interaction alerts guide patients on meals, beverages, and supplements. Safe and effective use.</p>
-            </div>
-            <div class="value-card">
-                <div class="value-num">04</div>
-                <div class="value-icon">📊</div>
-                <h3>Right Outcome</h3>
-                <p>Adherence and clinical data are analyzed to support therapeutic effect evaluation. Measurable improvement.</p>
-            </div>
-        </div>
-    </section>
-
-    <!-- AI Assistant Promo -->
-    <section class="section solution-section" id="ai-assistant" style="padding: 4rem 2rem;">
-        <div class="section-header fade-in">
-            <span class="section-tag">Try It Now</span>
-            <h2 class="section-title">Experience the Biomexa AI Assistant</h2>
-            <p class="section-subtitle">Scan your medicine, get AI audio guidance, set smart reminders, and never miss a dose.</p>
-        </div>
-        <div style="text-align: center; margin-top: 2rem;" class="fade-in">
-            <a href="ai-assistant.html" class="cta-btn primary" style="font-size: 1.1rem; padding: 1.2rem 3rem;">
-                🤖 Launch AI Assistant
-            </a>
-            <p style="color: rgba(255,255,255,0.5); margin-top: 1rem; font-size: 0.85rem;">
-                Works on any device — no app download needed
-            </p>
-        </div>
-    </section>
-
-    <!-- CTA Section -->
-    <section class="cta-section" id="contact">
-        <div class="cta-content">
-            <h2>Let's Build the Future of Adherence Together</h2>
-            <p>We invite investors, pharmaceutical partners, healthcare providers, and regulatory stakeholders to join us in scaling connected medicine and treatment intelligence.</p>
-            <div class="cta-buttons">
-                <a href="mailto:biomexapharmaceuticals@gmail.com" class="cta-btn primary">Email Us</a>
-                <a href="#" class="cta-btn secondary" onclick="alert('Pitch deck download coming soon!'); return false;">Download Pitch Deck</a>
-            </div>
-            <div class="cta-contact">
-                <a href="mailto:biomexapharmaceuticals@gmail.com">biomexapharmaceuticals@gmail.com</a>
-                <span>|</span>
-                <a href=biomexapharmaceuticals@gmail.com">www.biomexapharmaceuticals@gmail.com</a>
-            </div>
-        </div>
-    </section>
-
-    <!-- Footer -->
-    <footer class="footer">
-        <div class="footer-grid">
-            <div class="footer-brand">
-                <div class="logo">
-                    <div class="logo-icon">⚕</div>
-                    <span>Biomexa Pharmaceuticals</span>
-                </div>
-                <p>AI-Enabled Medicine Adherence & Treatment Intelligence Platform. Improving outcomes through connected medicines, patient engagement, and real-world evidence.</p>
-                <div class="footer-social">
-                    <a href="#" aria-label="LinkedIn"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.79-1.75-1.764s.784-1.764 1.75-1.764 1.75.79 1.75 1.764-.783 1.764-1.75 1.764zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z"/></svg></a>
-                    <a href="#" aria-label="Twitter"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M24 4.557c-.883.392-1.832.656-2.828.775 1.017-.609 1.798-1.574 2.165-2.724-.951.564-2.005.974-3.127 1.195-.897-.957-2.178-1.555-3.594-1.555-3.179 0-5.515 2.966-4.797 6.045-4.091-.205-7.719-2.165-10.148-5.144-1.29 2.213-.669 5.108 1.523 6.574-.806-.026-1.566-.247-2.229-.616-.054 2.281 1.581 4.415 3.949 4.89-.693.188-1.452.232-2.224.084.626 1.956 2.444 3.379 4.6 3.419-2.07 1.623-4.678 2.348-7.29 2.04 2.179 1.397 4.768 2.212 7.548 2.212 9.142 0 14.307-7.721 13.995-14.646.962-.695 1.797-1.562 2.457-2.549z"/></svg></a>
-                </div>
-            </div>
-            <div class="footer-col">
-                <h4>Platform</h4>
-                <a href="#solution">Smart Packaging</a>
-                <a href="#solution">AI Reminders</a>
-                <a href="#food">Food Interactions</a>
-                <a href="#dashboard">Doctor Dashboard</a>
-                <a href="#solution">Therapeutic Analysis</a>
-            </div>
-            <div class="footer-col">
-                <h4>Company</h4>
-                <a href="#">About Us</a>
-                <a href="#scale">Roadmap</a>
-                <a href="#business">Business Model</a>
-                <a href="#value">Value Proposition</a>
-                <a href="#contact">Careers</a>
-            </div>
-            <div class="footer-col">
-                <h4>Connect</h4>
-                <a href="mailto:biomexapharmaceuticals@gmail.com">Contact</a>
-                <a href="#">LinkedIn</a>
-                <a href="#">Twitter</a>
-                <a href="#">Newsroom</a>
-                <a href="#">Investor Relations</a>
-            </div>
-        </div>
-        <div class="footer-bottom">
-            <p>© 2026 Biomexa Pharmaceuticals. All rights reserved.</p>
-            <p>Connected medicines for better patient outcomes.</p>
-        </div>
-    </footer>
-
-    <script src="js/main.js"></script>
 </body>
 </html>
