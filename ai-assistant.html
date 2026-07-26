@@ -1,116 +1,290 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AI Health Assistant | Biomexa Pharmaceuticals</title>
-  <meta name="description" content="Get personalized health guidance, medicine information, and medication reminders from the Biomexa AI Health Assistant.">
-  <link rel="stylesheet" href="css/styles.css">
-  <style>
-    .ai-page { background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f766e 100%); min-height: 100vh; padding: 40px 24px; }
-    .ai-page-container { max-width: 800px; margin: 0 auto; }
-    .ai-page-header { text-align: center; color: white; margin-bottom: 32px; }
-    .ai-page-header h1 { font-size: 2.2rem; margin-bottom: 8px; }
-    .ai-page-header p { opacity: 0.8; font-size: 1.1rem; }
-    .ai-full-widget { background: rgba(255,255,255,0.05); backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.1); border-radius: 20px; padding: 32px; }
-    .ai-full-chat { background: rgba(0,0,0,0.2); border-radius: 16px; padding: 24px; min-height: 400px; max-height: 500px; overflow-y: auto; margin-bottom: 20px; border: 1px solid rgba(255,255,255,0.08); }
-    .ai-full-input-area { display: flex; gap: 12px; }
-    .ai-full-input { flex: 1; padding: 14px 20px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.2); background: rgba(255,255,255,0.08); color: white; font-size: 1rem; outline: none; }
-    .ai-full-input::placeholder { color: rgba(255,255,255,0.4); }
-    .ai-full-input:focus { border-color: var(--primary-light); }
-    .ai-full-send, .ai-full-voice { padding: 14px 20px; border-radius: 12px; border: none; background: var(--primary); color: white; cursor: pointer; font-size: 1.2rem; transition: all 0.2s; }
-    .ai-full-send:hover, .ai-full-voice:hover { background: var(--primary-light); }
-    .ai-full-voice.recording { background: #ef4444; animation: pulse-red 1s infinite; }
-    .ai-capabilities { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; margin-top: 32px; }
-    .ai-capability { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 20px; color: white; text-align: center; }
-    .ai-capability .icon { font-size: 2rem; margin-bottom: 8px; }
-    .ai-capability h4 { margin-bottom: 4px; font-size: 1rem; }
-    .ai-capability p { font-size: 0.85rem; opacity: 0.7; }
-    .quick-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; justify-content: center; }
-    .quick-action { padding: 10px 18px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 24px; color: white; font-size: 0.9rem; cursor: pointer; transition: all 0.2s; }
-    .quick-action:hover { background: rgba(255,255,255,0.2); border-color: var(--primary-light); }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Adaptive Adherence Intelligence Engine — AI Hub | Biomexa</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --primary: #0d7377;
+            --primary-dark: #095457;
+            --primary-light: #14a085;
+            --accent: #f39c12;
+            --danger: #e74c3c;
+            --success: #27ae60;
+            --bg-dark: #0a0e17;
+            --bg-card: #111827;
+            --bg-light: #1f2937;
+            --text: #f3f4f6;
+            --text-muted: #9ca3af;
+            --border: #374151;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg-dark);
+            color: var(--text);
+            line-height: 1.6;
+        }
+        header {
+            background: rgba(10, 14, 23, 0.95);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid var(--border);
+            padding: 1rem 2rem;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .logo { display: flex; align-items: center; gap: 0.75rem; font-weight: 800; font-size: 1.25rem; color: var(--primary-light); }
+        .logo i { font-size: 1.5rem; }
+        .engine-badge {
+            display: flex; align-items: center; gap: 0.5rem;
+            background: linear-gradient(135deg, rgba(13,115,119,0.2), rgba(20,160,133,0.1));
+            border: 1px solid var(--primary);
+            padding: 0.5rem 1rem;
+            border-radius: 50px;
+            font-size: 0.8rem;
+            color: var(--primary-light);
+        }
+        .engine-badge .pulse {
+            width: 8px; height: 8px; border-radius: 50%;
+            background: var(--success);
+            animation: pulse-dot 2s infinite;
+        }
+        @keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+        nav { display: flex; gap: 2rem; }
+        nav a { color: var(--text-muted); text-decoration: none; font-weight: 500; transition: color 0.3s; }
+        nav a:hover { color: var(--primary-light); }
+
+        .hero {
+            background: linear-gradient(135deg, var(--bg-dark) 0%, #0d1f2d 50%, var(--bg-dark) 100%);
+            padding: 5rem 2rem;
+            text-align: center;
+            border-bottom: 1px solid var(--border);
+        }
+        .hero h1 { font-size: 3.5rem; font-weight: 800; margin-bottom: 1rem; }
+        .hero h1 span { background: linear-gradient(90deg, var(--primary-light), #4ade80); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .hero p { color: var(--text-muted); font-size: 1.2rem; max-width: 700px; margin: 0 auto 2rem; }
+        .hero .subtitle {
+            display: inline-flex; align-items: center; gap: 0.5rem;
+            background: rgba(13,115,119,0.15);
+            border: 1px solid var(--primary);
+            padding: 0.75rem 1.5rem;
+            border-radius: 50px;
+            font-size: 0.9rem;
+            color: var(--primary-light);
+        }
+
+        .container { max-width: 1200px; margin: 0 auto; padding: 3rem 2rem; }
+
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 3rem;
+        }
+        .feature-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 1.5rem;
+            text-align: center;
+            transition: transform 0.3s, border-color 0.3s;
+        }
+        .feature-card:hover { transform: translateY(-3px); border-color: var(--primary); }
+        .feature-card i { font-size: 2rem; color: var(--primary-light); margin-bottom: 1rem; }
+        .feature-card h3 { margin-bottom: 0.5rem; }
+        .feature-card p { color: var(--text-muted); font-size: 0.9rem; }
+
+        .drug-selector { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem; }
+        .drug-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 2rem;
+            text-decoration: none;
+            color: var(--text);
+            transition: transform 0.3s, border-color 0.3s;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+        .drug-card:hover { transform: translateY(-5px); border-color: var(--primary); }
+        .drug-card .icon {
+            width: 60px; height: 60px;
+            border-radius: 16px;
+            background: linear-gradient(135deg, var(--primary), var(--primary-light));
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.5rem;
+            color: white;
+        }
+        .drug-card h3 { color: var(--primary-light); }
+        .drug-card p { color: var(--text-muted); font-size: 0.95rem; }
+        .drug-card .meta { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: auto; }
+        .drug-card .meta span {
+            font-size: 0.75rem;
+            padding: 0.25rem 0.75rem;
+            background: rgba(13,115,119,0.15);
+            border-radius: 50px;
+            color: var(--primary-light);
+        }
+
+        .how-it-works {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 3rem;
+            margin-bottom: 3rem;
+        }
+        .how-it-works h2 { text-align: center; margin-bottom: 2rem; color: var(--primary-light); }
+        .steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 2rem; }
+        .step { text-align: center; }
+        .step-number {
+            width: 50px; height: 50px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--primary), var(--primary-light));
+            display: flex; align-items: center; justify-content: center;
+            margin: 0 auto 1rem;
+            font-weight: 800; font-size: 1.25rem;
+            color: white;
+        }
+        .step h4 { margin-bottom: 0.5rem; }
+        .step p { color: var(--text-muted); font-size: 0.9rem; }
+
+        footer {
+            border-top: 1px solid var(--border);
+            padding: 2rem;
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 0.875rem;
+        }
+
+        @media (max-width: 768px) {
+            .hero h1 { font-size: 2rem; }
+            .hero p { font-size: 1rem; }
+        }
+    </style>
+<base target="_blank">
 </head>
-<body style="background: #0f172a;">
-  <nav class="navbar" style="background: rgba(15,23,42,0.9); border-color: rgba(255,255,255,0.1);">
-    <div class="nav-container">
-      <a href="index.html" class="logo">
-        <div class="logo-icon">⚕</div>
-        Biomexa
-      </a>
-      <ul class="nav-links">
-        <li><a href="index.html">Home</a></li>
-        <li><a href="products.html">Products</a></li>
-        <li><a href="ai-assistant.html" class="active">AI Assistant</a></li>
-        <li><a href="products/product-1.html">Cardio</a></li>
-        <li><a href="products/product-2.html">Derma</a></li>
-        <li><a href="products/product-3.html">Immune</a></li>
-        <li><a href="products/product-4.html">Vita</a></li>
-      </ul>
-      <button class="mobile-menu-btn" style="color: white;">☰</button>
-    </div>
-  </nav>
+<body>
+    <header>
+        <div class="logo"><i class="fas fa-dna"></i> Biomexa</div>
+        <div class="engine-badge">
+            <div class="pulse"></div>
+            Adaptive Adherence Intelligence Engine
+        </div>
+        <nav>
+            <a href="index.html">Home</a>
+            <a href="products/index.html">Products</a>
+            <a href="ai-assistant.html">AI Assistant</a>
+        </nav>
+    </header>
 
-  <div class="ai-page">
-    <div class="ai-page-container">
-      <div class="ai-page-header">
-        <h1>🤖 AI Health Assistant</h1>
-        <p>Your 24/7 virtual pharmacist for medicine info, health tips & reminders</p>
-      </div>
-      
-      <div class="ai-full-widget">
-        <div class="ai-full-chat" id="ai-chat"></div>
-        <div class="ai-full-input-area">
-          <input type="text" class="ai-full-input" id="ai-input" placeholder="Type your health question...">
-          <button class="ai-full-voice" id="ai-voice" title="Voice input">🎤</button>
-          <button class="ai-full-send" id="ai-send">➤</button>
-        </div>
-        <div class="quick-actions">
-          <button class="quick-action">What is Biomexa-Cardio?</button>
-          <button class="quick-action">Immune dosage</button>
-          <button class="quick-action">Skin health tips</button>
-          <button class="quick-action">Heart health advice</button>
-          <button class="quick-action">Remind me to take Vita at 8am</button>
-          <button class="quick-action">Side effects?</button>
-          <button class="quick-action">Vitamin benefits</button>
-          <button class="quick-action">Shipping info</button>
-        </div>
-      </div>
-      
-      <div class="ai-capabilities">
-        <div class="ai-capability">
-          <div class="icon">💊</div>
-          <h4>Medicine Info</h4>
-          <p>Detailed info on all Biomexa products</p>
-        </div>
-        <div class="ai-capability">
-          <div class="icon">⏰</div>
-          <h4>Reminders</h4>
-          <p>Set medication schedules</p>
-        </div>
-        <div class="ai-capability">
-          <div class="icon">🎙️</div>
-          <h4>Voice Chat</h4>
-          <p>Speak your questions naturally</p>
-        </div>
-        <div class="ai-capability">
-          <div class="icon">❤️</div>
-          <h4>Health Tips</h4>
-          <p>Personalized wellness advice</p>
-        </div>
-      </div>
-    </div>
-  </div>
+    <section class="hero">
+        <div class="subtitle"><i class="fas fa-robot"></i> AI-Powered Medication Adherence</div>
+        <h1><span>Adaptive Adherence</span><br>Intelligence Engine</h1>
+        <p>Your personal AI pharmacist that guides you through every Biomexa therapy — from QR scan to daily dosing, food alerts, and vitals tracking.</p>
+    </section>
 
-  <script src="js/main.js"></script>
-  <script src="js/ai-system.js"></script>
-  <script>
-    document.querySelectorAll('.quick-action').forEach(btn => {
-      btn.addEventListener('click', () => {
-        document.getElementById('ai-input').value = btn.textContent;
-        if (window.biomexaAI) window.biomexaAI.handleSend();
-      });
-    });
-  </script>
+    <div class="container">
+        <div class="features-grid">
+            <div class="feature-card">
+                <i class="fas fa-qrcode"></i>
+                <h3>QR Code Activation</h3>
+                <p>Scan your Biomexa packaging to instantly load your personalized AI guide and dosing plan.</p>
+            </div>
+            <div class="feature-card">
+                <i class="fas fa-volume-up"></i>
+                <h3>AI Voice Guide</h3>
+                <p>Listen to detailed instructions on dosing, food interactions, and side effects in your language.</p>
+            </div>
+            <div class="feature-card">
+                <i class="fab fa-whatsapp"></i>
+                <h3>WhatsApp Reminders</h3>
+                <p>Get daily dose reminders, confirmation requests, and weekly adherence reports on WhatsApp.</p>
+            </div>
+            <div class="feature-card">
+                <i class="fas fa-heartbeat"></i>
+                <h3>Daily Vitals Tracking</h3>
+                <p>Log BP, glucose, weight, and mood. Track trends and share reports with your doctor.</p>
+            </div>
+            <div class="feature-card">
+                <i class="fas fa-file-medical"></i>
+                <h3>Prescription Upload</h3>
+                <p>Store all your prescriptions and medication lists securely in one place.</p>
+            </div>
+            <div class="feature-card">
+                <i class="fas fa-chart-line"></i>
+                <h3>Adherence Scoring</h3>
+                <p>Track your medication adherence with a visual score based on dose logging and vitals.</p>
+            </div>
+        </div>
+
+        <div class="how-it-works">
+            <h2><i class="fas fa-route"></i> How It Works</h2>
+            <div class="steps">
+                <div class="step">
+                    <div class="step-number">1</div>
+                    <h4>Buy Biomexa</h4>
+                    <p>Purchase any Biomexa product from your pharmacy. Each package has a unique QR code.</p>
+                </div>
+                <div class="step">
+                    <div class="step-number">2</div>
+                    <h4>Scan QR Code</h4>
+                    <p>Use your phone to scan the QR code on the packaging. The AI guide loads instantly.</p>
+                </div>
+                <div class="step">
+                    <div class="step-number">3</div>
+                    <h4>AI Voice Guide</h4>
+                    <p>Listen to personalized instructions on dosing, food interactions, and side effects.</p>
+                </div>
+                <div class="step">
+                    <div class="step-number">4</div>
+                    <h4>Set Reminders</h4>
+                    <p>Activate WhatsApp reminders for dose alerts, confirmations, and refill alerts.</p>
+                </div>
+                <div class="step">
+                    <div class="step-number">5</div>
+                    <h4>Track Vitals</h4>
+                    <p>Log daily vitals and prescriptions. Monitor your adherence score over time.</p>
+                </div>
+            </div>
+        </div>
+
+        <h2 style="text-align: center; margin-bottom: 2rem; color: var(--primary-light);"><i class="fas fa-pills"></i> Select Your Medication</h2>
+        <div class="drug-selector">
+            <a href="products/ai/telmexa-am-ai.html" class="drug-card">
+                <div class="icon"><i class="fas fa-shield-alt"></i></div>
+                <h3>Telmexa AM</h3>
+                <p>Telmisartan 40mg & Amlodipine 5mg — Blood pressure management with circadian-optimized morning dosing.</p>
+                <div class="meta">
+                    <span><i class="fas fa-clock"></i> Once Daily</span>
+                    <span><i class="fas fa-apple-alt"></i> Food Alerts</span>
+                    <span><i class="fas fa-heartbeat"></i> BP Tracking</span>
+                </div>
+            </a>
+
+            <a href="products/ai/diabmexa-m-500-ai.html" class="drug-card">
+                <div class="icon"><i class="fas fa-tint"></i></div>
+                <h3>Diabmexa M 500</h3>
+                <p>Metformin Hydrochloride IP 500mg — Type 2 Diabetes care with dawn-phenomenon targeted dosing.</p>
+                <div class="meta">
+                    <span><i class="fas fa-sun"></i> Twice Daily</span>
+                    <span><i class="fas fa-apple-alt"></i> Food Alerts</span>
+                    <span><i class="fas fa-tint"></i> Glucose Tracking</span>
+                </div>
+            </a>
+        </div>
+    </div>
+
+    <footer>
+        <p><i class="fas fa-dna"></i> Biomexa Pharmaceuticals — Adaptive Adherence Intelligence Engine</p>
+        <p style="margin-top: 0.5rem; font-size: 0.75rem;">This platform is for informational purposes. Always follow your physician's advice.</p>
+    </footer>
 </body>
 </html>
