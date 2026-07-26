@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Diabmexa M 500 - Metformin Hydrochloride IP 500mg | Biomexa Pharmaceuticals</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --primary: #0d7377;
+            --primary-dark: #095457;
+            --primary-light: #14a085;
+            --accent: #f39c12;
+            --danger: #e74c3c;
+            --success: #27ae60;
+            --bg-dark: #0a0e17;
+            --bg-card: #111827;
+            --bg-light: #1f2937;
+            --text: #f3f4f6;
+            --text-muted: #9ca3af;
+            --border: #374151;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg-dark);
+            color: var(--text);
+            line-height: 1.6;
+        }
+        header {
+            background: rgba(10, 14, 23, 0.95);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid var(--border);
+            padding: 1rem 2rem;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .logo { display: flex; align-items: center; gap: 0.75rem; font-weight: 800; font-size: 1.25rem; color: var(--primary-light); }
+        .logo i { font-size: 1.5rem; }
+        nav { display: flex; gap: 2rem; }
+        nav a { color: var(--text-muted); text-decoration: none; font-weight: 500; transition: color 0.3s; }
+        nav a:hover { color: var(--primary-light); }
+
+        .hero {
+            background: linear-gradient(135deg, var(--bg-dark) 0%, #0d1f2d 50%, var(--bg-dark) 100%);
+            padding: 4rem 2rem;
+            text-align: center;
+            border-bottom: 1px solid var(--border);
+        }
+        .hero h1 { font-size: 3rem; font-weight: 800; margin-bottom: 0.5rem; background: linear-gradient(90deg, var(--primary-light), #4ade80); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .hero .subtitle { color: var(--text-muted); font-size: 1.25rem; margin-bottom: 2rem; }
+        .badge { display: inline-flex; align-items: center; gap: 0.5rem; background: rgba(13, 115, 119, 0.2); border: 1px solid var(--primary); padding: 0.5rem 1.25rem; border-radius: 50px; font-size: 0.875rem; color: var(--primary-light); margin: 0 0.5rem; }
+
+        .container { max-width: 1200px; margin: 0 auto; padding: 3rem 2rem; }
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 3rem; }
+
+        .product-visual {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 3rem;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+        .product-visual::before {
+            content: '';
+            position: absolute;
+            top: -50%; left: -50%; width: 200%; height: 200%;
+            background: radial-gradient(circle, rgba(13,115,119,0.1) 0%, transparent 70%);
+            animation: pulse 4s ease-in-out infinite;
+        }
+        @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.1); } }
+        .pill-visual {
+            width: 180px; height: 180px;
+            background: linear-gradient(135deg, #1a5f4a, #0d7377);
+            border-radius: 20px;
+            margin: 2rem auto;
+            display: flex; align-items: center; justify-content: center;
+            box-shadow: 0 20px 60px rgba(13,115,119,0.4);
+            position: relative;
+            z-index: 1;
+            transform: rotate(45deg);
+        }
+        .pill-visual span { font-weight: 800; font-size: 1rem; color: white; transform: rotate(-45deg); }
+        .qr-trigger {
+            margin-top: 2rem;
+            padding: 1.5rem;
+            background: linear-gradient(135deg, rgba(13,115,119,0.2), rgba(20,160,133,0.1));
+            border: 2px dashed var(--primary);
+            border-radius: 16px;
+            cursor: pointer;
+            transition: all 0.3s;
+            position: relative;
+            z-index: 1;
+        }
+        .qr-trigger:hover { background: rgba(13,115,119,0.3); transform: translateY(-2px); }
+        .qr-trigger i { font-size: 2.5rem; color: var(--primary-light); margin-bottom: 0.5rem; }
+        .qr-trigger h3 { color: var(--primary-light); margin-bottom: 0.25rem; }
+        .qr-trigger p { color: var(--text-muted); font-size: 0.875rem; }
+
+        .section { margin-bottom: 3rem; }
+        .section-title {
+            font-size: 1.5rem; font-weight: 700;
+            display: flex; align-items: center; gap: 0.75rem;
+            margin-bottom: 1.5rem;
+            color: var(--primary-light);
+        }
+        .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+        .info-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.25rem;
+            transition: transform 0.3s, border-color 0.3s;
+        }
+        .info-card:hover { transform: translateY(-3px); border-color: var(--primary); }
+        .info-card h4 { color: var(--text); font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.5rem; }
+        .info-card p { color: var(--text-muted); font-size: 0.95rem; }
+        .info-card .value { color: var(--primary-light); font-size: 1.25rem; font-weight: 700; }
+
+        .interaction-list { display: flex; flex-direction: column; gap: 1rem; }
+        .interaction-item {
+            display: flex; align-items: flex-start; gap: 1rem;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.25rem;
+        }
+        .interaction-item.danger { border-left: 4px solid var(--danger); }
+        .interaction-item.warning { border-left: 4px solid var(--accent); }
+        .interaction-item.safe { border-left: 4px solid var(--success); }
+        .interaction-icon { width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 1.25rem; flex-shrink: 0; }
+        .interaction-item.danger .interaction-icon { background: rgba(231,76,60,0.2); color: var(--danger); }
+        .interaction-item.warning .interaction-icon { background: rgba(243,156,18,0.2); color: var(--accent); }
+        .interaction-item.safe .interaction-icon { background: rgba(39,174,96,0.2); color: var(--success); }
+        .interaction-content h4 { margin-bottom: 0.25rem; }
+        .interaction-content p { color: var(--text-muted); font-size: 0.9rem; }
+
+        .dose-timeline { display: flex; flex-direction: column; gap: 0; position: relative; }
+        .dose-timeline::before {
+            content: ''; position: absolute; left: 24px; top: 0; bottom: 0;
+            width: 2px; background: linear-gradient(to bottom, var(--primary), var(--primary-light));
+        }
+        .dose-item {
+            display: flex; align-items: flex-start; gap: 1.5rem;
+            padding: 1.25rem 0;
+            position: relative;
+        }
+        .dose-time {
+            width: 50px; height: 50px; border-radius: 50%;
+            background: var(--bg-light); border: 2px solid var(--primary);
+            display: flex; align-items: center; justify-content: center;
+            font-weight: 700; font-size: 0.75rem; color: var(--primary-light);
+            flex-shrink: 0; z-index: 1;
+        }
+        .dose-details h4 { margin-bottom: 0.25rem; }
+        .dose-details p { color: var(--text-muted); font-size: 0.9rem; }
+        .dose-details .tag {
+            display: inline-block; padding: 0.25rem 0.75rem;
+            background: rgba(13,115,119,0.2); color: var(--primary-light);
+            border-radius: 50px; font-size: 0.75rem; margin-top: 0.5rem;
+        }
+
+        .btn {
+            display: inline-flex; align-items: center; gap: 0.5rem;
+            padding: 1rem 2rem; border-radius: 12px;
+            font-weight: 600; text-decoration: none; font-size: 1rem;
+            border: none; cursor: pointer; transition: all 0.3s;
+        }
+        .btn-primary { background: linear-gradient(135deg, var(--primary), var(--primary-light)); color: white; box-shadow: 0 10px 30px rgba(13,115,119,0.3); }
+        .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 15px 40px rgba(13,115,119,0.4); }
+        .btn-whatsapp { background: linear-gradient(135deg, #25d366, #128c7e); color: white; }
+        .btn-outline { background: transparent; border: 2px solid var(--primary); color: var(--primary-light); }
+        .btn-outline:hover { background: var(--primary); color: white; }
+
+        .cta-section {
+            background: linear-gradient(135deg, rgba(13,115,119,0.1), rgba(20,160,133,0.05));
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 3rem;
+            text-align: center;
+            margin-top: 3rem;
+        }
+        .cta-section h2 { margin-bottom: 1rem; }
+        .cta-section p { color: var(--text-muted); margin-bottom: 2rem; max-width: 600px; margin-left: auto; margin-right: auto; }
+        .btn-group { display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap; }
+
+        footer {
+            border-top: 1px solid var(--border);
+            padding: 2rem;
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 0.875rem;
+        }
+
+        @media (max-width: 768px) {
+            .grid-2 { grid-template-columns: 1fr; }
+            .info-grid { grid-template-columns: 1fr; }
+            .hero h1 { font-size: 2rem; }
+            nav { gap: 1rem; font-size: 0.875rem; }
+        }
+    </style>
+<base target="_blank">
+</head>
+<body>
+    <header>
+        <div class="logo"><i class="fas fa-dna"></i> Biomexa</div>
+        <nav>
+            <a href="../index.html">Home</a>
+            <a href="index.html">Products</a>
+            <a href="../ai-assistant.html">AI Assistant</a>
+        </nav>
+    </header>
+
+    <section class="hero">
+        <div style="display: inline-flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem;">
+            <span class="badge"><i class="fas fa-tint"></i> Diabetes Care</span>
+            <span class="badge"><i class="fas fa-sun"></i> Twice Daily</span>
+        </div>
+        <h1>Diabmexa M 500</h1>
+        <p class="subtitle">Metformin Hydrochloride IP 500 mg Tablets</p>
+        <p style="color: var(--text-muted); max-width: 600px; margin: 0 auto;">
+            First-line oral hypoglycemic powered by the <strong style="color: var(--primary-light);">Adaptive Adherence Intelligence Engine</strong>
+        </p>
+    </section>
+
+    <div class="container">
+        <div class="grid-2">
+            <div class="product-visual">
+                <div class="pill-visual"><span>500<br>mg</span></div>
+                <p style="color: var(--text-muted); margin-bottom: 2rem;">Film-coated tablets for oral administration</p>
+
+                <a href="ai/diabmexa-m-500-ai.html" style="text-decoration: none;">
+                    <div class="qr-trigger">
+                        <i class="fas fa-qrcode"></i>
+                        <h3>Scan QR Code</h3>
+                        <p>Activate your personal AI voice guide & glucose monitoring plan</p>
+                    </div>
+                </a>
+            </div>
+
+            <div>
+                <div class="section">
+                    <h2 class="section-title"><i class="fas fa-info-circle"></i> Drug Information</h2>
+                    <div class="info-grid">
+                        <div class="info-card">
+                            <h4>Composition</h4>
+                            <p class="value">Metformin HCl IP</p>
+                            <p>500 mg per tablet</p>
+                        </div>
+                        <div class="info-card">
+                            <h4>Category</h4>
+                            <p class="value">Biguanide</p>
+                            <p>Oral Hypoglycemic Agent</p>
+                        </div>
+                        <div class="info-card">
+                            <h4>Pack Size</h4>
+                            <p class="value">10 Tablets</p>
+                            <p>Blister pack, 10x10</p>
+                        </div>
+                        <div class="info-card">
+                            <h4>Storage</h4>
+                            <p class="value">15-25°C</p>
+                            <p>Protect from moisture & light</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="section" style="margin-top: 3rem;">
+            <h2 class="section-title"><i class="fas fa-apple-alt"></i> Drug-Food Interactions</h2>
+            <div class="interaction-list">
+                <div class="interaction-item danger">
+                    <div class="interaction-icon"><i class="fas fa-ban"></i></div>
+                    <div class="interaction-content">
+                        <h4>Alcohol</h4>
+                        <p>Metformin + alcohol increases risk of lactic acidosis — a rare but life-threatening condition. Alcohol also causes hypoglycemia and masks warning symptoms. <strong>Avoid completely or strictly limit.</strong></p>
+                    </div>
+                </div>
+                <div class="interaction-item danger">
+                    <div class="interaction-icon"><i class="fas fa-ban"></i></div>
+                    <div class="interaction-content">
+                        <h4>High-Fat Meals</h4>
+                        <p>Delays metformin absorption by 35% and reduces peak plasma concentration. Take with low-fat meals for consistent glucose control.</p>
+                    </div>
+                </div>
+                <div class="interaction-item warning">
+                    <div class="interaction-icon"><i class="fas fa-exclamation-triangle"></i></div>
+                    <div class="interaction-content">
+                        <h4>Iodinated Contrast Media</h4>
+                        <p>Must discontinue 48 hours before and 48 hours after contrast studies. Risk of acute kidney injury and lactic acidosis.</p>
+                    </div>
+                </div>
+                <div class="interaction-item warning">
+                    <div class="interaction-icon"><i class="fas fa-exclamation-triangle"></i></div>
+                    <div class="interaction-content">
+                        <h4>Vitamin B12-Rich Foods (Long-term)</h4>
+                        <p>Metformin reduces B12 absorption by 30% over time. While B12 foods are healthy, monitor serum B12 annually. Consider supplementation after 2+ years.</p>
+                    </div>
+                </div>
+                <div class="interaction-item safe">
+                    <div class="interaction-icon"><i class="fas fa-check-circle"></i></div>
+                    <div class="interaction-content">
+                        <h4>High-Fiber Foods (Recommended)</h4>
+                        <p>Oats, lentils, vegetables slow glucose absorption, complementing metformin's mechanism. Best taken together with medication.</p>
+                    </div>
+                </div>
+                <div class="interaction-item safe">
+                    <div class="interaction-icon"><i class="fas fa-check-circle"></i></div>
+                    <div class="interaction-content">
+                        <h4>Cinnamon & Fenugreek</h4>
+                        <p>Natural insulin sensitizers that may enhance metformin efficacy. Add to breakfast taken with morning dose.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2 class="section-title"><i class="fas fa-clock"></i> Circadian Dosing Schedule</h2>
+            <div class="dose-timeline">
+                <div class="dose-item">
+                    <div class="dose-time">6-8 AM</div>
+                    <div class="dose-details">
+                        <h4>🌅 Morning Dose — With Breakfast</h4>
+                        <p>Take 1 tablet with breakfast. Metformin reduces hepatic glucose production which peaks in dawn phenomenon (4-8 AM). Taking now targets this surge.</p>
+                        <span class="tag"><i class="fas fa-utensils"></i> With food (mandatory)</span>
+                        <span class="tag"><i class="fas fa-glass-water"></i> Full glass of water</span>
+                    </div>
+                </div>
+                <div class="dose-item">
+                    <div class="dose-time">12-2 PM</div>
+                    <div class="dose-details">
+                        <h4>🌞 Midday — Glucose Monitoring</h4>
+                        <p>No dose. Check post-prandial glucose if possible. Eat balanced lunch with complex carbs, protein, and fiber.</p>
+                        <span class="tag"><i class="fas fa-heartbeat"></i> Check PPBS</span>
+                    </div>
+                </div>
+                <div class="dose-item">
+                    <div class="dose-time">6-8 PM</div>
+                    <div class="dose-details">
+                        <h4>🌆 Evening Dose — With Dinner</h4>
+                        <p>Take 1 tablet with dinner. Controls nocturnal hepatic glucose output. Never take on empty stomach — severe GI distress risk.</p>
+                        <span class="tag"><i class="fas fa-utensils"></i> With dinner</span>
+                        <span class="tag" style="background: rgba(231,76,60,0.2); color: var(--danger);"><i class="fas fa-times"></i> Never empty stomach</span>
+                    </div>
+                </div>
+                <div class="dose-item">
+                    <div class="dose-time">10 PM</div>
+                    <div class="dose-details">
+                        <h4>🌙 Night — Fasting Window</h4>
+                        <p>No medication. Metformin's half-life (6.2h) from evening dose maintains coverage overnight. Check fasting glucose in morning.</p>
+                        <span class="tag"><i class="fas fa-moon"></i> Fasting glucose check</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="cta-section">
+            <h2><i class="fas fa-robot" style="color: var(--primary-light);"></i> Adaptive Adherence Intelligence Engine</h2>
+            <p>Your personal AI companion for Diabmexa M 500. Scan the QR code on your packaging to unlock voice-guided dosing, food interaction alerts, WhatsApp reminders, and daily vitals tracking.</p>
+            <div class="btn-group">
+                <a href="ai/diabmexa-m-500-ai.html" class="btn btn-primary"><i class="fas fa-qrcode"></i> Scan & Start AI Guide</a>
+                <a href="https://wa.me/?text=I%20want%20to%20set%20up%20Diabmexa%20M%20500%20medication%20reminders" class="btn btn-whatsapp" target="_blank"><i class="fab fa-whatsapp"></i> WhatsApp Reminder</a>
+                <a href="index.html" class="btn btn-outline"><i class="fas fa-arrow-left"></i> All Products</a>
+            </div>
+        </div>
+    </div>
+
+    <footer>
+        <p> Biomexa Pharmaceuticals. Adaptive Adherence Intelligence Engine.</p>
+        <p style="margin-top: 0.5rem; font-size: 0.75rem;">This information is for educational purposes. Always consult your physician.</p>
+    </footer>
+</body>
+</html>
