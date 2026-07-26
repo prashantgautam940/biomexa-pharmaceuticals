@@ -11,6 +11,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/style.css">
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚕</text></svg>">
+<base target="_blank">
 </head>
 <body>
     <!-- Navigation -->
@@ -23,6 +24,8 @@
             <li><a href="#challenge" class="nav-link">The Challenge</a></li>
             <li><a href="#journey" class="nav-link">Patient Journey</a></li>
             <li><a href="#solution" class="nav-link">Solution</a></li>
+            <li><a href="products/" class="nav-link">Products</a></li>
+            <li><a href="ai-assistant.html" class="nav-link">AI Assistant</a></li>
             <li><a href="#ecosystem" class="nav-link">Ecosystem</a></li>
             <li><a href="#dashboard" class="nav-link">Dashboard</a></li>
             <li><a href="#contact" class="nav-link">Contact</a></li>
@@ -38,6 +41,8 @@
         <a href="#challenge">The Challenge</a>
         <a href="#journey">Patient Journey</a>
         <a href="#solution">Solution</a>
+        <a href="products/">Products</a>
+        <a href="ai-assistant.html">AI Assistant</a>
         <a href="#ecosystem">Ecosystem</a>
         <a href="#dashboard">Dashboard</a>
         <a href="#contact">Contact</a>
@@ -59,7 +64,7 @@
             </p>
             <div class="hero-cta-group">
                 <a href="#journey" class="cta-btn primary">Explore Patient Journey</a>
-                <a href="#contact" class="cta-btn secondary">Partner With Us</a>
+                <a href="products/" class="cta-btn secondary">Our Products</a>
             </div>
             <div class="hero-stats">
                 <div class="stat-item">
@@ -81,6 +86,58 @@
                 <div class="wheel"></div>
             </div>
             <span>Scroll to explore</span>
+        </div>
+    </section>
+
+    <!-- Products Showcase -->
+    <section class="section products-showcase" id="products" style="background: linear-gradient(180deg, #0a3a3e 0%, #0a2e33 100%); padding: 5rem 2rem;">
+        <div class="section-header fade-in" style="text-align: center; max-width: 800px; margin: 0 auto 3rem;">
+            <span class="section-tag" style="color: #14a085; font-size: 0.875rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em;">Our Medicines</span>
+            <h2 class="section-title" style="font-size: 2.5rem; font-weight: 700; margin: 1rem 0; color: #f3f4f6;">AI-Guided Therapies</h2>
+            <p class="section-subtitle" style="color: #9ca3af; font-size: 1.1rem;">Scan the QR code on your Biomexa packaging to unlock personalized AI voice guidance, circadian dosing, and adherence tracking.</p>
+        </div>
+        <div class="products-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 2rem; max-width: 1000px; margin: 0 auto;">
+            <div class="product-card-featured" style="background: rgba(17, 24, 39, 0.8); border: 1px solid #374151; border-radius: 20px; padding: 2.5rem; transition: all 0.3s; cursor: pointer;" onmouseover="this.style.borderColor='#0d7377'" onmouseout="this.style.borderColor='#374151'">
+                <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 1.5rem;">
+                    <div style="width: 60px; height: 60px; border-radius: 16px; background: linear-gradient(135deg, #0d7377, #14a085); display: flex; align-items: center; justify-content: center; font-size: 1.5rem;">🛡️</div>
+                    <div>
+                        <h3 style="color: #f3f4f6; font-size: 1.5rem; font-weight: 700; margin: 0;">Telmexa AM</h3>
+                        <p style="color: #9ca3af; margin: 0; font-size: 0.9rem;">Telmisartan 40mg & Amlodipine 5mg</p>
+                    </div>
+                </div>
+                <p style="color: #9ca3af; line-height: 1.6; margin-bottom: 1.5rem;">Dual-action antihypertensive with circadian-optimized morning dosing. AI-guided food interaction alerts and BP monitoring.</p>
+                <div style="display: flex; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 1.5rem;">
+                    <span style="background: rgba(13,115,119,0.2); color: #14a085; padding: 0.35rem 0.9rem; border-radius: 50px; font-size: 0.8rem;">Once Daily</span>
+                    <span style="background: rgba(13,115,119,0.2); color: #14a085; padding: 0.35rem 0.9rem; border-radius: 50px; font-size: 0.8rem;">BP Management</span>
+                    <span style="background: rgba(13,115,119,0.2); color: #14a085; padding: 0.35rem 0.9rem; border-radius: 50px; font-size: 0.8rem;">QR + AI</span>
+                </div>
+                <div style="display: flex; gap: 0.75rem;">
+                    <a href="products/telmexa-am.html" style="display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.75rem 1.5rem; background: linear-gradient(135deg, #0d7377, #14a085); color: white; border-radius: 10px; text-decoration: none; font-weight: 600; font-size: 0.9rem; transition: all 0.3s;">View Details →</a>
+                    <a href="products/ai/telmexa-am-ai.html" style="display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.75rem 1.5rem; background: transparent; border: 1px solid #374151; color: #14a085; border-radius: 10px; text-decoration: none; font-weight: 600; font-size: 0.9rem; transition: all 0.3s;">🤖 AI Guide</a>
+                </div>
+            </div>
+            <div class="product-card-featured" style="background: rgba(17, 24, 39, 0.8); border: 1px solid #374151; border-radius: 20px; padding: 2.5rem; transition: all 0.3s; cursor: pointer;" onmouseover="this.style.borderColor='#0d7377'" onmouseout="this.style.borderColor='#374151'">
+                <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 1.5rem;">
+                    <div style="width: 60px; height: 60px; border-radius: 16px; background: linear-gradient(135deg, #0d7377, #14a085); display: flex; align-items: center; justify-content: center; font-size: 1.5rem;">💧</div>
+                    <div>
+                        <h3 style="color: #f3f4f6; font-size: 1.5rem; font-weight: 700; margin: 0;">Diabmexa M 500</h3>
+                        <p style="color: #9ca3af; margin: 0; font-size: 0.9rem;">Metformin Hydrochloride IP 500mg</p>
+                    </div>
+                </div>
+                <p style="color: #9ca3af; line-height: 1.6; margin-bottom: 1.5rem;">First-line oral hypoglycemic for Type 2 Diabetes. Dawn-phenomenon targeted dosing with AI glucose monitoring and adherence tracking.</p>
+                <div style="display: flex; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 1.5rem;">
+                    <span style="background: rgba(13,115,119,0.2); color: #14a085; padding: 0.35rem 0.9rem; border-radius: 50px; font-size: 0.8rem;">Twice Daily</span>
+                    <span style="background: rgba(13,115,119,0.2); color: #14a085; padding: 0.35rem 0.9rem; border-radius: 50px; font-size: 0.8rem;">Diabetes Care</span>
+                    <span style="background: rgba(13,115,119,0.2); color: #14a085; padding: 0.35rem 0.9rem; border-radius: 50px; font-size: 0.8rem;">QR + AI</span>
+                </div>
+                <div style="display: flex; gap: 0.75rem;">
+                    <a href="products/diabmexa-m-500.html" style="display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.75rem 1.5rem; background: linear-gradient(135deg, #0d7377, #14a085); color: white; border-radius: 10px; text-decoration: none; font-weight: 600; font-size: 0.9rem; transition: all 0.3s;">View Details →</a>
+                    <a href="products/ai/diabmexa-m-500-ai.html" style="display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.75rem 1.5rem; background: transparent; border: 1px solid #374151; color: #14a085; border-radius: 10px; text-decoration: none; font-weight: 600; font-size: 0.9rem; transition: all 0.3s;">🤖 AI Guide</a>
+                </div>
+            </div>
+        </div>
+        <div style="text-align: center; margin-top: 2.5rem;">
+            <a href="products/" style="display: inline-flex; align-items: center; gap: 0.5rem; padding: 1rem 2rem; background: transparent; border: 2px solid #0d7377; color: #14a085; border-radius: 12px; text-decoration: none; font-weight: 600; transition: all 0.3s;">View All Products →</a>
         </div>
     </section>
 
@@ -642,7 +699,7 @@
             </div>
             <div class="footer-col">
                 <h4>Connect</h4>
-                <a href="mailto:partnerships@biomexapharma.com">Contact</a>
+                <a href="mailto:biomexapharmaceuticals@gmail.com">Contact</a>
                 <a href="#">LinkedIn</a>
                 <a href="#">Twitter</a>
                 <a href="#">Newsroom</a>
