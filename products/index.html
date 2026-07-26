@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Products — Biomexa Pharmaceuticals</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --primary: #0d7377;
+            --primary-dark: #095457;
+            --primary-light: #14a085;
+            --accent: #f39c12;
+            --danger: #e74c3c;
+            --success: #27ae60;
+            --bg-dark: #0a0e17;
+            --bg-card: #111827;
+            --bg-light: #1f2937;
+            --text: #f3f4f6;
+            --text-muted: #9ca3af;
+            --border: #374151;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg-dark);
+            color: var(--text);
+            line-height: 1.6;
+        }
+        header {
+            background: rgba(10, 14, 23, 0.95);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid var(--border);
+            padding: 1rem 2rem;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .logo { display: flex; align-items: center; gap: 0.75rem; font-weight: 800; font-size: 1.25rem; color: var(--primary-light); }
+        .logo i { font-size: 1.5rem; }
+        nav { display: flex; gap: 2rem; }
+        nav a { color: var(--text-muted); text-decoration: none; font-weight: 500; transition: color 0.3s; }
+        nav a:hover { color: var(--primary-light); }
+
+        .hero {
+            background: linear-gradient(135deg, var(--bg-dark) 0%, #0d1f2d 50%, var(--bg-dark) 100%);
+            padding: 4rem 2rem;
+            text-align: center;
+            border-bottom: 1px solid var(--border);
+        }
+        .hero h1 { font-size: 3rem; font-weight: 800; margin-bottom: 0.5rem; background: linear-gradient(90deg, var(--primary-light), #4ade80); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .hero p { color: var(--text-muted); font-size: 1.1rem; max-width: 600px; margin: 0 auto; }
+
+        .container { max-width: 1200px; margin: 0 auto; padding: 3rem 2rem; }
+        .product-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 2rem; }
+
+        .product-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            overflow: hidden;
+            transition: transform 0.3s, border-color 0.3s;
+        }
+        .product-card:hover { transform: translateY(-5px); border-color: var(--primary); }
+        .product-header {
+            padding: 2rem;
+            background: linear-gradient(135deg, rgba(13,115,119,0.2), rgba(20,160,133,0.05));
+            border-bottom: 1px solid var(--border);
+        }
+        .product-header h2 { font-size: 1.5rem; font-weight: 700; color: var(--primary-light); margin-bottom: 0.25rem; }
+        .product-header .generic { color: var(--text-muted); font-size: 0.9rem; }
+        .badges { display: flex; gap: 0.5rem; margin-top: 1rem; flex-wrap: wrap; }
+        .badge { display: inline-flex; align-items: center; gap: 0.4rem; background: rgba(13,115,119,0.2); border: 1px solid var(--primary); padding: 0.35rem 0.9rem; border-radius: 50px; font-size: 0.8rem; color: var(--primary-light); }
+
+        .product-body { padding: 1.5rem; }
+        .product-body p { color: var(--text-muted); font-size: 0.95rem; margin-bottom: 1.5rem; }
+        .btn-group { display: flex; gap: 0.75rem; flex-wrap: wrap; }
+        .btn {
+            display: inline-flex; align-items: center; gap: 0.5rem;
+            padding: 0.75rem 1.25rem; border-radius: 10px;
+            font-weight: 600; text-decoration: none; font-size: 0.9rem;
+            border: none; cursor: pointer; transition: all 0.3s;
+        }
+        .btn-primary { background: linear-gradient(135deg, var(--primary), var(--primary-light)); color: white; }
+        .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(13,115,119,0.3); }
+        .btn-ai { background: linear-gradient(135deg, #7c3aed, #a78bfa); color: white; }
+        .btn-ai:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(124,58,237,0.3); }
+        .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text-muted); }
+        .btn-outline:hover { border-color: var(--primary); color: var(--primary-light); }
+
+        .engine-banner {
+            background: linear-gradient(135deg, rgba(13,115,119,0.15), rgba(20,160,133,0.05));
+            border: 1px solid var(--primary);
+            border-radius: 16px;
+            padding: 2rem;
+            text-align: center;
+            margin-bottom: 3rem;
+        }
+        .engine-banner h3 { color: var(--primary-light); margin-bottom: 0.5rem; }
+        .engine-banner p { color: var(--text-muted); }
+
+        footer {
+            border-top: 1px solid var(--border);
+            padding: 2rem;
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 0.875rem;
+        }
+
+        @media (max-width: 768px) {
+            .hero h1 { font-size: 2rem; }
+            .product-grid { grid-template-columns: 1fr; }
+        }
+    </style>
+<base target="_blank">
+</head>
+<body>
+    <header>
+        <div class="logo"><i class="fas fa-dna"></i> Biomexa</div>
+        <nav>
+            <a href="../index.html">Home</a>
+            <a href="index.html">Products</a>
+            <a href="../ai-assistant.html">AI Assistant</a>
+        </nav>
+    </header>
+
+    <section class="hero">
+        <h1>Our Products</h1>
+        <p>QR-linked, AI-guided pharmaceutical therapies powered by the Adaptive Adherence Intelligence Engine</p>
+    </section>
+
+    <div class="container">
+        <div class="engine-banner">
+            <h3><i class="fas fa-robot"></i> Adaptive Adherence Intelligence Engine</h3>
+            <p>Every Biomexa product connects to a personalized AI voice guide via QR code. Scan your packaging to unlock circadian dosing, food interaction alerts, WhatsApp reminders, and daily vitals tracking.</p>
+        </div>
+
+        <div class="product-grid">
+            <!-- Telmexa AM -->
+            <div class="product-card">
+                <div class="product-header">
+                    <h2>Telmexa AM</h2>
+                    <p class="generic">Telmisartan 40 mg & Amlodipine 5 mg Tablets</p>
+                    <div class="badges">
+                        <span class="badge"><i class="fas fa-shield-alt"></i> BP Management</span>
+                        <span class="badge"><i class="fas fa-clock"></i> Once Daily</span>
+                        <span class="badge"><i class="fas fa-qrcode"></i> QR + AI</span>
+                    </div>
+                </div>
+                <div class="product-body">
+                    <p>Dual-action antihypertensive combining an ARB and calcium channel blocker. Features circadian-optimized morning dosing with AI-guided food interaction management.</p>
+                    <div class="btn-group">
+                        <a href="telmexa-am.html" class="btn btn-primary"><i class="fas fa-info-circle"></i> View Details</a>
+                        <a href="ai/telmexa-am-ai.html" class="btn btn-ai"><i class="fas fa-robot"></i> AI Guide</a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Diabmexa M 500 -->
+            <div class="product-card">
+                <div class="product-header">
+                    <h2>Diabmexa M 500</h2>
+                    <p class="generic">Metformin Hydrochloride IP 500 mg Tablets</p>
+                    <div class="badges">
+                        <span class="badge"><i class="fas fa-tint"></i> Diabetes Care</span>
+                        <span class="badge"><i class="fas fa-sun"></i> Twice Daily</span>
+                        <span class="badge"><i class="fas fa-qrcode"></i> QR + AI</span>
+                    </div>
+                </div>
+                <div class="product-body">
+                    <p>First-line oral hypoglycemic for Type 2 Diabetes. Features dawn-phenomenon targeted dosing with AI glucose monitoring, food interaction alerts, and adherence tracking.</p>
+                    <div class="btn-group">
+                        <a href="diabmexa-m-500.html" class="btn btn-primary"><i class="fas fa-info-circle"></i> View Details</a>
+                        <a href="ai/diabmexa-m-500-ai.html" class="btn btn-ai"><i class="fas fa-robot"></i> AI Guide</a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Product 3 (placeholder) -->
+            <div class="product-card">
+                <div class="product-header">
+                    <h2>Product 3</h2>
+                    <p class="generic">Coming Soon</p>
+                    <div class="badges">
+                        <span class="badge"><i class="fas fa-flask"></i> R&D</span>
+                    </div>
+                </div>
+                <div class="product-body">
+                    <p>New therapy in development. Check back for updates on our expanding portfolio of AI-guided pharmaceutical solutions.</p>
+                    <div class="btn-group">
+                        <button class="btn btn-outline" disabled><i class="fas fa-clock"></i> Coming Soon</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <footer>
+        <p><i class="fas fa-dna"></i> Biomexa Pharmaceuticals — Adaptive Adherence Intelligence Engine</p>
+    </footer>
+</body>
+</html>
