@@ -1,0 +1,935 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Adaptive Adherence Intelligence Engine — Diabmexa M 500 | Biomexa</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --primary: #0d7377;
+            --primary-dark: #095457;
+            --primary-light: #14a085;
+            --accent: #f39c12;
+            --danger: #e74c3c;
+            --success: #27ae60;
+            --info: #3498db;
+            --bg-dark: #0a0e17;
+            --bg-card: #111827;
+            --bg-light: #1f2937;
+            --text: #f3f4f6;
+            --text-muted: #9ca3af;
+            --border: #374151;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg-dark);
+            color: var(--text);
+            line-height: 1.6;
+        }
+
+        .scan-overlay {
+            position: fixed; inset: 0;
+            background: rgba(0,0,0,0.9);
+            z-index: 1000;
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            transition: opacity 0.5s;
+        }
+        .scan-overlay.hidden { opacity: 0; pointer-events: none; }
+        .scan-box {
+            width: 280px; height: 280px;
+            border: 3px solid var(--primary-light);
+            border-radius: 20px;
+            position: relative;
+            overflow: hidden;
+        }
+        .scan-line {
+            position: absolute; left: 0; right: 0; height: 3px;
+            background: linear-gradient(90deg, transparent, var(--primary-light), transparent);
+            animation: scan 2s linear infinite;
+        }
+        @keyframes scan { 0% { top: 0; } 100% { top: 100%; } }
+        .scan-overlay h2 { margin-top: 2rem; color: var(--primary-light); }
+        .scan-overlay p { color: var(--text-muted); margin-top: 0.5rem; }
+        .skip-scan {
+            margin-top: 2rem;
+            padding: 0.75rem 2rem;
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--text-muted);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .skip-scan:hover { border-color: var(--primary); color: var(--primary-light); }
+
+        header {
+            background: rgba(10, 14, 23, 0.95);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid var(--border);
+            padding: 1rem 2rem;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .logo { display: flex; align-items: center; gap: 0.75rem; font-weight: 800; font-size: 1.25rem; color: var(--primary-light); }
+        .logo i { font-size: 1.5rem; }
+        .engine-badge {
+            display: flex; align-items: center; gap: 0.5rem;
+            background: linear-gradient(135deg, rgba(13,115,119,0.2), rgba(20,160,133,0.1));
+            border: 1px solid var(--primary);
+            padding: 0.5rem 1rem;
+            border-radius: 50px;
+            font-size: 0.8rem;
+            color: var(--primary-light);
+        }
+        .engine-badge .pulse {
+            width: 8px; height: 8px; border-radius: 50%;
+            background: var(--success);
+            animation: pulse-dot 2s infinite;
+        }
+        @keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+        nav { display: flex; gap: 2rem; }
+        nav a { color: var(--text-muted); text-decoration: none; font-weight: 500; transition: color 0.3s; }
+        nav a:hover { color: var(--primary-light); }
+
+        .hero {
+            background: linear-gradient(135deg, var(--bg-dark) 0%, #0d1f2d 50%, var(--bg-dark) 100%);
+            padding: 3rem 2rem;
+            text-align: center;
+            border-bottom: 1px solid var(--border);
+        }
+        .hero h1 { font-size: 2.5rem; font-weight: 800; margin-bottom: 0.5rem; }
+        .hero h1 span { background: linear-gradient(90deg, var(--primary-light), #4ade80); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .hero .drug-name { color: var(--text-muted); font-size: 1.1rem; margin-bottom: 1rem; }
+
+        .container { max-width: 1200px; margin: 0 auto; padding: 2rem; }
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; }
+
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 1.5rem;
+            transition: transform 0.3s, border-color 0.3s;
+        }
+        .card:hover { transform: translateY(-3px); border-color: var(--primary); }
+        .card-header {
+            display: flex; align-items: center; gap: 0.75rem;
+            margin-bottom: 1rem;
+            font-weight: 700;
+            color: var(--primary-light);
+        }
+        .card-header i { font-size: 1.25rem; }
+
+        .voice-section {
+            background: linear-gradient(135deg, rgba(13,115,119,0.15), rgba(20,160,133,0.05));
+            border: 1px solid var(--primary);
+            border-radius: 20px;
+            padding: 2rem;
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+        .voice-avatar {
+            width: 100px; height: 100px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--primary), var(--primary-light));
+            display: flex; align-items: center; justify-content: center;
+            margin: 0 auto 1.5rem;
+            box-shadow: 0 10px 40px rgba(13,115,119,0.4);
+            position: relative;
+        }
+        .voice-avatar.speaking::after {
+            content: '';
+            position: absolute; inset: -10px;
+            border-radius: 50%;
+            border: 2px solid var(--primary-light);
+            animation: ripple 1.5s infinite;
+        }
+        @keyframes ripple { 0% { transform: scale(1); opacity: 1; } 100% { transform: scale(1.3); opacity: 0; } }
+        .voice-avatar i { font-size: 2.5rem; color: white; }
+        .voice-btn {
+            display: inline-flex; align-items: center; gap: 0.5rem;
+            padding: 1rem 2rem;
+            background: linear-gradient(135deg, var(--primary), var(--primary-light));
+            color: white; border: none; border-radius: 12px;
+            font-weight: 600; font-size: 1rem; cursor: pointer;
+            transition: all 0.3s; margin: 0.5rem;
+        }
+        .voice-btn:hover { transform: translateY(-2px); box-shadow: 0 10px 30px rgba(13,115,119,0.4); }
+        .voice-btn.secondary { background: var(--bg-light); border: 1px solid var(--border); }
+        .voice-btn.secondary:hover { background: var(--primary); border-color: var(--primary); }
+
+        .topic-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1.5rem; }
+        .topic-btn {
+            display: flex; align-items: center; gap: 0.75rem;
+            padding: 1rem;
+            background: var(--bg-light);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            color: var(--text);
+            cursor: pointer;
+            transition: all 0.3s;
+            text-align: left;
+        }
+        .topic-btn:hover { background: rgba(13,115,119,0.2); border-color: var(--primary); }
+        .topic-btn i { color: var(--primary-light); font-size: 1.25rem; }
+
+        .whatsapp-section {
+            background: linear-gradient(135deg, rgba(37,211,102,0.1), rgba(18,140,126,0.05));
+            border: 1px solid #25d366;
+            border-radius: 20px;
+            padding: 2rem;
+            text-align: center;
+        }
+        .whatsapp-section h3 { color: #25d366; margin-bottom: 1rem; }
+        .whatsapp-section p { color: var(--text-muted); margin-bottom: 1.5rem; }
+        .reminder-options { display: flex; flex-direction: column; gap: 0.75rem; margin: 1.5rem 0; }
+        .reminder-option {
+            display: flex; align-items: center; gap: 1rem;
+            padding: 1rem;
+            background: var(--bg-light);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .reminder-option:hover { border-color: #25d366; }
+        .reminder-option input[type="checkbox"] {
+            width: 20px; height: 20px; accent-color: #25d366;
+        }
+        .reminder-option label { flex: 1; cursor: pointer; }
+        .reminder-option .time { color: var(--text-muted); font-size: 0.875rem; }
+
+        .vitals-form { display: flex; flex-direction: column; gap: 1rem; }
+        .form-group { display: flex; flex-direction: column; gap: 0.5rem; }
+        .form-group label { font-size: 0.875rem; color: var(--text-muted); font-weight: 500; }
+        .form-group input, .form-group select {
+            padding: 0.75rem 1rem;
+            background: var(--bg-light);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            color: var(--text);
+            font-size: 1rem;
+            outline: none;
+            transition: border-color 0.3s;
+        }
+        .form-group input:focus, .form-group select:focus { border-color: var(--primary); }
+        .btn-submit {
+            padding: 1rem;
+            background: linear-gradient(135deg, var(--primary), var(--primary-light));
+            color: white; border: none; border-radius: 10px;
+            font-weight: 600; cursor: pointer; transition: all 0.3s;
+        }
+        .btn-submit:hover { transform: translateY(-2px); box-shadow: 0 10px 30px rgba(13,115,119,0.3); }
+
+        .vitals-history { margin-top: 1.5rem; }
+        .vitals-history h4 { margin-bottom: 1rem; color: var(--primary-light); }
+        .vital-row {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 0.75rem;
+            background: var(--bg-light);
+            border-radius: 8px;
+            margin-bottom: 0.5rem;
+            font-size: 0.9rem;
+        }
+        .vital-row .date { color: var(--text-muted); }
+        .vital-row .reading { font-weight: 600; }
+        .vital-row .reading.normal { color: var(--success); }
+        .vital-row .reading.warning { color: var(--accent); }
+        .vital-row .reading.danger { color: var(--danger); }
+
+        .upload-area {
+            border: 2px dashed var(--border);
+            border-radius: 16px;
+            padding: 2rem;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-bottom: 1rem;
+        }
+        .upload-area:hover { border-color: var(--primary); background: rgba(13,115,119,0.05); }
+        .upload-area i { font-size: 2rem; color: var(--primary-light); margin-bottom: 0.5rem; }
+        .upload-area p { color: var(--text-muted); font-size: 0.9rem; }
+        .prescription-list { display: flex; flex-direction: column; gap: 0.5rem; }
+        .prescription-item {
+            display: flex; align-items: center; gap: 0.75rem;
+            padding: 0.75rem;
+            background: var(--bg-light);
+            border-radius: 8px;
+            font-size: 0.9rem;
+        }
+        .prescription-item i { color: var(--primary-light); }
+        .prescription-item .filename { flex: 1; }
+        .prescription-item .delete { color: var(--danger); cursor: pointer; }
+
+        .adherence-ring {
+            width: 150px; height: 150px;
+            margin: 0 auto 1rem;
+            position: relative;
+        }
+        .adherence-ring svg { transform: rotate(-90deg); }
+        .adherence-ring .score {
+            position: absolute; inset: 0;
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+        }
+        .adherence-ring .score .number { font-size: 2.5rem; font-weight: 800; color: var(--primary-light); }
+        .adherence-ring .score .label { font-size: 0.75rem; color: var(--text-muted); }
+
+        .chat-widget {
+            position: fixed;
+            bottom: 20px; right: 20px;
+            width: 380px; max-height: 600px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            display: flex; flex-direction: column;
+            overflow: hidden;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+            z-index: 50;
+            transition: transform 0.3s;
+        }
+        .chat-widget.collapsed { transform: translateY(calc(100% - 60px)); }
+        .chat-header {
+            background: linear-gradient(135deg, var(--primary), var(--primary-light));
+            padding: 1rem 1.25rem;
+            display: flex; align-items: center; justify-content: space-between;
+            cursor: pointer;
+        }
+        .chat-header h4 { color: white; display: flex; align-items: center; gap: 0.5rem; }
+        .chat-header .toggle { color: white; background: none; border: none; font-size: 1.25rem; cursor: pointer; }
+        .chat-messages {
+            flex: 1; overflow-y: auto;
+            padding: 1rem;
+            max-height: 350px;
+        }
+        .message {
+            margin-bottom: 1rem;
+            padding: 0.75rem 1rem;
+            border-radius: 12px;
+            max-width: 85%;
+            font-size: 0.9rem;
+            animation: fadeIn 0.3s;
+        }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .message.ai {
+            background: rgba(13,115,119,0.15);
+            border: 1px solid rgba(13,115,119,0.3);
+            margin-right: auto;
+        }
+        .message.user {
+            background: var(--bg-light);
+            margin-left: auto;
+            text-align: right;
+        }
+        .chat-input-area {
+            display: flex; gap: 0.5rem;
+            padding: 1rem;
+            border-top: 1px solid var(--border);
+        }
+        .chat-input-area input {
+            flex: 1;
+            padding: 0.75rem 1rem;
+            background: var(--bg-light);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            color: var(--text);
+            outline: none;
+        }
+        .chat-input-area button {
+            width: 40px; height: 40px;
+            background: var(--primary);
+            border: none; border-radius: 10px;
+            color: white; cursor: pointer;
+            transition: all 0.3s;
+        }
+        .chat-input-area button:hover { background: var(--primary-light); }
+
+        .toast {
+            position: fixed; top: 100px; right: 20px;
+            padding: 1rem 1.5rem;
+            background: var(--bg-card);
+            border: 1px solid var(--primary);
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            z-index: 200;
+            animation: slideIn 0.3s;
+            display: none;
+        }
+        @keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
+        .toast.show { display: block; }
+
+        footer {
+            border-top: 1px solid var(--border);
+            padding: 2rem;
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 0.875rem;
+            margin-top: 3rem;
+        }
+
+        @media (max-width: 768px) {
+            .grid-2 { grid-template-columns: 1fr; }
+            .topic-grid { grid-template-columns: 1fr; }
+            .chat-widget { width: calc(100% - 40px); right: 20px; }
+            .hero h1 { font-size: 1.75rem; }
+        }
+    </style>
+<base target="_blank">
+</head>
+<body>
+    <div class="scan-overlay" id="scanOverlay">
+        <div class="scan-box">
+            <div class="scan-line"></div>
+            <div style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;">
+                <i class="fas fa-qrcode" style="font-size: 4rem; color: rgba(255,255,255,0.2);"></i>
+            </div>
+        </div>
+        <h2><i class="fas fa-camera"></i> Scanning Package QR Code</h2>
+        <p>Position the QR code on your Diabmexa M 500 packaging within the frame</p>
+        <button class="skip-scan" onclick="skipScan()">
+            <i class="fas fa-forward"></i> Skip Scan & Continue
+        </button>
+    </div>
+
+    <div class="toast" id="toast">
+        <i class="fas fa-check-circle" style="color: var(--success); margin-right: 0.5rem;"></i>
+        <span id="toastMsg">Action completed</span>
+    </div>
+
+    <header>
+        <div class="logo"><i class="fas fa-dna"></i> Biomexa</div>
+        <div class="engine-badge">
+            <div class="pulse"></div>
+            Adaptive Adherence Intelligence Engine
+        </div>
+        <nav>
+            <a href="../../index.html">Home</a>
+            <a href="../index.html">Products</a>
+            <a href="../../ai-assistant.html">AI Hub</a>
+        </nav>
+    </header>
+
+    <section class="hero">
+        <h1><span>AI Voice Guide</span> Activated</h1>
+        <p class="drug-name">Diabmexa M 500 — Metformin Hydrochloride IP 500mg</p>
+        <div style="display: inline-flex; gap: 0.5rem;">
+            <span class="engine-badge"><i class="fas fa-tint"></i> Diabetes Care</span>
+            <span class="engine-badge"><i class="fas fa-robot"></i> AI Personalized</span>
+        </div>
+    </section>
+
+    <div class="container">
+        <div class="voice-section">
+            <div class="voice-avatar" id="voiceAvatar">
+                <i class="fas fa-robot"></i>
+            </div>
+            <h2 style="margin-bottom: 0.5rem;">Your Personal AI Pharmacist</h2>
+            <p style="color: var(--text-muted); max-width: 600px; margin: 0 auto 1.5rem;">
+                I will guide you through your Diabmexa M 500 therapy with voice instructions, food alerts, glucose tracking, and adherence monitoring.
+            </p>
+            <div>
+                <button class="voice-btn" onclick="speakGuide('welcome')">
+                    <i class="fas fa-play"></i> Start Full Guide
+                </button>
+                <button class="voice-btn secondary" onclick="stopSpeaking()">
+                    <i class="fas fa-stop"></i> Stop Voice
+                </button>
+            </div>
+
+            <div class="topic-grid">
+                <button class="topic-btn" onclick="speakGuide('dosing')">
+                    <i class="fas fa-clock"></i>
+                    <div>
+                        <div style="font-weight: 600;">Dosing Instructions</div>
+                        <div style="font-size: 0.8rem; color: var(--text-muted);">When & how to take</div>
+                    </div>
+                </button>
+                <button class="topic-btn" onclick="speakGuide('food')">
+                    <i class="fas fa-apple-alt"></i>
+                    <div>
+                        <div style="font-weight: 600;">Food Interactions</div>
+                        <div style="font-size: 0.8rem; color: var(--text-muted);">What to eat & avoid</div>
+                    </div>
+                </button>
+                <button class="topic-btn" onclick="speakGuide('side_effects')">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <div>
+                        <div style="font-weight: 600;">Side Effects</div>
+                        <div style="font-size: 0.8rem; color: var(--text-muted);">What to watch for</div>
+                    </div>
+                </button>
+                <button class="topic-btn" onclick="speakGuide('missed_dose')">
+                    <i class="fas fa-question-circle"></i>
+                    <div>
+                        <div style="font-weight: 600;">Missed Dose</div>
+                        <div style="font-size: 0.8rem; color: var(--text-muted);">What to do</div>
+                    </div>
+                </button>
+            </div>
+        </div>
+
+        <div class="grid-2">
+            <div class="card">
+                <div class="card-header"><i class="fas fa-chart-pie"></i> Your Adherence Score</div>
+                <div class="adherence-ring">
+                    <svg width="150" height="150" viewBox="0 0 150 150">
+                        <circle cx="75" cy="75" r="65" fill="none" stroke="var(--bg-light)" stroke-width="10"/>
+                        <circle cx="75" cy="75" r="65" fill="none" stroke="url(#grad1)" stroke-width="10"
+                            stroke-dasharray="408" stroke-dashoffset="102" stroke-linecap="round"/>
+                        <defs>
+                            <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="0%">
+                                <stop offset="0%" style="stop-color:var(--primary);stop-opacity:1" />
+                                <stop offset="100%" style="stop-color:var(--primary-light);stop-opacity:1" />
+                            </linearGradient>
+                        </defs>
+                    </svg>
+                    <div class="score">
+                        <div class="number" id="adherenceScore">75%</div>
+                        <div class="label">Adherence</div>
+                    </div>
+                </div>
+                <p style="text-align: center; color: var(--text-muted); font-size: 0.9rem;">
+                    Based on your last 7 days of logged doses. Take both daily doses consistently to improve.
+                </p>
+                <div style="margin-top: 1rem; display: flex; gap: 0.5rem; justify-content: center;">
+                    <button class="voice-btn" style="padding: 0.75rem 1.5rem; font-size: 0.9rem;" onclick="logDose()">
+                        <i class="fas fa-check"></i> Log Dose Taken
+                    </button>
+                </div>
+            </div>
+
+            <div class="whatsapp-section">
+                <div class="card-header" style="justify-content: center; color: #25d366;">
+                    <i class="fab fa-whatsapp"></i> WhatsApp Reminders
+                </div>
+                <p>Get medication reminders and adherence confirmations directly on WhatsApp.</p>
+
+                <div class="reminder-options">
+                    <label class="reminder-option">
+                        <input type="checkbox" id="remMorning" onchange="updateReminders()">
+                        <div>
+                            <div style="font-weight: 600;">Morning Dose Reminder</div>
+                            <div class="time">Daily at 7:00 AM with breakfast</div>
+                        </div>
+                    </label>
+                    <label class="reminder-option">
+                        <input type="checkbox" id="remEvening" onchange="updateReminders()">
+                        <div>
+                            <div style="font-weight: 600;">Evening Dose Reminder</div>
+                            <div class="time">Daily at 7:00 PM with dinner</div>
+                        </div>
+                    </label>
+                    <label class="reminder-option">
+                        <input type="checkbox" id="remConfirm" onchange="updateReminders()">
+                        <div>
+                            <div style="font-weight: 600;">Dose Confirmation</div>
+                            <div class="time">Confirm intake after each reminder</div>
+                        </div>
+                    </label>
+                    <label class="reminder-option">
+                        <input type="checkbox" id="remWeekly" onchange="updateReminders()">
+                        <div>
+                            <div style="font-weight: 600;">Weekly Glucose Report</div>
+                            <div class="time">Every Sunday at 9:00 AM</div>
+                        </div>
+                    </label>
+                    <label class="reminder-option">
+                        <input type="checkbox" id="remRefill" onchange="updateReminders()">
+                        <div>
+                            <div style="font-weight: 600;">Refill Alert</div>
+                            <div class="time">When 3 days supply remains</div>
+                        </div>
+                    </label>
+                </div>
+
+                <div class="form-group" style="margin-bottom: 1rem;">
+                    <label>WhatsApp Number (with country code)</label>
+                    <input type="tel" id="whatsappNumber" placeholder="+91 98765 43210" value="+91 ">
+                </div>
+
+                <button class="voice-btn" style="background: linear-gradient(135deg, #25d366, #128c7e);" onclick="setupWhatsApp()">
+                    <i class="fab fa-whatsapp"></i> Activate WhatsApp Reminders
+                </button>
+            </div>
+        </div>
+
+        <div class="grid-2" style="margin-top: 2rem;">
+            <div class="card">
+                <div class="card-header"><i class="fas fa-heartbeat"></i> Daily Vitals & Glucose Tracker</div>
+                <form class="vitals-form" onsubmit="saveVitals(event)">
+                    <div class="form-group">
+                        <label>Date</label>
+                        <input type="date" id="vitalDate" required>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                        <div class="form-group">
+                            <label>Fasting Glucose (mg/dL)</label>
+                            <input type="number" id="fastingGlucose" placeholder="100" min="50" max="600" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Post-Prandial (mg/dL)</label>
+                            <input type="number" id="ppGlucose" placeholder="140" min="50" max="600">
+                        </div>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                        <div class="form-group">
+                            <label>Weight (kg)</label>
+                            <input type="number" id="weight" placeholder="70" min="20" max="200" step="0.1">
+                        </div>
+                        <div class="form-group">
+                            <label>Heart Rate (bpm)</label>
+                            <input type="number" id="heartRate" placeholder="72" min="40" max="200">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>How are you feeling?</label>
+                        <select id="mood">
+                            <option value="great">Great — No symptoms</option>
+                            <option value="good">Good — Mild symptoms</option>
+                            <option value="okay">Okay — Noticeable symptoms</option>
+                            <option value="poor">Poor — Contact doctor</option>
+                        </select>
+                    </div>
+                    <button type="submit" class="btn-submit">
+                        <i class="fas fa-save"></i> Save Vitals
+                    </button>
+                </form>
+
+                <div class="vitals-history" id="vitalsHistory">
+                    <h4><i class="fas fa-history"></i> Recent Readings</h4>
+                    <div id="vitalsList"></div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header"><i class="fas fa-file-medical"></i> Prescription & Documents</div>
+                <div class="upload-area" onclick="document.getElementById('prescriptionInput').click()">
+                    <i class="fas fa-cloud-upload-alt"></i>
+                    <p style="font-weight: 600; color: var(--text); margin-bottom: 0.25rem;">Click to upload prescription</p>
+                    <p>Supports JPG, PNG, PDF (max 5MB)</p>
+                    <input type="file" id="prescriptionInput" style="display: none;" accept=".jpg,.jpeg,.png,.pdf" onchange="handlePrescriptionUpload(this)">
+                </div>
+                <div class="prescription-list" id="prescriptionList"></div>
+
+                <div style="margin-top: 2rem; padding-top: 2rem; border-top: 1px solid var(--border);">
+                    <div class="card-header"><i class="fas fa-pills"></i> Current Medication List</div>
+                    <div id="medList" style="display: flex; flex-direction: column; gap: 0.5rem;">
+                        <div class="prescription-item">
+                            <i class="fas fa-capsules"></i>
+                            <span class="filename">Diabmexa M 500 — 1 tab twice daily</span>
+                            <span style="color: var(--success); font-size: 0.75rem;">Active</span>
+                        </div>
+                    </div>
+                    <button class="voice-btn secondary" style="margin-top: 1rem; width: 100%; justify-content: center;" onclick="showToast('Add medication feature coming soon')">
+                        <i class="fas fa-plus"></i> Add Another Medication
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="chat-widget collapsed" id="chatWidget">
+        <div class="chat-header" onclick="toggleChat()">
+            <h4><i class="fas fa-robot"></i> Diabmexa M 500 AI Assistant</h4>
+            <button class="toggle"><i class="fas fa-chevron-up"></i></button>
+        </div>
+        <div class="chat-messages" id="chatMessages">
+            <div class="message ai">
+                <strong>Adaptive Adherence Intelligence Engine</strong><br><br>
+                Hello! I am your dedicated AI for Diabmexa M 500. I can help you with:<br>
+                • Dosing schedule & timing<br>
+                • Food & drug interactions<br>
+                • Side effect management<br>
+                • Glucose monitoring guidance<br>
+                • Missed dose protocols<br><br>
+                What would you like to know?
+            </div>
+        </div>
+        <div class="chat-input-area">
+            <input type="text" id="chatInput" placeholder="Ask about Diabmexa M 500..." onkeypress="if(event.key==='Enter')sendChatMessage()">
+            <button onclick="sendChatMessage()"><i class="fas fa-paper-plane"></i></button>
+        </div>
+    </div>
+
+    <footer>
+        <p><i class="fas fa-dna"></i> Biomexa Pharmaceuticals — Adaptive Adherence Intelligence Engine</p>
+        <p style="margin-top: 0.5rem; font-size: 0.75rem;">This AI guide is for informational purposes. Always follow your physician's advice.</p>
+    </footer>
+
+    <script>
+        setTimeout(() => {
+            document.getElementById('scanOverlay').classList.add('hidden');
+            setTimeout(() => {
+                speakText("Welcome to the Adaptive Adherence Intelligence Engine for Diabmexa M 500. I am your personal AI pharmacist. Let me guide you through your diabetes management therapy with Metformin.");
+            }, 600);
+        }, 3500);
+
+        function skipScan() {
+            document.getElementById('scanOverlay').classList.add('hidden');
+        }
+
+        const synth = window.speechSynthesis;
+        let currentUtterance = null;
+
+        const guides = {
+            welcome: `Welcome to your Diabmexa M 500 therapy guide. Diabmexa M 500 contains Metformin Hydrochloride I P, 500 milligrams per tablet. Metformin is the first-line treatment for Type 2 Diabetes. It works by reducing glucose production in your liver, improving insulin sensitivity in your muscles, and slowing glucose absorption from your gut. You need to take one tablet twice daily — one with breakfast and one with dinner. Never take it on an empty stomach as this causes severe stomach upset and diarrhea. Let me know if you need guidance on food interactions, side effects, or what to do if you miss a dose.`,
+
+            dosing: `Your Diabmexa M 500 dosing schedule is twice daily. Take one 500 milligram tablet with breakfast, and one 500 milligram tablet with dinner. Always take metformin with food to minimize gastrointestinal side effects. The morning dose targets the dawn phenomenon, where your liver releases excess glucose between 4 and 8 AM. The evening dose controls nocturnal hepatic glucose output while you sleep. If you are just starting metformin, your doctor may begin with one tablet daily for the first week to allow your body to adjust. Consistency is important — take it at the same times every day. If you experience stomach upset, taking it in the middle of your meal rather than at the beginning can help.`,
+
+            food: `Here are the critical food interactions for Diabmexa M 500. First, and most importantly, never drink alcohol while taking metformin. Alcohol increases the risk of lactic acidosis, a rare but life-threatening condition where lactic acid builds up in your blood. Even small amounts of alcohol can be dangerous. Second, avoid high-fat meals as they delay metformin absorption by up to 35 percent and reduce its effectiveness. Third, iodinated contrast dyes used in CT scans and angiograms must be avoided unless you stop metformin 48 hours before and 48 hours after the procedure. This prevents kidney damage. On the positive side, high-fiber foods like oats, lentils, vegetables, and whole grains complement metformin perfectly by slowing glucose absorption. Cinnamon and fenugreek are natural insulin sensitizers that may enhance metformin's effect.`,
+
+            side_effects: `Common side effects of Diabmexa M 500 include nausea, stomach upset, diarrhea, and a metallic taste in the mouth. These affect about 30 percent of patients when starting metformin but usually resolve within 2 weeks as your body adjusts. To minimize these, always take metformin with food, start with a lower dose if prescribed, and consider extended-release formulations if available. Long-term use can reduce vitamin B12 absorption by about 30 percent, so your doctor should check your B12 levels annually after 2 years of use. A rare but serious side effect is lactic acidosis, characterized by muscle pain, difficulty breathing, stomach pain, and feeling cold or dizzy. If you experience these symptoms, seek emergency medical care immediately and stop metformin.`,
+
+            missed_dose: `If you miss a dose of Diabmexa M 500, take it as soon as you remember with food, unless it is almost time for your next dose. Since you take it twice daily, if you miss the morning dose and remember at lunchtime, take it with lunch. However, if you remember close to your evening dose time, skip the missed morning dose and just take your evening dose as normal. Never take two doses at the same time to make up for a missed dose. This can cause severe stomach upset and does not improve blood sugar control. If you frequently miss doses, enable WhatsApp reminders on this page or set phone alarms. Missing doses regularly will cause your HbA1c to rise and increase your risk of diabetes complications.`
+        };
+
+        function speakGuide(topic) {
+            const text = guides[topic] || guides.welcome;
+            speakText(text);
+        }
+
+        function speakText(text) {
+            stopSpeaking();
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.rate = 0.9;
+            utterance.pitch = 1;
+            utterance.volume = 1;
+            const voices = synth.getVoices();
+            const preferredVoice = voices.find(v => v.name.includes('Google US English') || v.name.includes('Samantha') || v.name.includes('Daniel'));
+            if (preferredVoice) utterance.voice = preferredVoice;
+
+            utterance.onstart = () => {
+                document.getElementById('voiceAvatar').classList.add('speaking');
+            };
+            utterance.onend = () => {
+                document.getElementById('voiceAvatar').classList.remove('speaking');
+            };
+
+            currentUtterance = utterance;
+            synth.speak(utterance);
+        }
+
+        function stopSpeaking() {
+            if (synth.speaking) synth.cancel();
+            document.getElementById('voiceAvatar').classList.remove('speaking');
+        }
+
+        function setupWhatsApp() {
+            const number = document.getElementById('whatsappNumber').value.trim();
+            if (!number || number.length < 10) {
+                showToast('Please enter a valid WhatsApp number');
+                return;
+            }
+
+            const morning = document.getElementById('remMorning').checked;
+            const evening = document.getElementById('remEvening').checked;
+            const confirm = document.getElementById('remConfirm').checked;
+            const weekly = document.getElementById('remWeekly').checked;
+            const refill = document.getElementById('remRefill').checked;
+
+            let message = `Hello! I want to set up medication reminders for Diabmexa M 500 (Metformin 500mg).`;
+            if (morning) message += ` Please send me a daily reminder at 7:00 AM with breakfast.`;
+            if (evening) message += ` Please send me a daily reminder at 7:00 PM with dinner.`;
+            if (confirm) message += ` Please ask me to confirm I took my dose.`;
+            if (weekly) message += ` Please send me a weekly glucose report every Sunday.`;
+            if (refill) message += ` Please alert me when I have 3 days of medication left.`;
+
+            const encoded = encodeURIComponent(message);
+            const waLink = `https://wa.me/${number.replace(/\D/g,'')}?text=${encoded}`;
+            window.open(waLink, '_blank');
+
+            localStorage.setItem('diabmexa_whatsapp', number);
+            localStorage.setItem('diabmexa_reminders', JSON.stringify({morning, evening, confirm, weekly, refill}));
+            showToast('WhatsApp reminder setup initiated!');
+        }
+
+        function updateReminders() {
+            const prefs = {
+                morning: document.getElementById('remMorning').checked,
+                evening: document.getElementById('remEvening').checked,
+                confirm: document.getElementById('remConfirm').checked,
+                weekly: document.getElementById('remWeekly').checked,
+                refill: document.getElementById('remRefill').checked
+            };
+            localStorage.setItem('diabmexa_reminders', JSON.stringify(prefs));
+        }
+
+        document.getElementById('vitalDate').valueAsDate = new Date();
+
+        function saveVitals(e) {
+            e.preventDefault();
+            const date = document.getElementById('vitalDate').value;
+            const fasting = parseInt(document.getElementById('fastingGlucose').value);
+            const pp = document.getElementById('ppGlucose').value;
+            const weight = document.getElementById('weight').value;
+            const hr = document.getElementById('heartRate').value;
+            const mood = document.getElementById('mood').value;
+
+            const vital = { date, fasting, pp, weight, hr, mood, timestamp: Date.now() };
+            let vitals = JSON.parse(localStorage.getItem('diabmexa_vitals') || '[]');
+            vitals.unshift(vital);
+            if (vitals.length > 30) vitals = vitals.slice(0, 30);
+            localStorage.setItem('diabmexa_vitals', JSON.stringify(vitals));
+
+            renderVitals();
+            showToast('Vitals saved successfully!');
+            e.target.reset();
+            document.getElementById('vitalDate').valueAsDate = new Date();
+        }
+
+        function renderVitals() {
+            const vitals = JSON.parse(localStorage.getItem('diabmexa_vitals') || '[]');
+            const list = document.getElementById('vitalsList');
+            if (vitals.length === 0) {
+                list.innerHTML = '<p style="color: var(--text-muted); text-align: center; padding: 1rem;">No readings yet. Log your first vitals above.</p>';
+                return;
+            }
+
+            list.innerHTML = vitals.slice(0, 5).map(v => {
+                let status = 'normal';
+                if (v.fasting > 130 || (v.pp && v.pp > 180)) status = 'warning';
+                if (v.fasting > 180 || (v.pp && v.pp > 250)) status = 'danger';
+
+                const moodIcons = { great: '😊', good: '🙂', okay: '😐', poor: '😟' };
+
+                return `<div class="vital-row">
+                    <span class="date">${v.date}</span>
+                    <span class="reading ${status}">F: ${v.fasting} mg/dL</span>
+                    <span style="color: var(--text-muted);">${v.pp ? 'PP: ' + v.pp : ''}</span>
+                    <span>${moodIcons[v.mood] || ''}</span>
+                </div>`;
+            }).join('');
+
+            const score = Math.min(100, 50 + (vitals.length * 5));
+            document.getElementById('adherenceScore').textContent = score + '%';
+        }
+
+        function logDose() {
+            let doses = JSON.parse(localStorage.getItem('diabmexa_doses') || '[]');
+            doses.push({ date: new Date().toISOString(), taken: true });
+            localStorage.setItem('diabmexa_doses', JSON.stringify(doses));
+            showToast('Dose logged! Great job staying on track.');
+
+            const vitals = JSON.parse(localStorage.getItem('diabmexa_vitals') || '[]');
+            const score = Math.min(100, 60 + (doses.length * 3) + (vitals.length * 2));
+            document.getElementById('adherenceScore').textContent = score + '%';
+        }
+
+        function handlePrescriptionUpload(input) {
+            const file = input.files[0];
+            if (!file) return;
+
+            let prescriptions = JSON.parse(localStorage.getItem('diabmexa_prescriptions') || '[]');
+            prescriptions.push({ name: file.name, size: (file.size/1024).toFixed(1) + ' KB', date: new Date().toLocaleDateString() });
+            localStorage.setItem('diabmexa_prescriptions', JSON.stringify(prescriptions));
+            renderPrescriptions();
+            showToast('Prescription uploaded: ' + file.name);
+        }
+
+        function renderPrescriptions() {
+            const prescriptions = JSON.parse(localStorage.getItem('diabmexa_prescriptions') || '[]');
+            const list = document.getElementById('prescriptionList');
+            if (prescriptions.length === 0) {
+                list.innerHTML = '<p style="color: var(--text-muted); text-align: center; padding: 1rem;">No prescriptions uploaded yet.</p>';
+                return;
+            }
+            list.innerHTML = prescriptions.map((p, i) => `
+                <div class="prescription-item">
+                    <i class="fas fa-file-prescription"></i>
+                    <span class="filename">${p.name} <span style="color: var(--text-muted); font-size: 0.8rem;">(${p.size})</span></span>
+                    <span style="color: var(--text-muted); font-size: 0.8rem;">${p.date}</span>
+                    <i class="fas fa-trash delete" onclick="deletePrescription(${i})"></i>
+                </div>
+            `).join('');
+        }
+
+        function deletePrescription(index) {
+            let prescriptions = JSON.parse(localStorage.getItem('diabmexa_prescriptions') || '[]');
+            prescriptions.splice(index, 1);
+            localStorage.setItem('diabmexa_prescriptions', JSON.stringify(prescriptions));
+            renderPrescriptions();
+            showToast('Prescription removed');
+        }
+
+        function toggleChat() {
+            document.getElementById('chatWidget').classList.toggle('collapsed');
+        }
+
+        function sendChatMessage() {
+            const input = document.getElementById('chatInput');
+            const text = input.value.trim();
+            if (!text) return;
+
+            const messages = document.getElementById('chatMessages');
+            messages.innerHTML += `<div class="message user">${escapeHtml(text)}</div>`;
+            input.value = '';
+            messages.scrollTop = messages.scrollHeight;
+
+            setTimeout(() => {
+                const response = getAIResponse(text.toLowerCase());
+                messages.innerHTML += `<div class="message ai">${response}</div>`;
+                messages.scrollTop = messages.scrollHeight;
+                speakText(response.replace(/<[^>]*>/g, '').substring(0, 200));
+            }, 600);
+        }
+
+        function getAIResponse(text) {
+            if (text.includes('dose') || text.includes('when') || text.includes('time') || text.includes('take')) {
+                return `<strong>Dosing Guide:</strong><br>Take <strong>1 tablet of Diabmexa M 500 twice daily</strong> — morning with breakfast (7-8 AM) and evening with dinner (7-8 PM). <strong>Always with food.</strong> Never on empty stomach.`;
+            }
+            if (text.includes('food') || text.includes('eat') || text.includes('alcohol') || text.includes('diet')) {
+                return `<strong>Food Interactions:</strong><br>🚫 <strong>AVOID:</strong> Alcohol completely, high-fat meals<br>⚠️ <strong>LIMIT:</strong> Simple sugars, processed carbs<br>✅ <strong>RECOMMENDED:</strong> High-fiber foods, oats, lentils, vegetables, cinnamon, fenugreek<br><br>Always take with food to prevent stomach upset.`;
+            }
+            if (text.includes('side') || text.includes('effect') || text.includes('stomach') || text.includes('nausea')) {
+                return `<strong>Side Effects:</strong><br>Common (usually resolve in 2 weeks):<br>• Nausea, stomach upset, diarrhea<br>• Metallic taste in mouth<br><br>Management: Take with food, stay hydrated.<br><br>🚨 <strong>Seek urgent care if:</strong> Muscle pain, difficulty breathing, severe stomach pain, feeling cold/dizzy (possible lactic acidosis).`;
+            }
+            if (text.includes('miss') || text.includes('forgot') || text.includes('skip')) {
+                return `<strong>Missed Dose Protocol:</strong><br>• If remembered <strong>before next meal</strong> — take with food<br>• If close to next dose time — <strong>skip and take next dose normally</strong><br>• <strong>Never double-dose</strong><br><br>Tip: Enable WhatsApp reminders on this page.`;
+            }
+            if (text.includes('glucose') || text.includes('sugar') || text.includes('reading') || text.includes('vital') || text.includes('hba1c')) {
+                return `<strong>Glucose Monitoring:</strong><br>Target ranges on Diabmexa M 500:<br>• Fasting: <strong>80-130 mg/dL</strong><br>• Post-prandial: <strong>&lt;180 mg/dL</strong><br>• HbA1c target: <strong>&lt;7%</strong><br><br>Check fasting glucose daily. Log readings in the Daily Vitals section. If consistently above target, contact your doctor.`;
+            }
+            if (text.includes('interaction') || text.includes('medicine') || text.includes('drug') || text.includes('other')) {
+                return `<strong>Drug Interactions:</strong><br>Diabmexa M 500 may interact with:<br>• Contrast dyes (stop 48h before/after scans)<br>• Steroids (raise blood sugar)<br>• Certain blood pressure meds<br>• Thyroid medications (separate by 4 hours)<br><br>Always inform your doctor about ALL medications.`;
+            }
+            return `<strong>I am here to help!</strong><br><br>I can assist you with:<br>• Dosing schedule & timing<br>• Food & drug interactions<br>• Side effect management<br>• Glucose monitoring<br>• Missed dose protocols<br><br>Try asking: "When should I take it?", "What foods to avoid?", "What are side effects?", or "What if I miss a dose?"`;
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function showToast(msg) {
+            const toast = document.getElementById('toast');
+            document.getElementById('toastMsg').textContent = msg;
+            toast.classList.add('show');
+            setTimeout(() => toast.classList.remove('show'), 3000);
+        }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            renderVitals();
+            renderPrescriptions();
+
+            const savedReminders = JSON.parse(localStorage.getItem('diabmexa_reminders') || '{}');
+            if (savedReminders.morning) document.getElementById('remMorning').checked = true;
+            if (savedReminders.evening) document.getElementById('remEvening').checked = true;
+            if (savedReminders.confirm) document.getElementById('remConfirm').checked = true;
+            if (savedReminders.weekly) document.getElementById('remWeekly').checked = true;
+            if (savedReminders.refill) document.getElementById('remRefill').checked = true;
+
+            const savedNumber = localStorage.getItem('diabmexa_whatsapp');
+            if (savedNumber) document.getElementById('whatsappNumber').value = savedNumber;
+        });
+    </script>
+</body>
+</html>
