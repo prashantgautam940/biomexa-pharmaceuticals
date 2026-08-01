@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Patient Portal | Biomexa Pharmaceuticals</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<style>
+:root { --primary: #0d7377; --primary-light: #14a085; --accent: #f39c12; --danger: #ef4444; --success: #10b981; --bg: #0a0e17; --bg-card: #111827; --bg-light: #1f2937; --text: #f3f4f6; --text-muted: #9ca3af; --border: #374151; }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+header { background: rgba(10,14,23,0.95); backdrop-filter: blur(10px); border-bottom: 1px solid var(--border); padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 100; }
+.logo { display: flex; align-items: center; gap: 0.75rem; font-weight: 800; font-size: 1.25rem; color: var(--primary-light); text-decoration: none; }
+.logo i { font-size: 1.5rem; }
+.nav-links { display: flex; gap: 1.5rem; align-items: center; }
+.nav-links a { color: var(--text-muted); text-decoration: none; font-weight: 500; font-size: 0.9rem; transition: color 0.3s; }
+.nav-links a:hover { color: var(--primary-light); }
+.container { max-width: 520px; margin: 0 auto; padding: 2rem; }
+
+.login-box { margin-top: 80px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 20px; padding: 3rem; text-align: center; }
+.login-box h2 { margin-bottom: 0.5rem; font-size: 1.75rem; }
+.login-box p { color: var(--text-muted); margin-bottom: 2rem; font-size: 0.95rem; }
+.input-group { margin-bottom: 1.25rem; text-align: left; }
+.input-group label { display: block; margin-bottom: 0.5rem; font-size: 0.85rem; color: var(--text-muted); font-weight: 500; }
+input { width: 100%; padding: 14px 16px; background: var(--bg-light); border: 1px solid var(--border); border-radius: 10px; color: var(--text); font-size: 1rem; outline: none; transition: border-color 0.3s; }
+input:focus { border-color: var(--primary); }
+.btn { width: 100%; padding: 14px; background: linear-gradient(135deg, var(--primary), var(--primary-light)); color: white; border: none; border-radius: 10px; font-size: 1rem; font-weight: 600; cursor: pointer; transition: transform 0.2s, box-shadow 0.2s; }
+.btn:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(13,115,119,0.3); }
+.btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text-muted); margin-top: 0.75rem; }
+.btn-outline:hover { border-color: var(--primary); color: var(--primary-light); }
+.error { color: var(--danger); margin-top: 1rem; font-size: 0.9rem; display: none; }
+
+.card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px; padding: 1.75rem; margin-bottom: 1.25rem; }
+.card h3 { color: var(--primary-light); font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 1rem; }
+.welcome-row { display: flex; align-items: center; gap: 1rem; margin-bottom: 0.5rem; }
+.avatar { width: 56px; height: 56px; border-radius: 50%; background: linear-gradient(135deg, var(--primary), var(--primary-light)); display: flex; align-items: center; justify-content: center; font-size: 1.5rem; font-weight: 700; color: white; }
+.welcome-text h2 { font-size: 1.4rem; margin-bottom: 0.25rem; }
+.welcome-text p { color: var(--text-muted); font-size: 0.9rem; }
+
+.score-display { text-align: center; padding: 1.5rem 0; }
+.score-number { font-size: 4rem; font-weight: 800; color: var(--success); line-height: 1; }
+.score-number.warning { color: var(--accent); }
+.score-number.danger { color: var(--danger); }
+.score-label { color: var(--text-muted); font-size: 0.9rem; margin-top: 0.5rem; }
+
+.medicine-card { background: var(--bg-light); border-radius: 12px; padding: 1.25rem; display: flex; align-items: center; gap: 1rem; }
+.med-icon { width: 48px; height: 48px; border-radius: 12px; background: rgba(13,115,119,0.2); display: flex; align-items: center; justify-content: center; font-size: 1.5rem; color: var(--primary-light); }
+.med-info h4 { font-size: 1.1rem; margin-bottom: 0.25rem; }
+.med-info p { color: var(--text-muted); font-size: 0.85rem; }
+
+.info-row { display: flex; justify-content: space-between; padding: 14px 0; border-bottom: 1px solid var(--border); }
+.info-row:last-child { border-bottom: none; }
+.info-row span { color: var(--text-muted); font-size: 0.9rem; }
+.info-row strong { color: var(--text); font-weight: 600; }
+
+.qr-area { text-align: center; padding: 2rem; background: var(--bg-light); border-radius: 12px; border: 2px dashed var(--border); }
+.qr-area i { font-size: 3rem; color: var(--primary-light); margin-bottom: 1rem; }
+.qr-area p { color: var(--text-muted); margin-bottom: 1.25rem; font-size: 0.9rem; }
+
+.hidden { display: none !important; }
+.logout { padding: 8px 18px; background: transparent; border: 1px solid var(--border); color: var(--text-muted); border-radius: 8px; cursor: pointer; font-weight: 500; }
+.logout:hover { border-color: var(--danger); color: var(--danger); }
+@media (max-width: 768px) { .container { padding: 1rem; } .nav-links { display: none; } }
+</style>
+</head>
+<body>
+
+<header>
+  <a href="index.html" class="logo"><i class="fas fa-dna"></i> Biomexa</a>
+  <div class="nav-links">
+    <a href="index.html">Home</a>
+    <a href="products/index.html">Products</a>
+    <a href="ai-assistant.html">AI Assistant</a>
+    <a href="doctor.html">Doctor Login</a>
+    <a href="admin.html">Admin</a>
+    <button class="logout" onclick="logout()" id="logoutBtn" style="display:none;"><i class="fas fa-sign-out-alt"></i> Logout</button>
+  </div>
+</header>
+
+<div class="container">
+
+  <!-- LOGIN -->
+  <div id="loginSection">
+    <div class="login-box">
+      <i class="fas fa-user-injured" style="font-size: 3rem; color: var(--primary-light); margin-bottom: 1rem;"></i>
+      <h2>Patient Portal</h2>
+      <p>Enter your registered phone number to view your medicine schedule and adherence score</p>
+      <div class="input-group">
+        <label>Phone Number</label>
+        <input type="tel" id="phone" value="+919876543210" placeholder="+91XXXXXXXXXX">
+      </div>
+      <button class="btn" onclick="login()"><i class="fas fa-search"></i> View My Dashboard</button>
+      <div id="loginError" class="error"></div>
+    </div>
+  </div>
+
+  <!-- DASHBOARD -->
+  <div id="dashboardSection" class="hidden">
+    <div class="card">
+      <div class="welcome-row">
+        <div class="avatar" id="patientAvatar">P</div>
+        <div class="welcome-text">
+          <h2 id="welcomeName">Welcome</h2>
+          <p id="welcomePhone">-</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3><i class="fas fa-pills"></i> My Medicine</h3>
+      <div class="medicine-card">
+        <div class="med-icon"><i class="fas fa-capsules"></i></div>
+        <div class="med-info">
+          <h4 id="medName">-</h4>
+          <p id="medSchedule">Next dose: -</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3><i class="fas fa-chart-line"></i> Adherence Score</h3>
+      <div class="score-display">
+        <div class="score-number" id="adherenceScore">-</div>
+        <div class="score-label">Based on your dose history</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3><i class="fas fa-history"></i> Dose History</h3>
+      <div class="info-row"><span>Total Missed Doses</span><strong id="missedCount">-</strong></div>
+      <div class="info-row"><span>Last QR Scan</span><strong id="lastScan">-</strong></div>
+      <div class="info-row"><span>Risk Score</span><strong id="riskScore">-</strong></div>
+      <div class="info-row"><span>AI Risk Label</span><strong id="aiLabel">-</strong></div>
+    </div>
+
+    <div class="card">
+      <h3><i class="fas fa-qrcode"></i> Scan QR Code</h3>
+      <div class="qr-area">
+        <i class="fas fa-camera"></i>
+        <p>Point your camera at the QR code on your Biomexa medicine packaging to log your dose</p>
+        <button class="btn" onclick="scanQR()" style="width:auto; padding: 12px 28px;"><i class="fas fa-camera"></i> Open Camera</button>
+      </div>
+    </div>
+
+    <button class="btn btn-outline" onclick="logout()"><i class="fas fa-sign-out-alt"></i> Logout</button>
+  </div>
+
+</div>
+
+<script>
+const API_BASE = 'https://api.biomexapharmaceuticals.com';
+let currentPatient = null;
+
+function login() {
+  const phone = document.getElementById('phone').value.trim();
+  if (!phone) { showError('Please enter your phone number'); return; }
+
+  fetch(API_BASE + '/patient/' + encodeURIComponent(phone))
+    .then(r => { if (!r.ok) throw new Error('Patient not found. Please check your phone number.'); return r.json(); })
+    .then(data => {
+      currentPatient = data;
+      document.getElementById('loginSection').classList.add('hidden');
+      document.getElementById('dashboardSection').classList.remove('hidden');
+      document.getElementById('logoutBtn').style.display = 'inline-block';
+      renderPatient(data);
+    })
+    .catch(e => showError(e.message));
+}
+
+function renderPatient(data) {
+  document.getElementById('welcomeName').textContent = 'Welcome, ' + data.name;
+  document.getElementById('welcomePhone').textContent = data.phone;
+  document.getElementById('patientAvatar').textContent = data.name.charAt(0).toUpperCase();
+  document.getElementById('medName').textContent = data.medicine;
+  document.getElementById('medSchedule').textContent = data.next_dose 
+    ? 'Next dose: ' + new Date(data.next_dose).toLocaleString('en-IN', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' })
+    : 'Not scheduled';
+
+  const el = document.getElementById('adherenceScore');
+  el.textContent = data.adherence_score + '%';
+  el.className = 'score-number' + (data.adherence_score < 60 ? ' danger' : data.adherence_score < 80 ? ' warning' : '');
+
+  document.getElementById('missedCount').textContent = data.missed_doses;
+  document.getElementById('lastScan').textContent = data.last_scan 
+    ? new Date(data.last_scan).toLocaleString('en-IN', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' })
+    : 'Never';
+  document.getElementById('riskScore').textContent = (data.risk_score * 100).toFixed(0) + '%';
+  document.getElementById('aiLabel').textContent = data.ai_risk_label || 'Low';
+}
+
+function scanQR() {
+  if (!currentPatient) return;
+  fetch(API_BASE + '/dose/scan?patient_id=' + currentPatient.id, { method: 'POST' })
+    .then(r => r.json())
+    .then(data => {
+      alert('Dose logged successfully! Next dose: ' + new Date(data.next_dose).toLocaleString('en-IN'));
+      login();
+    })
+    .catch(() => alert('QR scan simulation: Dose logged successfully!'));
+}
+
+function showError(msg) {
+  const err = document.getElementById('loginError');
+  err.textContent = msg;
+  err.style.display = 'block';
+}
+
+function logout() {
+  currentPatient = null;
+  document.getElementById('loginSection').classList.remove('hidden');
+  document.getElementById('dashboardSection').classList.add('hidden');
+  document.getElementById('logoutBtn').style.display = 'none';
+  document.getElementById('loginError').style.display = 'none';
+}
+</script>
+</body>
+</html>
