@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sign In | Biomexa</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      min-height: 100vh;
+      background: #0f172a;
+      font-family: system-ui, -apple-system, sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #f1f5f9;
+    }
+    .container {
+      width: 100%;
+      max-width: 420px;
+      padding: 40px 24px;
+    }
+    .logo {
+      text-align: center;
+      margin-bottom: 8px;
+    }
+    .logo h1 {
+      color: #14b8a6;
+      font-size: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+    .subtitle {
+      color: #94a3b8;
+      text-align: center;
+      margin-bottom: 32px;
+      font-size: 14px;
+    }
+    .features {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+    .feature {
+      color: #94a3b8;
+      font-size: 12px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .feature span { color: #14b8a6; }
+    .error-box {
+      background: rgba(239, 68, 68, 0.1);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      color: #f87171;
+      padding: 12px 16px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      font-size: 14px;
+      display: none;
+    }
+    .error-box.show { display: flex; align-items: center; gap: 8px; }
+    .form-group { margin-bottom: 20px; }
+    label {
+      color: #cbd5e1;
+      font-size: 14px;
+      display: block;
+      margin-bottom: 8px;
+    }
+    label .required { color: #f87171; }
+    .phone-row { display: flex; gap: 8px; }
+    .country-code {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 12px 16px;
+      color: #cbd5e1;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 14px;
+    }
+    input {
+      flex: 1;
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 12px 16px;
+      color: #f1f5f9;
+      font-size: 14px;
+      outline: none;
+      width: 100%;
+    }
+    input:focus { border-color: #14b8a6; }
+    input::placeholder { color: #64748b; }
+    button {
+      width: 100%;
+      background: linear-gradient(135deg, #0d9488, #14b8a6);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      padding: 14px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      margin-top: 4px;
+    }
+    button:hover { opacity: 0.9; }
+    button:disabled { opacity: 0.6; cursor: not-allowed; }
+    .divider {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin: 24px 0;
+    }
+    .divider-line { flex: 1; height: 1px; background: #334155; }
+    .divider-text { color: #64748b; font-size: 13px; }
+    .footer-text {
+      color: #94a3b8;
+      text-align: center;
+      font-size: 14px;
+    }
+    .footer-text a {
+      color: #14b8a6;
+      text-decoration: none;
+      font-weight: 500;
+    }
+    .disclaimer {
+      color: #64748b;
+      text-align: center;
+      font-size: 12px;
+      margin-top: 20px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="logo">
+      <h1>⚕️ Biomexa</h1>
+    </div>
+    <p class="subtitle">Sign in to manage your dose reminders</p>
+
+    <div class="features">
+      <div class="feature"><span>💬</span> WhatsApp Alerts</div>
+      <div class="feature"><span>🔔</span> Dose Reminders</div>
+      <div class="feature"><span>📈</span> Adherence Score</div>
+      <div class="feature"><span>🛡️</span> HIPAA Safe</div>
+    </div>
+
+    <div class="error-box" id="errorBox">
+      <span>⚠️</span> <span id="errorText"></span>
+    </div>
+
+    <form id="loginForm">
+      <div class="form-group">
+        <label>Phone Number <span class="required">*</span></label>
+        <div class="phone-row">
+          <div class="country-code">🇮🇳 +91</div>
+          <input type="tel" id="phone" placeholder="9140339181" required>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Password <span class="required">*</span></label>
+        <input type="password" id="password" placeholder="••••••" required>
+      </div>
+
+      <button type="submit" id="submitBtn">Sign In</button>
+    </form>
+
+    <div class="divider">
+      <div class="divider-line"></div>
+      <span class="divider-text">or</span>
+      <div class="divider-line"></div>
+    </div>
+
+    <p class="footer-text">
+      Don't have an account? <a href="signup.html">Create Account</a>
+    </p>
+
+    <p class="disclaimer">
+      By signing in, you agree to receive medication reminders via WhatsApp/SMS
+    </p>
+  </div>
+
+  <script>
+    document.getElementById('loginForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById('submitBtn');
+      const errorBox = document.getElementById('errorBox');
+      const errorText = document.getElementById('errorText');
+      
+      btn.disabled = true;
+      btn.textContent = 'Signing in...';
+      errorBox.classList.remove('show');
+
+      const phone = document.getElementById('phone').value;
+      const password = document.getElementById('password').value;
+      const fullPhone = phone.startsWith('+') ? phone : '+91' + phone;
+
+      try {
+        const res = await fetch('http://localhost:5000/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phone: fullPhone, password })
+        });
+        const data = await res.json();
+        
+        if (!res.ok) throw new Error(data.message || 'Login failed');
+        
+        localStorage.setItem('token', data.token);
+        localStorage.setItem('user', JSON.stringify(data.user));
+        window.location.href = 'patient.html';
+        
+      } catch (err) {
+        errorText.textContent = err.message;
+        errorBox.classList.add('show');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Sign In';
+      }
+    });
+  </script>
+</body>
+</html>
