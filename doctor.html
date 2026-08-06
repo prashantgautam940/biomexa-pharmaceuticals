@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Doctor Dashboard | Biomexa Pharmaceuticals</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<style>
+:root { --primary: #0d7377; --primary-light: #14a085; --accent: #f39c12; --danger: #ef4444; --success: #10b981; --bg: #0a0e17; --bg-card: #111827; --bg-light: #1f2937; --text: #f3f4f6; --text-muted: #9ca3af; --border: #374151; }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+header { background: rgba(10,14,23,0.95); backdrop-filter: blur(10px); border-bottom: 1px solid var(--border); padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 100; }
+.logo { display: flex; align-items: center; gap: 0.75rem; font-weight: 800; font-size: 1.25rem; color: var(--primary-light); text-decoration: none; }
+.logo i { font-size: 1.5rem; }
+.nav-links { display: flex; gap: 1.5rem; align-items: center; }
+.nav-links a { color: var(--text-muted); text-decoration: none; font-weight: 500; font-size: 0.9rem; transition: color 0.3s; }
+.nav-links a:hover { color: var(--primary-light); }
+.container { max-width: 1200px; margin: 0 auto; padding: 2rem; }
+
+/* Login */
+.login-box { max-width: 420px; margin: 100px auto; background: var(--bg-card); border: 1px solid var(--border); border-radius: 20px; padding: 3rem; text-align: center; }
+.login-box h2 { margin-bottom: 0.5rem; color: var(--text); font-size: 1.75rem; }
+.login-box p { color: var(--text-muted); margin-bottom: 2rem; font-size: 0.95rem; }
+.input-group { margin-bottom: 1.25rem; text-align: left; }
+.input-group label { display: block; margin-bottom: 0.5rem; font-size: 0.85rem; color: var(--text-muted); font-weight: 500; }
+input { width: 100%; padding: 14px 16px; background: var(--bg-light); border: 1px solid var(--border); border-radius: 10px; color: var(--text); font-size: 1rem; outline: none; transition: border-color 0.3s; }
+input:focus { border-color: var(--primary); }
+.btn { width: 100%; padding: 14px; background: linear-gradient(135deg, var(--primary), var(--primary-light)); color: white; border: none; border-radius: 10px; font-size: 1rem; font-weight: 600; cursor: pointer; transition: transform 0.2s, box-shadow 0.2s; }
+.btn:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(13,115,119,0.3); }
+.error { color: var(--danger); margin-top: 1rem; font-size: 0.9rem; display: none; }
+
+/* Dashboard */
+.page-header { margin-bottom: 2rem; }
+.page-header h1 { font-size: 2rem; margin-bottom: 0.5rem; }
+.page-header p { color: var(--text-muted); }
+.filters { display: flex; gap: 0.75rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
+.filter-btn { padding: 10px 20px; background: var(--bg-light); border: 1px solid var(--border); color: var(--text-muted); border-radius: 8px; cursor: pointer; font-weight: 500; transition: all 0.3s; }
+.filter-btn:hover, .filter-btn.active { background: var(--primary); color: white; border-color: var(--primary); }
+.export-btn { background: var(--success) !important; border-color: var(--success) !important; color: white !important; margin-left: auto; }
+
+.stats-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem; }
+.stat-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px; padding: 1.5rem; }
+.stat-card h3 { font-size: 0.8rem; text-transform: uppercase; color: var(--text-muted); margin-bottom: 0.5rem; letter-spacing: 0.05em; }
+.stat-card .number { font-size: 2rem; font-weight: 800; color: var(--text); }
+.stat-card.danger .number { color: var(--danger); }
+.stat-card.success .number { color: var(--success); }
+
+.table-wrap { background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px; overflow: hidden; }
+table { width: 100%; border-collapse: collapse; }
+th, td { padding: 16px; text-align: left; border-bottom: 1px solid var(--border); }
+th { background: var(--bg-light); font-weight: 600; font-size: 0.85rem; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.03em; }
+tr:hover { background: rgba(13,115,119,0.05); }
+.patient-name { font-weight: 600; color: var(--text); }
+.patient-phone { font-size: 0.85rem; color: var(--text-muted); }
+.risk-badge { padding: 6px 14px; border-radius: 50px; font-size: 0.8rem; font-weight: 600; display: inline-block; }
+.risk-low { background: rgba(16,185,129,0.15); color: var(--success); }
+.risk-high { background: rgba(245,158,11,0.15); color: var(--accent); }
+.risk-critical { background: rgba(239,68,68,0.15); color: var(--danger); }
+.adh-good { color: var(--success); font-weight: 600; }
+.adh-bad { color: var(--danger); font-weight: 600; }
+.ai-pred { font-size: 0.85rem; color: var(--text-muted); }
+.hidden { display: none !important; }
+.loading { text-align: center; padding: 3rem; color: var(--text-muted); }
+.logout { padding: 8px 18px; background: transparent; border: 1px solid var(--border); color: var(--text-muted); border-radius: 8px; cursor: pointer; font-weight: 500; }
+.logout:hover { border-color: var(--danger); color: var(--danger); }
+@media (max-width: 768px) { .container { padding: 1rem; } .nav-links { display: none; } .filters { flex-direction: column; } .export-btn { margin-left: 0; } }
+</style>
+</head>
+<body>
+
+<header>
+  <a href="index.html" class="logo"><i class="fas fa-dna"></i> Biomexa</a>
+  <div class="nav-links">
+    <a href="index.html">Home</a>
+    <a href="products/index.html">Products</a>
+    <a href="ai-assistant.html">AI Assistant</a>
+    <a href="patient.html">Patient Portal</a>
+    <a href="admin.html">Admin</a>
+    <button class="logout" onclick="logout()" id="logoutBtn" style="display:none;"><i class="fas fa-sign-out-alt"></i> Logout</button>
+  </div>
+</header>
+
+<div class="container">
+
+  <!-- LOGIN -->
+  <div id="loginSection">
+    <div class="login-box">
+      <i class="fas fa-user-md" style="font-size: 3rem; color: var(--primary-light); margin-bottom: 1rem;"></i>
+      <h2>Doctor Login</h2>
+      <p>Access patient adherence data & AI risk intelligence</p>
+      <div class="input-group">
+        <label>Username</label>
+        <input type="text" id="username" value="drsharma" placeholder="Enter username">
+      </div>
+      <div class="input-group">
+        <label>Password</label>
+        <input type="password" id="password" value="biomexa2026" placeholder="Enter password">
+      </div>
+      <button class="btn" onclick="login()"><i class="fas fa-lock"></i> Secure Login</button>
+      <div id="loginError" class="error"></div>
+    </div>
+  </div>
+
+  <!-- DASHBOARD -->
+  <div id="dashboardSection" class="hidden">
+    <div class="page-header">
+      <h1><i class="fas fa-heartbeat"></i> Doctor Dashboard</h1>
+      <p>Real-time patient adherence monitoring & AI risk predictions</p>
+    </div>
+
+    <div class="stats-row">
+      <div class="stat-card">
+        <h3>Total Patients</h3>
+        <div class="number" id="statTotal">-</div>
+      </div>
+      <div class="stat-card danger">
+        <h3>High Risk</h3>
+        <div class="number" id="statHighRisk">-</div>
+      </div>
+      <div class="stat-card success">
+        <h3>Avg Adherence</h3>
+        <div class="number" id="statAdherence">-</div>
+      </div>
+      <div class="stat-card">
+        <h3>Critical Alerts</h3>
+        <div class="number" id="statCritical">-</div>
+      </div>
+    </div>
+
+    <div class="filters">
+      <button class="filter-btn active" onclick="filterPatients('all',this)"><i class="fas fa-users"></i> All Patients</button>
+      <button class="filter-btn" onclick="filterPatients('high',this)"><i class="fas fa-exclamation-triangle"></i> High Risk Only</button>
+      <button class="filter-btn" onclick="filterPatients('critical',this)"><i class="fas fa-procedures"></i> Critical</button>
+      <button class="filter-btn export-btn" onclick="exportCSV()"><i class="fas fa-download"></i> Export CSV</button>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Patient</th>
+            <th>Medicine</th>
+            <th>Adherence</th>
+            <th>Risk Score</th>
+            <th>AI Prediction</th>
+            <th>AI Risk</th>
+            <th>Missed</th>
+            <th>Next Dose</th>
+          </tr>
+        </thead>
+        <tbody id="patientTable">
+          <tr><td colspan="8" class="loading"><i class="fas fa-spinner fa-spin"></i> Loading patients...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const API_BASE = 'https://api.biomexapharmaceuticals.com';
+let authHeader = '';
+let allPatients = [];
+
+function login() {
+  const u = document.getElementById('username').value;
+  const p = document.getElementById('password').value;
+  authHeader = 'Basic ' + btoa(u + ':' + p);
+
+  fetch(API_BASE + '/doctor/login', { headers: { 'Authorization': authHeader } })
+    .then(r => { if (!r.ok) throw new Error('Invalid credentials'); return r.json(); })
+    .then(() => {
+      document.getElementById('loginSection').classList.add('hidden');
+      document.getElementById('dashboardSection').classList.remove('hidden');
+      document.getElementById('logoutBtn').style.display = 'inline-block';
+      loadPatients();
+    })
+    .catch(e => {
+      const err = document.getElementById('loginError');
+      err.textContent = e.message;
+      err.style.display = 'block';
+    });
+}
+
+function loadPatients() {
+  fetch(API_BASE + '/patients', { headers: { 'Authorization': authHeader } })
+    .then(r => r.json())
+    .then(data => {
+      allPatients = data;
+      renderPatients(data);
+      updateStats(data);
+    })
+    .catch(() => {
+      document.getElementById('patientTable').innerHTML = '<tr><td colspan="8" class="loading"><i class="fas fa-exclamation-circle"></i> Failed to load data. Please login again.</td></tr>';
+    });
+}
+
+function updateStats(patients) {
+  document.getElementById('statTotal').textContent = patients.length;
+  document.getElementById('statHighRisk').textContent = patients.filter(p => p.risk_score > 0.5).length;
+  document.getElementById('statCritical').textContent = patients.filter(p => p.ai_risk_label === 'Critical').length;
+  const avg = patients.length ? (patients.reduce((a,b) => a + b.adherence_score, 0) / patients.length).toFixed(1) : 0;
+  document.getElementById('statAdherence').textContent = avg + '%';
+}
+
+function renderPatients(list) {
+  const tb = document.getElementById('patientTable');
+  if (!list.length) { tb.innerHTML = '<tr><td colspan="8" class="loading">No patients found</td></tr>'; return; }
+
+  tb.innerHTML = list.map(p => {
+    const riskClass = p.ai_risk_label === 'Critical' ? 'risk-critical' : p.ai_risk_label === 'High' ? 'risk-high' : 'risk-low';
+    const adhClass = p.adherence_score >= 80 ? 'adh-good' : 'adh-bad';
+    const nd = p.next_dose ? new Date(p.next_dose).toLocaleString('en-IN', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' }) : '-';
+    return `<tr>
+      <td><div class="patient-name">${p.name}</div><div class="patient-phone">${p.phone}</div></td>
+      <td>${p.medicine}</td>
+      <td class="${adhClass}">${p.adherence_score}%</td>
+      <td>${(p.risk_score * 100).toFixed(0)}%</td>
+      <td class="ai-pred">${(p.ai_prediction * 100).toFixed(0)}% miss chance</td>
+      <td><span class="risk-badge ${riskClass}">${p.ai_risk_label}</span></td>
+      <td>${p.missed_doses}</td>
+      <td>${nd}</td>
+    </tr>`;
+  }).join('');
+}
+
+function filterPatients(type, btn) {
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  if (type === 'high') renderPatients(allPatients.filter(p => p.risk_score > 0.5));
+  else if (type === 'critical') renderPatients(allPatients.filter(p => p.ai_risk_label === 'Critical'));
+  else renderPatients(allPatients);
+}
+
+function exportCSV() { window.open(API_BASE + '/export/patients', '_blank'); }
+
+function logout() {
+  authHeader = '';
+  allPatients = [];
+  document.getElementById('loginSection').classList.remove('hidden');
+  document.getElementById('dashboardSection').classList.add('hidden');
+  document.getElementById('logoutBtn').style.display = 'none';
+  document.getElementById('loginError').style.display = 'none';
+}
+</script>
+</body>
+</html>
