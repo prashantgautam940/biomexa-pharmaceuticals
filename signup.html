@@ -230,7 +230,7 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
       const fullPhone = phone.startsWith('+') ? phone : '+91' + phone;
 
       try {
-        const res = await fetch('http://localhost:3000/api/auth/register', {
+        const res = await fetch('https://biomexa-api.onrender.com/api/auth/register', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ name, phone: fullPhone, email, password })
