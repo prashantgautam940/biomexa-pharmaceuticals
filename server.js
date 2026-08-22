@@ -16,10 +16,47 @@ app.use(express.urlencoded({ extended: true }));
 // ========================
 // TWILIO SETUP
 // ========================
-const accountSid = process.env.TWILIO_SID;
-const authToken = process.env.TWILIO_TOKEN;
-const twilioPhone = process.env.TWILIO_PHONE;
-const client = twilio(accountSid, authToken);
+const accountSid = process.env.TWILIO_SID || process.env.TWILIO_ACCOUNT_SID;
+const authToken = process.env.TWILIO_TOKEN || process.env.TWILIO_AUTH_TOKEN;
+const twilioPhone = process.env.TWILIO_PHONE || process.env.TWILIO_WHATSAPP_NUMBER;
+const client = accountSid && authToken ? twilio(accountSid, authToken) : null;
+const fromNumber = twilioPhone?.startsWith('whatsapp:') ? twilioPhone : `whatsapp:${twilioPhone}`;
+
+function normalizePhoneNumber(value) {
+  if (!value) return '';
+  let phone = String(value).trim();
+  if (phone.startsWith('whatsapp:')) phone = phone.replace(/^whatsapp:/, '');
+  phone = phone.replace(/[()\s-]/g, '');
+  if (phone.startsWith('00')) phone = `+${phone.slice(2)}`;
+  if (!phone.startsWith('+')) phone = `+${phone}`;
+  return phone;
+}
+
+function isTwilioConfigured() {
+  return Boolean(accountSid && authToken && twilioPhone);
+}
+
+async function sendWhatsAppMessage(to, body) {
+  if (!isTwilioConfigured()) {
+    const reason = 'Twilio WhatsApp is not configured. Please set TWILIO_SID/TWILIO_ACCOUNT_SID, TWILIO_TOKEN/TWILIO_AUTH_TOKEN, and TWILIO_PHONE/TWILIO_WHATSAPP_NUMBER.';
+    console.warn(`⚠️ ${reason}`);
+    return { ok: false, reason };
+  }
+
+  const normalizedTo = `whatsapp:${normalizePhoneNumber(to)}`;
+
+  try {
+    const message = await client.messages.create({
+      from: fromNumber,
+      to: normalizedTo,
+      body
+    });
+    return { ok: true, sid: message.sid };
+  } catch (err) {
+    console.error('❌ Twilio send failed:', err.message);
+    return { ok: false, reason: err.message };
+  }
+}
 
 // ========================
 // MONGODB SETUP (Atlas)
@@ -68,6 +105,63 @@ const patientSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now }
 });
 
+const doctorSchema = new mongoose.Schema({
+  name: String,
+  email: { type: String, sparse: true },
+  phone: { type: String, unique: true, sparse: true },
+  specialty: { type: String, default: 'General Medicine' },
+  qualification: String,
+  experienceYears: { type: Number, default: 5 },
+  consultationFee: { type: Number, default: 200 },
+  city: String,
+  languages: [String],
+  rating: { type: Number, default: 4.8 },
+  isOnline: { type: Boolean, default: true },
+  availableNow: { type: Boolean, default: true },
+  status: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'approved' },
+  profilePhoto: String,
+  createdAt: { type: Date, default: Date.now }
+});
+
+const doctorAvailabilitySchema = new mongoose.Schema({
+  doctorId: { type: mongoose.Schema.Types.ObjectId, ref: 'Doctor', required: true },
+  status: { type: String, enum: ['online', 'offline', 'busy'], default: 'online' },
+  availableFrom: String,
+  availableTo: String,
+  maxPatients: { type: Number, default: 5 },
+  active: { type: Boolean, default: true },
+  updatedAt: { type: Date, default: Date.now }
+});
+
+const consultationSchema = new mongoose.Schema({
+  patientId: { type: mongoose.Schema.Types.ObjectId, ref: 'Patient', required: true },
+  doctorId: { type: mongoose.Schema.Types.ObjectId, ref: 'Doctor', default: null },
+  consultationType: { type: String, enum: ['urgent', 'followup', 'subscription'], default: 'urgent' },
+  riskScore: { type: Number, default: 0 },
+  riskLevel: { type: String, enum: ['LOW', 'MODERATE', 'HIGH', 'CRITICAL'], default: 'HIGH' },
+  amount: { type: Number, default: 200 },
+  status: { type: String, enum: ['requested', 'paid', 'accepted', 'in_progress', 'completed', 'cancelled'], default: 'requested' },
+  paymentId: String,
+  paymentStatus: { type: String, enum: ['pending', 'paid', 'failed'], default: 'pending' },
+  requestReason: String,
+  doctorNotes: String,
+  followUpDate: Date,
+  startedAt: Date,
+  endedAt: Date,
+  createdAt: { type: Date, default: Date.now }
+});
+
+const monitoringNoteSchema = new mongoose.Schema({
+  patientId: { type: mongoose.Schema.Types.ObjectId, ref: 'Patient', required: true },
+  doctorId: { type: mongoose.Schema.Types.ObjectId, ref: 'Doctor', required: true },
+  consultationId: { type: mongoose.Schema.Types.ObjectId, ref: 'Consultation', required: true },
+  vitalsSummary: mongoose.Schema.Types.Mixed,
+  riskLevel: String,
+  noteText: String,
+  followUpDate: Date,
+  createdAt: { type: Date, default: Date.now }
+});
+
 const doseSchema = new mongoose.Schema({
   patientId: { type: mongoose.Schema.Types.ObjectId, ref: 'Patient' },
   medicineName: String,
@@ -108,6 +202,10 @@ const analysisSchema = new mongoose.Schema({
 });
 
 const Patient = mongoose.model('Patient', patientSchema);
+const Doctor = mongoose.model('Doctor', doctorSchema);
+const DoctorAvailability = mongoose.model('DoctorAvailability', doctorAvailabilitySchema);
+const Consultation = mongoose.model('Consultation', consultationSchema);
+const MonitoringNote = mongoose.model('MonitoringNote', monitoringNoteSchema);
 const Dose = mongoose.model('Dose', doseSchema);
 const VitalLog = mongoose.model('VitalLog', vitalLogSchema);
 const Analysis = mongoose.model('Analysis', analysisSchema);
@@ -186,6 +284,38 @@ const authMiddleware = (req, res, next) => {
   }
 };
 
+const doctorAuthMiddleware = async (req, res, next) => {
+  const authHeader = req.headers.authorization || '';
+  if (!authHeader.startsWith('Basic ')) {
+    return res.status(401).json({ message: 'Invalid doctor credentials' });
+  }
+
+  try {
+    const encoded = authHeader.slice(6);
+    const decoded = Buffer.from(encoded, 'base64').toString('utf8');
+    const [username, password] = decoded.split(':');
+    const expectedUser = process.env.DOCTOR_USERNAME || 'drsharma';
+    const expectedPass = process.env.DOCTOR_PASSWORD || 'biomexa2026';
+
+    if (username === expectedUser && password === expectedPass) {
+      const doctorProfile = await Doctor.findOne({
+        $or: [
+          { email: { $regex: new RegExp(username, 'i') } },
+          { name: { $regex: new RegExp(username, 'i') } },
+          { phone: { $regex: new RegExp(username, 'i') } }
+        ]
+      });
+
+      req.doctor = { username, doctorId: doctorProfile?._id || null, profile: doctorProfile || null };
+      return next();
+    }
+  } catch {
+    // fall through to invalid credentials
+  }
+
+  return res.status(401).json({ message: 'Invalid doctor credentials' });
+};
+
 // ========================
 // AUTH ROUTES
 // ========================
@@ -200,14 +330,10 @@ app.post('/api/auth/register', async (req, res) => {
     const patient = new Patient({ name, phone, email, password: hashed });
     await patient.save();
 
-    try {
-      await client.messages.create({
-        from: `whatsapp:${twilioPhone}`,
-        to: `whatsapp:${phone}`,
-        body: `Welcome to Biomexa, ${name}! 💊\nYour medicine reminder service is active. You will receive WhatsApp reminders for your scheduled doses.\nReply "YES" to confirm you took your medicine, or "NO" if you missed it.`
-      });
-    } catch (twilioErr) {
-      console.log('Twilio welcome message failed:', twilioErr.message);
+    const normalizedPhone = normalizePhoneNumber(phone);
+    const welcomeResult = await sendWhatsAppMessage(normalizedPhone, `Welcome to Biomexa, ${name}! 💊\nYour medicine reminder service is active. You will receive WhatsApp reminders for your scheduled doses.\nReply "YES" to confirm you took your medicine, or "NO" if you missed it.`);
+    if (!welcomeResult.ok) {
+      console.log('Twilio welcome message skipped:', welcomeResult.reason);
     }
 
     const token = jwt.sign({ id: patient._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
@@ -231,6 +357,311 @@ app.post('/api/auth/login', async (req, res) => {
     res.json({ message: 'Login successful', token, patient: { name: patient.name, phone: patient.phone, medicines: patient.medicines } });
   } catch (err) {
     console.error('Login error:', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+app.post('/api/doctors/onboard', async (req, res) => {
+  try {
+    const {
+      name,
+      email,
+      phone,
+      specialty,
+      qualification,
+      experienceYears,
+      consultationFee,
+      city,
+      languages,
+      rating,
+      isOnline,
+      availableNow
+    } = req.body;
+
+    if (!name || !phone) {
+      return res.status(400).json({ message: 'Doctor name and phone are required.' });
+    }
+
+    const doctor = await Doctor.findOneAndUpdate(
+      { phone },
+      {
+        name,
+        email,
+        phone,
+        specialty: specialty || 'General Medicine',
+        qualification: qualification || 'MD',
+        experienceYears: experienceYears || 5,
+        consultationFee: consultationFee || 200,
+        city: city || 'India',
+        languages: languages || ['English', 'Hindi'],
+        rating: rating || 4.8,
+        isOnline: isOnline !== undefined ? isOnline : true,
+        availableNow: availableNow !== undefined ? availableNow : true,
+        status: 'approved'
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+
+    await DoctorAvailability.findOneAndUpdate(
+      { doctorId: doctor._id },
+      {
+        doctorId: doctor._id,
+        status: doctor.availableNow ? 'online' : 'offline',
+        availableFrom: '09:00',
+        availableTo: '21:00',
+        maxPatients: 5,
+        active: true
+      },
+      { upsert: true, new: true }
+    );
+
+    res.status(201).json({ message: 'Doctor onboarded successfully', doctor });
+  } catch (err) {
+    console.error('Doctor onboarding error:', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+app.get('/api/doctors/online', async (req, res) => {
+  try {
+    const doctors = await Doctor.find({ status: 'approved', availableNow: true, isOnline: true }).sort({ rating: -1 });
+    res.json(doctors);
+  } catch (err) {
+    console.error('Doctor list error:', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+app.all(['/doctor/login', '/api/doctor/login'], doctorAuthMiddleware, async (req, res) => {
+  const doctor = req.doctor?.profile || await Doctor.findOne({ name: { $regex: new RegExp((req.doctor?.username || ''), 'i') } });
+  res.json({
+    message: 'Doctor authenticated',
+    doctor: {
+      username: req.doctor.username,
+      doctorId: doctor?._id || null,
+      specialty: doctor?.specialty || 'General Medicine',
+      consultationFee: doctor?.consultationFee || 200,
+      availableNow: doctor?.availableNow !== false
+    }
+  });
+});
+
+app.get(['/api/doctor/queue', '/doctor/queue'], doctorAuthMiddleware, async (req, res) => {
+  try {
+    const doctorId = req.doctor.doctorId;
+    const consultations = await Consultation.find({
+      doctorId: doctorId || { $exists: true },
+      status: { $in: ['requested', 'paid', 'accepted', 'in_progress'] }
+    }).sort({ createdAt: -1 });
+
+    const patientDetails = await Promise.all(consultations.map(async (consult) => {
+      const patient = await Patient.findById(consult.patientId).select('-password');
+      return {
+        ...consult.toObject(),
+        patient: patient ? { name: patient.name, phone: patient.phone, email: patient.email } : null
+      };
+    }));
+
+    res.json(patientDetails);
+  } catch (err) {
+    console.error('Doctor queue error:', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+app.post('/api/consultations/request', authMiddleware, async (req, res) => {
+  try {
+    const patientId = req.userId;
+    const { doctorId, riskScore, riskLevel, consultationType, requestReason } = req.body;
+
+    const doctor = doctorId ? await Doctor.findById(doctorId) : await Doctor.findOne({ availableNow: true, isOnline: true, status: 'approved' }).sort({ rating: -1 });
+
+    const consultation = new Consultation({
+      patientId,
+      doctorId: doctor?._id || null,
+      riskScore: riskScore || 0,
+      riskLevel: riskLevel || 'HIGH',
+      consultationType: consultationType || 'urgent',
+      amount: doctor?.consultationFee || 200,
+      requestReason: requestReason || 'High-risk patient needs urgent consultation.',
+      status: 'requested'
+    });
+
+    await consultation.save();
+
+    res.status(201).json({ message: 'Consultation requested successfully', consultation });
+  } catch (err) {
+    console.error('Consultation request error:', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+app.post('/api/consultations/:id/pay', authMiddleware, async (req, res) => {
+  try {
+    const consultation = await Consultation.findOne({ _id: req.params.id, patientId: req.userId });
+    if (!consultation) return res.status(404).json({ message: 'Consultation not found' });
+
+    consultation.status = 'paid';
+    consultation.paymentStatus = 'paid';
+    consultation.paymentId = req.body.paymentId || `manual_${Date.now()}`;
+    await consultation.save();
+
+    res.json({ message: 'Consultation payment received', consultation });
+  } catch (err) {
+    console.error('Consultation payment error:', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+app.post('/api/consultations/:id/accept', doctorAuthMiddleware, async (req, res) => {
+  try {
+    const consultation = await Consultation.findById(req.params.id);
+    if (!consultation) return res.status(404).json({ message: 'Consultation not found' });
+
+    consultation.doctorId = req.doctor.doctorId || consultation.doctorId;
+    consultation.status = 'accepted';
+    await consultation.save();
+
+    res.json({ message: 'Consultation accepted', consultation });
+  } catch (err) {
+    console.error('Accept consultation error:', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+app.post('/api/consultations/:id/start', doctorAuthMiddleware, async (req, res) => {
+  try {
+    const consultation = await Consultation.findById(req.params.id);
+    if (!consultation) return res.status(404).json({ message: 'Consultation not found' });
+
+    consultation.doctorId = req.doctor.doctorId || consultation.doctorId;
+    consultation.status = 'in_progress';
+    consultation.startedAt = consultation.startedAt || new Date();
+    await consultation.save();
+
+    res.json({ message: 'Consultation started', consultation });
+  } catch (err) {
+    console.error('Start consultation error:', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+app.post('/api/consultations/:id/complete', doctorAuthMiddleware, async (req, res) => {
+  try {
+    const consultation = await Consultation.findById(req.params.id);
+    if (!consultation) return res.status(404).json({ message: 'Consultation not found' });
+
+    consultation.doctorId = req.doctor.doctorId || consultation.doctorId;
+    consultation.status = 'completed';
+    consultation.endedAt = new Date();
+    await consultation.save();
+
+    res.json({ message: 'Consultation completed', consultation });
+  } catch (err) {
+    console.error('Complete consultation error:', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+app.get('/api/patient/consultations', authMiddleware, async (req, res) => {
+  try {
+    const consultations = await Consultation.find({ patientId: req.userId }).sort({ createdAt: -1 });
+    res.json(consultations);
+  } catch (err) {
+    console.error('Patient consultation list error:', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+app.post('/api/doctor/monitoring-note', doctorAuthMiddleware, async (req, res) => {
+  try {
+    const { consultationId, patientId, vitalsSummary, riskLevel, noteText, followUpDate } = req.body;
+    const note = new MonitoringNote({
+      patientId,
+      doctorId: req.doctor.doctorId,
+      consultationId,
+      vitalsSummary,
+      riskLevel,
+      noteText,
+      followUpDate
+    });
+
+    await note.save();
+    res.status(201).json({ message: 'Monitoring note saved', note });
+  } catch (err) {
+    console.error('Monitoring note error:', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+app.get(['/patients', '/api/patients'], doctorAuthMiddleware, async (req, res) => {
+  try {
+    if (mongoose.connection.readyState !== 1) {
+      return res.json([]);
+    }
+
+    const patients = await Patient.find({}).select('-password');
+
+    const summaries = await Promise.all(patients.map(async (patient) => {
+      const doses = await Dose.find({ patientId: patient._id }).sort({ scheduledDate: -1 });
+      const latestAnalysis = await Analysis.findOne({ patientId: patient._id }).sort({ date: -1 });
+      const taken = doses.filter(d => d.status === 'taken').length;
+      const missed = doses.filter(d => d.status === 'missed').length;
+      const pending = doses.filter(d => d.status === 'pending').length;
+      const total = doses.length || 1;
+      const adherenceScore = Math.round((taken / total) * 100);
+      const riskScore = Math.min(1, Math.max(0, ((missed + pending) / total) * 0.7 + (latestAnalysis && latestAnalysis.effectivenessScore < 60 ? 0.3 : 0)));
+      const aiPrediction = Math.min(1, Math.max(0, riskScore));
+      const aiRiskLabel = riskScore > 0.75 ? 'Critical' : riskScore > 0.5 ? 'High' : 'Low';
+      const nextDose = doses.find(d => d.status === 'pending' || d.status === 'snoozed')?.scheduledDate || null;
+
+      return {
+        name: patient.name,
+        phone: patient.phone,
+        medicine: patient.medicines?.find(m => m.active)?.name || patient.medicines?.[0]?.name || 'N/A',
+        adherence_score: adherenceScore,
+        risk_score: riskScore,
+        ai_prediction: aiPrediction,
+        ai_risk_label: aiRiskLabel,
+        missed_doses: missed,
+        next_dose: nextDose
+      };
+    }));
+
+    res.json(summaries);
+  } catch (err) {
+    console.error('Doctor patients error:', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+app.get(['/export/patients', '/api/export/patients'], doctorAuthMiddleware, async (req, res) => {
+  try {
+    if (mongoose.connection.readyState !== 1) {
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', 'attachment; filename="patients.csv"');
+      return res.send('Name,Phone,Medicine,Adherence,Risk,AI Risk,Missed,Next Dose\n');
+    }
+
+    const patients = await Patient.find({}).select('-password');
+    const rows = [['Name', 'Phone', 'Medicine', 'Adherence', 'Risk', 'AI Risk', 'Missed', 'Next Dose']];
+
+    for (const patient of patients) {
+      const doses = await Dose.find({ patientId: patient._id }).sort({ scheduledDate: -1 });
+      const taken = doses.filter(d => d.status === 'taken').length;
+      const missed = doses.filter(d => d.status === 'missed').length;
+      const total = doses.length || 1;
+      const adherenceScore = Math.round((taken / total) * 100);
+      const medicine = patient.medicines?.find(m => m.active)?.name || patient.medicines?.[0]?.name || 'N/A';
+      const nextDose = doses.find(d => d.status === 'pending' || d.status === 'snoozed')?.scheduledDate || '';
+      rows.push([patient.name, patient.phone, medicine, adherenceScore, '', '', missed, nextDose]);
+    }
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename="patients.csv"');
+    res.send(rows.map(row => row.join(',')).join('\n'));
+  } catch (err) {
+    console.error('Doctor export error:', err);
     res.status(500).json({ message: 'Server error' });
   }
 });
@@ -454,19 +885,15 @@ app.get('/api/analysis/history', authMiddleware, async (req, res) => {
 // ========================
 app.post('/webhook/whatsapp', async (req, res) => {
   const { From, Body, MessageSid } = req.body;
-  const phone = From.replace('whatsapp:', '');
-  const reply = Body.trim().toUpperCase();
+  const phone = normalizePhoneNumber(From);
+  const reply = (Body || '').trim().toUpperCase();
 
   console.log(`📩 WhatsApp reply from ${phone}: "${Body}"`);
 
   try {
     const patient = await Patient.findOne({ phone });
     if (!patient) {
-      await client.messages.create({
-        from: `whatsapp:${twilioPhone}`,
-        to: `whatsapp:${phone}`,
-        body: 'Sorry, we could not find your account. Please register at Biomexa first.'
-      });
+      await sendWhatsAppMessage(phone, 'Sorry, we could not find your account. Please register at Biomexa first.');
       return res.status(200).send('OK');
     }
 
@@ -476,11 +903,7 @@ app.post('/webhook/whatsapp', async (req, res) => {
     }).sort({ reminderSentAt: -1 });
 
     if (!pendingDose) {
-      await client.messages.create({
-        from: `whatsapp:${twilioPhone}`,
-        to: `whatsapp:${phone}`,
-        body: `Hi ${patient.name}, you have no pending doses right now. Your next reminder will come at the scheduled time. 💊`
-      });
+      await sendWhatsAppMessage(phone, `Hi ${patient.name}, you have no pending doses right now. Your next reminder will come at the scheduled time. 💊`);
       return res.status(200).send('OK');
     }
 
@@ -490,11 +913,7 @@ app.post('/webhook/whatsapp', async (req, res) => {
       pendingDose.confirmedVia = 'whatsapp';
       await pendingDose.save();
 
-      await client.messages.create({
-        from: `whatsapp:${twilioPhone}`,
-        to: `whatsapp:${phone}`,
-        body: `✅ Great job, ${patient.name}! Your dose of *${pendingDose.medicineName}* (${pendingDose.dosage}) has been recorded at ${new Date().toLocaleTimeString()}. Stay healthy! 💪`
-      });
+      await sendWhatsAppMessage(phone, `✅ Great job, ${patient.name}! Your dose of *${pendingDose.medicineName}* (${pendingDose.dosage}) has been recorded at ${new Date().toLocaleTimeString()}. Stay healthy! 💪`);
       console.log(`✅ Dose confirmed via WhatsApp for ${patient.name}`);
     } 
     else if (reply === 'NO' || reply === 'N' || reply.includes('MISSED')) {
@@ -503,22 +922,14 @@ app.post('/webhook/whatsapp', async (req, res) => {
       pendingDose.confirmedVia = 'whatsapp';
       await pendingDose.save();
 
-      await client.messages.create({
-        from: `whatsapp:${twilioPhone}`,
-        to: `whatsapp:${phone}`,
-        body: `⚠️ Noted, ${patient.name}. Your missed dose of *${pendingDose.medicineName}* has been recorded. Please take your next dose on time. If you need help, consult your doctor.`
-      });
+      await sendWhatsAppMessage(phone, `⚠️ Noted, ${patient.name}. Your missed dose of *${pendingDose.medicineName}* has been recorded. Please take your next dose on time. If you need help, consult your doctor.`);
       console.log(`⚠️ Dose marked missed via WhatsApp for ${patient.name}`);
     }
     else {
-      await client.messages.create({
-        from: `whatsapp:${twilioPhone}`,
-        to: `whatsapp:${phone}`,
-        body: `Hi ${patient.name}, please reply with:
+      await sendWhatsAppMessage(phone, `Hi ${patient.name}, please reply with:
 ✅ *YES* - if you took the medicine
 ❌ *NO* - if you missed it
-Your last reminder was for *${pendingDose.medicineName}* at ${pendingDose.scheduledTime}.`
-      });
+Your last reminder was for *${pendingDose.medicineName}* at ${pendingDose.scheduledTime}.`);
     }
 
     res.status(200).send('OK');
@@ -571,17 +982,16 @@ cron.schedule('* * * * *', async () => {
         });
 
         try {
-          const msg = await client.messages.create({
-            from: `whatsapp:${twilioPhone}`,
-            to: `whatsapp:${patient.phone}`,
-            body: `⏰ *Medicine Reminder*\n\nHi ${patient.name}, it's time for your medicine!\n\n💊 *${med.name}*\n📋 Dosage: ${med.dosage}\n📝 ${med.foodNote || 'Take as directed'}\n\nReply *YES* if you took it, or *NO* if you missed it.`
-          });
+          const msg = await sendWhatsAppMessage(patient.phone, `⏰ *Medicine Reminder*\n\nHi ${patient.name}, it's time for your medicine!\n\n💊 *${med.name}*\n📋 Dosage: ${med.dosage}\n📝 ${med.foodNote || 'Take as directed'}\n\nReply *YES* if you took it, or *NO* if you missed it.`);
 
-          dose.reminderSentAt = new Date();
-          dose.reminderMessageSid = msg.sid;
-          await dose.save();
-
-          console.log(`✅ Reminder sent to ${patient.name} for ${med.name} at ${currentTime}`);
+          if (msg.ok) {
+            dose.reminderSentAt = new Date();
+            dose.reminderMessageSid = msg.sid;
+            await dose.save();
+            console.log(`✅ Reminder sent to ${patient.name} for ${med.name} at ${currentTime}`);
+          } else {
+            console.error(`❌ Twilio error for ${patient.phone}:`, msg.reason);
+          }
         } catch (twilioErr) {
           console.error(`❌ Twilio error for ${patient.phone}:`, twilioErr.message);
         }
