@@ -1066,4 +1066,114 @@ app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`📱 WhatsApp webhook: http://localhost:${PORT}/webhook/whatsapp`);
   console.log(`🧠 AI Engine: http://localhost:5001`);
+});// ========================
+// DOCTOR ADMIN ROUTES
+// ========================
+
+// Get all doctors (for admin panel)
+app.get('/api/doctors/all', doctorAuthMiddleware, async (req, res) => {
+  try {
+    const doctors = await Doctor.find({}).sort({ createdAt: -1 });
+    res.json(doctors);
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Update doctor approval status
+app.put('/api/doctors/:id/status', doctorAuthMiddleware, async (req, res) => {
+  try {
+    const { status } = req.body;
+    const doctor = await Doctor.findByIdAndUpdate(
+      req.params.id,
+      { status, availableNow: status === 'approved', isOnline: status === 'approved' },
+      { new: true }
+    );
+    if (status === 'approved') {
+      await DoctorAvailability.findOneAndUpdate(
+        { doctorId: doctor._id },
+        { doctorId: doctor._id, status: 'online', availableFrom: '09:00', availableTo: '21:00', active: true },
+        { upsert: true }
+      );
+    }
+    res.json({ message: 'Doctor status updated', doctor });
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Toggle doctor online/availability
+app.put('/api/doctors/:id/online', doctorAuthMiddleware, async (req, res) => {
+  try {
+    const { isOnline, availableNow } = req.body;
+    const doctor = await Doctor.findByIdAndUpdate(
+      req.params.id,
+      { isOnline, availableNow: availableNow !== undefined ? availableNow : isOnline },
+      { new: true }
+    );
+    await DoctorAvailability.findOneAndUpdate(
+      { doctorId: doctor._id },
+      { status: isOnline ? 'online' : 'offline', updatedAt: new Date() },
+      { upsert: true }
+    );
+    res.json({ message: 'Availability updated', doctor });
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Doctor views patient vitals
+app.get('/api/doctor/patients/:patientId/vitals', doctorAuthMiddleware, async (req, res) => {
+  try {
+    const vitals = await VitalLog.find({ patientId: req.params.patientId })
+      .sort({ date: -1 }).limit(30);
+    res.json(vitals);
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Doctor views patient doses
+app.get('/api/doctor/patients/:patientId/doses', doctorAuthMiddleware, async (req, res) => {
+  try {
+    const doses = await Dose.find({ patientId: req.params.patientId })
+      .sort({ scheduledDate: -1 }).limit(50);
+    res.json(doses);
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Doctor views patient AI analysis
+app.get('/api/doctor/patients/:patientId/analysis', doctorAuthMiddleware, async (req, res) => {
+  try {
+    const analysis = await Analysis.find({ patientId: req.params.patientId })
+      .sort({ date: -1 }).limit(10);
+    res.json(analysis);
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Get patient's latest stats for doctor view
+app.get('/api/doctor/patients/:patientId/stats', doctorAuthMiddleware, async (req, res) => {
+  try {
+    const patient = await Patient.findById(req.params.patientId).select('-password');
+    const doses = await Dose.find({ patientId: req.params.patientId });
+    const taken = doses.filter(d => d.status === 'taken').length;
+    const total = doses.length || 1;
+    const adherence = Math.round((taken / total) * 100);
+    
+    const latestAnalysis = await Analysis.findOne({ patientId: req.params.patientId })
+      .sort({ date: -1 });
+    
+    res.json({
+      patient,
+      adherenceRate: adherence,
+      totalDoses: doses.length,
+      latestAnalysis: latestAnalysis || null
+    });
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
 });
