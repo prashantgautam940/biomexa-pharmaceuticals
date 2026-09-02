@@ -135,6 +135,7 @@
       margin-top: 20px;
     }
   </style>
+<base target="_blank">
 </head>
 <body>
   <div class="container">
@@ -187,12 +188,14 @@
   </div>
 
   <script>
+    const API_URL = 'https://biomexa-api-f9f6.onrender.com';
+
     document.getElementById('loginForm').addEventListener('submit', async (e) => {
       e.preventDefault();
       const btn = document.getElementById('submitBtn');
       const errorBox = document.getElementById('errorBox');
       const errorText = document.getElementById('errorText');
-      
+
       btn.disabled = true;
       btn.textContent = 'Signing in...';
       errorBox.classList.remove('show');
@@ -202,19 +205,19 @@
       const fullPhone = phone.startsWith('+') ? phone : '+91' + phone;
 
       try {
-        const res = await fetch('https://biomexa-api.onrender.com/api/auth/login', {
+        const res = await fetch(`${API_URL}/api/auth/login`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ phone: fullPhone, password })
         });
         const data = await res.json();
-        
+
         if (!res.ok) throw new Error(data.message || 'Login failed');
-        
+
         localStorage.setItem('token', data.token);
         localStorage.setItem('user', JSON.stringify(data.user));
-        window.location.href = 'patient.html';
-        
+        window.location.href = 'dashboard.html';
+
       } catch (err) {
         errorText.textContent = err.message;
         errorBox.classList.add('show');
