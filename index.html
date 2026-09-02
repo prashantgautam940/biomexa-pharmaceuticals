@@ -13,6 +13,44 @@
     <link rel="icon" type="image/svg+xml" href="logo.svg">
 <base target="_blank">
 <base target="_blank">
+<style>
+    .nav-dropdown { position: relative; }
+    .nav-dropdown-toggle { display: inline-flex; align-items: center; gap: 0.25rem; }
+    .nav-dropdown-menu {
+        list-style: none;
+        margin: 0;
+        padding: 0.5rem;
+        position: absolute;
+        top: 100%;
+        left: 0;
+        min-width: 180px;
+        background: #0a2e33;
+        border: 1px solid #374151;
+        border-radius: 10px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+        opacity: 0;
+        visibility: hidden;
+        transform: translateY(8px);
+        transition: all 0.2s ease;
+        z-index: 100;
+    }
+    .nav-dropdown:hover .nav-dropdown-menu,
+    .nav-dropdown:focus-within .nav-dropdown-menu {
+        opacity: 1;
+        visibility: visible;
+        transform: translateY(0);
+    }
+    .nav-dropdown-link {
+        display: block;
+        padding: 0.6rem 0.75rem;
+        color: #d1d5db;
+        text-decoration: none;
+        border-radius: 6px;
+        font-size: 0.9rem;
+        white-space: nowrap;
+    }
+    .nav-dropdown-link:hover { background: rgba(20,160,133,0.15); color: #14a085; }
+</style>
 </head>
 <body>
     <!-- Navigation -->
@@ -30,6 +68,14 @@
             <li><a href="ai-assistant.html" class="nav-link">AI Assistant</a></li>
             <li><a href="#ecosystem" class="nav-link">Ecosystem</a></li>
             <li><a href="#dashboard" class="nav-link">Dashboard</a></li>
+            <li class="nav-dropdown">
+                <a href="#portals" class="nav-link nav-dropdown-toggle">Portals ▾</a>
+                <ul class="nav-dropdown-menu">
+                    <li><a href="doctor.html" class="nav-dropdown-link">Doctor Login</a></li>
+                    <li><a href="patient.html" class="nav-dropdown-link">Patient Portal</a></li>
+                    <li><a href="admin.html" class="nav-dropdown-link">Admin</a></li>
+                </ul>
+            </li>
             <li><a href="#contact" class="nav-link">Contact</a></li>
             <li><a href="login.html" class="nav-link">Login</a></li>
         </ul>
