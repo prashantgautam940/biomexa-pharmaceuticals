@@ -212,6 +212,8 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
   </div>
 
   <script>
+    const API_URL = 'https://biomexa-api-f9f6.onrender.com';
+
     document.getElementById('signupForm').addEventListener('submit', async (e) => {
       e.preventDefault();
       const btn = document.getElementById('submitBtn');
@@ -230,7 +232,7 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
       const fullPhone = phone.startsWith('+') ? phone : '+91' + phone;
 
       try {
-        const res = await fetch('https://biomexa-api.onrender.com/api/auth/register', {
+        const res = await fetch(`${API_URL}/api/auth/register`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ name, phone: fullPhone, email, password })
