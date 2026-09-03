@@ -17,13 +17,27 @@ body {
   justify-content: space-between;
   align-items: center;
   padding: 16px 24px;
-  background: rgba(15, 23, 42, 0.9);
+  background: rgba(15, 23, 42, 0.95);
   border-bottom: 1px solid #334155;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  backdrop-filter: blur(10px);
 }
 .logo { color: #14b8a6; font-size: 20px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
-.nav-links { display: flex; gap: 20px; }
+.nav-links { display: flex; gap: 20px; align-items: center; }
 .nav-links a { color: #94a3b8; text-decoration: none; font-size: 14px; cursor: pointer; }
 .nav-links a:hover { color: #14b8a6; }
+.logout-btn {
+  background: transparent;
+  border: 1px solid #334155;
+  color: #94a3b8;
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.logout-btn:hover { border-color: #ef4444; color: #ef4444; }
 .container { max-width: 900px; margin: 0 auto; padding: 40px 24px; }
 .card {
   background: #1e293b;
@@ -64,7 +78,9 @@ body {
   background: #0f172a;
   border-radius: 10px;
   margin-bottom: 8px;
+  transition: all 0.2s;
 }
+.dose-item:hover { background: #1e293b; }
 .dose-item.pending { border-left: 3px solid #f59e0b; }
 .dose-item.taken { border-left: 3px solid #22c55e; }
 .dose-item.missed { border-left: 3px solid #ef4444; }
@@ -80,9 +96,12 @@ body {
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
+  transition: all 0.2s;
 }
-.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn:hover { opacity: 0.9; transform: translateY(-1px); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
 .btn-confirm { background: #22c55e; }
+.btn-confirm:hover { background: #16a34a; }
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .form-group { margin-bottom: 16px; }
 .form-group.full { grid-column: 1 / -1; }
@@ -123,6 +142,33 @@ input[type="time"] { color-scheme: dark; }
   font-size: 14px;
 }
 .hidden { display: none; }
+.welcome-bar {
+  background: linear-gradient(135deg, rgba(13, 148, 136, 0.15), rgba(20, 184, 166, 0.1));
+  border: 1px solid rgba(20, 184, 166, 0.2);
+  border-radius: 12px;
+  padding: 16px 20px;
+  margin-bottom: 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.welcome-bar h2 { color: #f1f5f9; font-size: 18px; }
+.welcome-bar p { color: #94a3b8; font-size: 13px; margin-top: 4px; }
+.whatsapp-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(16, 185, 129, 0.1);
+  color: #34d399;
+  padding: 4px 12px;
+  border-radius: 50px;
+  font-size: 12px;
+}
+@media (max-width: 640px) {
+  .grid-2 { grid-template-columns: 1fr; }
+  .form-grid { grid-template-columns: 1fr; }
+  .welcome-bar { flex-direction: column; gap: 10px; text-align: center; }
+}
 </style>
 <base target="_blank">
 </head>
@@ -131,11 +177,20 @@ input[type="time"] { color-scheme: dark; }
     <div class="logo">⚕️ Biomexa</div>
     <div class="nav-links">
       <a href="index.html">Home</a>
-      <a onclick="logout()">Logout</a>
+      <a href="products/">Products</a>
+      <button class="logout-btn" onclick="logout()">Logout</button>
     </div>
   </nav>
 
   <div class="container">
+    <div class="welcome-bar">
+      <div>
+        <h2 id="welcomeName">Welcome!</h2>
+        <p>Your personal medication adherence dashboard</p>
+      </div>
+      <div class="whatsapp-status">💬 WhatsApp Active</div>
+    </div>
+
     <!-- Stats -->
     <div class="card">
       <div class="card-header">
@@ -158,7 +213,7 @@ input[type="time"] { color-scheme: dark; }
     <div class="card">
       <div class="card-header">
         <span class="card-title">💊 Today's Doses</span>
-        <span style="color:#64748b;font-size:12px;">WhatsApp reminders sent automatically</span>
+        <span style="color:#64748b;font-size:12px;">Auto WhatsApp reminders</span>
       </div>
       <div id="dosesList">
         <div class="empty-state">Loading doses...</div>
@@ -204,14 +259,17 @@ input[type="time"] { color-scheme: dark; }
   </div>
 
   <script>
-    const API_URL = 'https://biomexa-api-f9f6.onrender.com';
+    const API_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+      ? 'http://localhost:3000'
+      : 'https://biomexa-api-f9f6.onrender.com';
 
     const token = localStorage.getItem('token');
     const user = JSON.parse(localStorage.getItem('user') || '{}');
 
     if (!token) {
-      alert('Please login first');
       window.location.href = 'login.html';
+    } else if (user.name) {
+      document.getElementById('welcomeName').textContent = `Welcome, ${user.name}!`;
     }
 
     function logout() {
@@ -232,6 +290,10 @@ input[type="time"] { color-scheme: dark; }
         const res = await fetch(`${API_URL}/api/doses/today`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
+        if (res.status === 401) {
+          logout();
+          return;
+        }
         const doses = await res.json();
         const list = document.getElementById('dosesList');
 
@@ -275,10 +337,34 @@ input[type="time"] { color-scheme: dark; }
         const res = await fetch(`${API_URL}/api/patient/profile`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
+        if (res.status === 401) {
+          logout();
+          return;
+        }
         const profile = await res.json();
         document.getElementById('activeMedicines').textContent = profile.medicines?.length || 0;
-        document.getElementById('riskBadge').textContent = 'All Good';
-        document.getElementById('riskBadge').className = 'status-badge ok';
+
+        // Calculate adherence from doses
+        const today = new Date().toISOString().split('T')[0];
+        const dosesRes = await fetch(`${API_URL}/api/doses/today`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const doses = await dosesRes.json();
+        const total = doses.length;
+        const taken = doses.filter(d => d.status === 'taken').length;
+        const rate = total > 0 ? Math.round((taken / total) * 100) : 0;
+        document.getElementById('adherenceRate').textContent = rate + '%';
+
+        if (rate >= 80) {
+          document.getElementById('riskBadge').textContent = 'All Good';
+          document.getElementById('riskBadge').className = 'status-badge ok';
+        } else if (rate >= 50) {
+          document.getElementById('riskBadge').textContent = 'Moderate';
+          document.getElementById('riskBadge').className = 'status-badge';
+        } else {
+          document.getElementById('riskBadge').textContent = 'At Risk';
+          document.getElementById('riskBadge').className = 'status-badge';
+        }
       } catch (e) {}
     }
 
