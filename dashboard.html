@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard | Biomexa</title>
+<meta http-equiv="refresh" content="0; url=patient.html">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  min-height: 100vh;
+  background: #0f172a;
+  font-family: system-ui, -apple-system, sans-serif;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #f1f5f9;
+  flex-direction: column;
+  gap: 16px;
+}
+.spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid #334155;
+  border-top-color: #14b8a6;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+p { color: #94a3b8; font-size: 14px; }
+a { color: #14b8a6; text-decoration: none; }
+a:hover { text-decoration: underline; }
+</style>
+<base target="_blank">
+</head>
+<body>
+  <div class="spinner"></div>
+  <p>Redirecting to your dashboard...</p>
+  <p>If not redirected, <a href="patient.html">click here</a></p>
+
+  <script>
+    // Also handle via JS for instant redirect
+    window.location.replace('patient.html');
+  </script>
+</body>
+</html>
