@@ -93,6 +93,7 @@ label .required { color: #f87171; }
   align-items: center;
   gap: 6px;
   font-size: 14px;
+  white-space: nowrap;
 }
 input {
   flex: 1;
@@ -118,9 +119,10 @@ button {
   font-weight: 600;
   cursor: pointer;
   margin-top: 4px;
+  transition: all 0.2s;
 }
-button:hover { opacity: 0.9; }
-button:disabled { opacity: 0.6; cursor: not-allowed; }
+button:hover { opacity: 0.9; transform: translateY(-1px); }
+button:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
 .divider {
   display: flex;
   align-items: center;
@@ -139,11 +141,25 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
   text-decoration: none;
   font-weight: 500;
 }
+.footer-text a:hover { text-decoration: underline; }
 .disclaimer {
   color: #64748b;
   text-align: center;
   font-size: 12px;
   margin-top: 20px;
+}
+.whatsapp-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.2);
+  color: #34d399;
+  padding: 6px 12px;
+  border-radius: 50px;
+  font-size: 12px;
+  margin-bottom: 20px;
+  justify-content: center;
 }
 </style>
 <base target="_blank">
@@ -154,6 +170,8 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
       <h1>⚕️ Biomexa</h1>
     </div>
     <p class="subtitle">Create your account for medicine reminders</p>
+
+    <div class="whatsapp-badge">💬 Free WhatsApp reminders enabled</div>
 
     <div class="features">
       <div class="feature"><span>💬</span> WhatsApp Alerts</div>
@@ -207,12 +225,19 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
     </p>
 
     <p class="disclaimer">
-      By signing up, you agree to receive medication reminders via WhatsApp/SMS
+      By signing up, you agree to receive medication reminders via WhatsApp
     </p>
   </div>
 
   <script>
-    const API_URL = 'https://biomexa-api-f9f6.onrender.com';
+    const API_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+      ? 'http://localhost:3000'
+      : 'https://biomexa-api-f9f6.onrender.com';
+
+    // Redirect if already logged in
+    if (localStorage.getItem('token')) {
+      window.location.href = 'patient.html';
+    }
 
     document.getElementById('signupForm').addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -225,9 +250,9 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
       errorBox.classList.remove('show');
       successBox.classList.remove('show');
 
-      const name = document.getElementById('name').value;
-      const phone = document.getElementById('phone').value;
-      const email = document.getElementById('email').value;
+      const name = document.getElementById('name').value.trim();
+      const phone = document.getElementById('phone').value.trim();
+      const email = document.getElementById('email').value.trim();
       const password = document.getElementById('password').value;
       const fullPhone = phone.startsWith('+') ? phone : '+91' + phone;
 
@@ -248,8 +273,8 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
         localStorage.setItem('user', JSON.stringify(data.patient));
 
         setTimeout(() => {
-          window.location.href = 'dashboard.html';
-        }, 2000);
+          window.location.href = 'patient.html';
+        }, 2500);
 
       } catch (err) {
         errorBox.classList.add('show');
