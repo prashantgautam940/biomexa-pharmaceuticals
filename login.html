@@ -63,6 +63,17 @@
       display: none;
     }
     .error-box.show { display: flex; align-items: center; gap: 8px; }
+    .success-box {
+      background: rgba(16, 185, 129, 0.1);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      color: #34d399;
+      padding: 12px 16px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      font-size: 14px;
+      display: none;
+    }
+    .success-box.show { display: flex; align-items: center; gap: 8px; }
     .form-group { margin-bottom: 20px; }
     label {
       color: #cbd5e1;
@@ -82,6 +93,7 @@
       align-items: center;
       gap: 6px;
       font-size: 14px;
+      white-space: nowrap;
     }
     input {
       flex: 1;
@@ -107,9 +119,10 @@
       font-weight: 600;
       cursor: pointer;
       margin-top: 4px;
+      transition: all 0.2s;
     }
-    button:hover { opacity: 0.9; }
-    button:disabled { opacity: 0.6; cursor: not-allowed; }
+    button:hover { opacity: 0.9; transform: translateY(-1px); }
+    button:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
     .divider {
       display: flex;
       align-items: center;
@@ -128,11 +141,36 @@
       text-decoration: none;
       font-weight: 500;
     }
+    .footer-text a:hover { text-decoration: underline; }
+    .forgot-link {
+      text-align: right;
+      margin-top: -12px;
+      margin-bottom: 16px;
+    }
+    .forgot-link a {
+      color: #14b8a6;
+      font-size: 13px;
+      text-decoration: none;
+    }
+    .forgot-link a:hover { text-decoration: underline; }
     .disclaimer {
       color: #64748b;
       text-align: center;
       font-size: 12px;
       margin-top: 20px;
+    }
+    .whatsapp-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(16, 185, 129, 0.1);
+      border: 1px solid rgba(16, 185, 129, 0.2);
+      color: #34d399;
+      padding: 6px 12px;
+      border-radius: 50px;
+      font-size: 12px;
+      margin-bottom: 20px;
+      justify-content: center;
     }
   </style>
 <base target="_blank">
@@ -144,6 +182,8 @@
     </div>
     <p class="subtitle">Sign in to manage your dose reminders</p>
 
+    <div class="whatsapp-badge">💬 Free WhatsApp reminders enabled</div>
+
     <div class="features">
       <div class="feature"><span>💬</span> WhatsApp Alerts</div>
       <div class="feature"><span>🔔</span> Dose Reminders</div>
@@ -154,19 +194,26 @@
     <div class="error-box" id="errorBox">
       <span>⚠️</span> <span id="errorText"></span>
     </div>
+    <div class="success-box" id="successBox">
+      <span>✅</span> <span id="successText"></span>
+    </div>
 
     <form id="loginForm">
       <div class="form-group">
         <label>Phone Number <span class="required">*</span></label>
         <div class="phone-row">
           <div class="country-code">🇮🇳 +91</div>
-          <input type="tel" id="phone" placeholder="9140339181" required>
+          <input type="tel" id="phone" placeholder="9876543210" required>
         </div>
       </div>
 
       <div class="form-group">
         <label>Password <span class="required">*</span></label>
         <input type="password" id="password" placeholder="••••••" required>
+      </div>
+
+      <div class="forgot-link">
+        <a href="forgot-password.html">Forgot Password?</a>
       </div>
 
       <button type="submit" id="submitBtn">Sign In</button>
@@ -183,24 +230,33 @@
     </p>
 
     <p class="disclaimer">
-      By signing in, you agree to receive medication reminders via WhatsApp/SMS
+      By signing in, you agree to receive medication reminders via WhatsApp
     </p>
   </div>
 
   <script>
-    const API_URL = 'https://biomexa-api-f9f6.onrender.com';
+    const API_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+      ? 'http://localhost:3000'
+      : 'https://biomexa-api-f9f6.onrender.com';
+
+    // Redirect if already logged in
+    if (localStorage.getItem('token')) {
+      window.location.href = 'patient.html';
+    }
 
     document.getElementById('loginForm').addEventListener('submit', async (e) => {
       e.preventDefault();
       const btn = document.getElementById('submitBtn');
       const errorBox = document.getElementById('errorBox');
+      const successBox = document.getElementById('successBox');
       const errorText = document.getElementById('errorText');
 
       btn.disabled = true;
       btn.textContent = 'Signing in...';
       errorBox.classList.remove('show');
+      successBox.classList.remove('show');
 
-      const phone = document.getElementById('phone').value;
+      const phone = document.getElementById('phone').value.trim();
       const password = document.getElementById('password').value;
       const fullPhone = phone.startsWith('+') ? phone : '+91' + phone;
 
@@ -216,7 +272,13 @@
 
         localStorage.setItem('token', data.token);
         localStorage.setItem('user', JSON.stringify(data.user));
-        window.location.href = 'dashboard.html';
+
+        successBox.classList.add('show');
+        document.getElementById('successText').textContent = 'Login successful! Redirecting...';
+
+        setTimeout(() => {
+          window.location.href = 'patient.html';
+        }, 1200);
 
       } catch (err) {
         errorText.textContent = err.message;
