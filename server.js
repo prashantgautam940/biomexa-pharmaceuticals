@@ -2,24 +2,89 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const cron = require('node-cron');
-const twilio = require('twilio');
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const https = require('https');
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-// ========== TWILIO SETUP ==========
-const accountSid = process.env.TWILIO_SID;
-const authToken = process.env.TWILIO_TOKEN;
-const twilioPhone = process.env.TWILIO_PHONE; // e.g. 17372212163
-const client = twilio(accountSid, authToken);
+// ========== CONFIG ==========
+const JWT_SECRET = process.env.JWT_SECRET || 'biomexasecret';
+const OTP_EXPIRY_MINUTES = 15;
+
+// ========== TWILIO SETUP (Optional - paid fallback) ==========
+let twilioClient = null;
+let twilioPhone = null;
+try {
+  const twilio = require('twilio');
+  if (process.env.TWILIO_SID && process.env.TWILIO_TOKEN && process.env.TWILIO_PHONE) {
+    twilioClient = twilio(process.env.TWILIO_SID, process.env.TWILIO_TOKEN);
+    twilioPhone = process.env.TWILIO_PHONE;
+    console.log('✅ Twilio configured (paid fallback)');
+  }
+} catch (e) {
+  console.log('ℹ️ Twilio not configured - using free CallMeBot API');
+}
+
+// ========== CALLMEBOT FREE WHATSAPP API ==========
+// Users must first message "I allow callmebot to send me messages" to +34 644 52 53 53
+// Then get their API key from https://www.callmebot.com/blog/free-api-whatsapp-messages/
+const CALLMEBOT_API_KEY = process.env.CALLMEBOT_API_KEY || null;
+
+async function sendWhatsAppFree(phone, message) {
+  // Normalize phone: remove + and any non-digits for CallMeBot
+  const cleanPhone = phone.replace(/\D/g, '');
+
+  // Try CallMeBot first (completely free)
+  if (CALLMEBOT_API_KEY) {
+    try {
+      const url = `https://api.callmebot.com/whatsapp.php?phone=${cleanPhone}&text=${encodeURIComponent(message)}&apikey=${CALLMEBOT_API_KEY}`;
+      await new Promise((resolve, reject) => {
+        https.get(url, (res) => {
+          let data = '';
+          res.on('data', chunk => data += chunk);
+          res.on('end', () => {
+            if (res.statusCode === 200) {
+              console.log('✅ CallMeBot WhatsApp sent to', phone);
+              resolve(data);
+            } else {
+              reject(new Error(`CallMeBot status ${res.statusCode}: ${data}`));
+            }
+          });
+        }).on('error', reject);
+      });
+      return { success: true, provider: 'callmebot' };
+    } catch (err) {
+      console.log('⚠️ CallMeBot failed:', err.message);
+    }
+  }
+
+  // Fallback to Twilio if configured
+  if (twilioClient && twilioPhone) {
+    try {
+      await twilioClient.messages.create({
+        from: `whatsapp:+${twilioPhone}`,
+        to: `whatsapp:${phone}`,
+        body: message
+      });
+      console.log('✅ Twilio WhatsApp sent to', phone);
+      return { success: true, provider: 'twilio' };
+    } catch (err) {
+      console.log('⚠️ Twilio failed:', err.message);
+    }
+  }
+
+  console.log('❌ No WhatsApp provider available. Message NOT sent to', phone);
+  console.log('   Message was:', message.substring(0, 80) + '...');
+  return { success: false, provider: 'none' };
+}
 
 // ========== MONGODB SETUP ==========
-mongoose.connect(process.env.MONGO_URI)
-  .then(() => console.log('✅ MongoDB connected to Atlas'))
+mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/biomexa')
+  .then(() => console.log('✅ MongoDB connected'))
   .catch(err => console.log('❌ MongoDB connection error:', err.message));
 
 // ========== SCHEMAS ==========
@@ -38,7 +103,7 @@ const patientSchema = new mongoose.Schema({
   medicines: [{
     name: String,
     dosage: String,
-    time: String,        // HH:MM (24-hour)
+    time: String,
     frequency: String,
     foodNote: String,
     active: { type: Boolean, default: true }
@@ -50,29 +115,48 @@ const doseSchema = new mongoose.Schema({
   patientPhone: String,
   medicineName: String,
   dosage: String,
-  scheduledTime: String,   // HH:MM (24-hour)
-  scheduledDate: String,   // YYYY-MM-DD
-  status: { type: String, default: 'pending' }, // pending, taken, missed
+  scheduledTime: String,
+  scheduledDate: String,
+  status: { type: String, default: 'pending' },
   foodNote: String,
   sentReminder: { type: Boolean, default: false },
   createdAt: { type: Date, default: Date.now }
 });
 
+const otpSchema = new mongoose.Schema({
+  phone: { type: String, required: true },
+  otp: { type: String, required: true },
+  resetToken: { type: String, required: true },
+  expiresAt: { type: Date, required: true },
+  used: { type: Boolean, default: false },
+  createdAt: { type: Date, default: Date.now }
+});
+
 const Patient = mongoose.model('Patient', patientSchema);
 const Dose = mongoose.model('Dose', doseSchema);
+const Otp = mongoose.model('Otp', otpSchema);
 
 // ========== AUTH MIDDLEWARE ==========
 const auth = (req, res, next) => {
   const token = req.headers.authorization?.split(' ')[1];
   if (!token) return res.status(401).json({ message: 'No token provided' });
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'biomexasecret');
+    const decoded = jwt.verify(token, JWT_SECRET);
     req.user = decoded;
     next();
   } catch {
     res.status(401).json({ message: 'Invalid token' });
   }
 };
+
+// ========== UTILITY FUNCTIONS ==========
+function generateOTP() {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+}
+
+function generateResetToken() {
+  return jwt.sign({ random: Math.random() }, JWT_SECRET, { expiresIn: '1h' });
+}
 
 // ========== AUTH ROUTES ==========
 
@@ -87,19 +171,12 @@ app.post('/api/auth/register', async (req, res) => {
     const patient = new Patient({ name, phone, email, password: hashed });
     await patient.save();
 
-    // Send welcome WhatsApp
-    try {
-      await client.messages.create({
-        from: `whatsapp:+${twilioPhone}`,
-        to: `whatsapp:${phone}`,
-        body: `🎉 Welcome to Biomexa, ${name}!\n\nYour WhatsApp dose reminders are now active. We'll notify you when it's time to take your medicine.\n\nReply CONFIRM after each dose to track your adherence.`
-      });
-      console.log('✅ Welcome WhatsApp sent to', phone);
-    } catch (twilioErr) {
-      console.log('⚠️ Twilio welcome error:', twilioErr.message);
-    }
+    const token = jwt.sign({ id: patient._id, phone }, JWT_SECRET);
 
-    const token = jwt.sign({ id: patient._id, phone }, process.env.JWT_SECRET || 'biomexasecret');
+    // Send welcome WhatsApp
+    const welcomeMsg = `🎉 Welcome to Biomexa, ${name}!\n\nYour WhatsApp dose reminders are now active. We'll notify you when it's time to take your medicine.\n\nReply CONFIRM after each dose to track your adherence.\n\n- Biomexa Team`;
+    sendWhatsAppFree(phone, welcomeMsg);
+
     res.json({ message: 'Registered successfully', token, patient: { name, phone } });
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -116,7 +193,28 @@ app.post('/api/auth/login', async (req, res) => {
     const match = await bcrypt.compare(password, patient.password);
     if (!match) return res.status(400).json({ message: 'Invalid password' });
 
-    const token = jwt.sign({ id: patient._id, phone }, process.env.JWT_SECRET || 'biomexasecret');
+    const token = jwt.sign({ id: patient._id, phone }, JWT_SECRET);
+
+    // Get today's doses for the welcome message
+    const today = new Date().toISOString().split('T')[0];
+    const todayDoses = await Dose.find({
+      patientPhone: phone,
+      scheduledDate: today,
+      status: 'pending'
+    }).sort({ scheduledTime: 1 });
+
+    let loginMsg = `👋 Welcome back, ${patient.name}!\n\nYou've successfully logged in to Biomexa.`;
+    if (todayDoses.length > 0) {
+      const nextDose = todayDoses[0];
+      loginMsg += `\n\n💊 Your next dose:\n*${nextDose.medicineName}* — ${nextDose.dosage}\n⏰ ${nextDose.scheduledTime}`;
+      if (nextDose.foodNote) loginMsg += `\n🍽️ ${nextDose.foodNote}`;
+    } else {
+      loginMsg += `\n\n✅ No pending doses for today. Great job!`;
+    }
+    loginMsg += `\n\n- Biomexa Team`;
+
+    sendWhatsAppFree(phone, loginMsg);
+
     res.json({
       token,
       user: {
@@ -126,6 +224,97 @@ app.post('/api/auth/login', async (req, res) => {
         medicalHistory: patient.medicalHistory
       }
     });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Forgot Password - Send OTP
+app.post('/api/auth/forgot-password', async (req, res) => {
+  try {
+    const { phone } = req.body;
+    const patient = await Patient.findOne({ phone });
+    if (!patient) return res.status(400).json({ message: 'No account found with this phone number' });
+
+    // Generate OTP
+    const otp = generateOTP();
+    const resetToken = generateResetToken();
+    const expiresAt = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
+
+    // Invalidate old OTPs for this phone
+    await Otp.updateMany({ phone, used: false }, { used: true });
+
+    // Save new OTP
+    await Otp.create({ phone, otp, resetToken, expiresAt });
+
+    // Send OTP via WhatsApp
+    const otpMsg = `🔐 *Biomexa Password Reset*\n\nYour OTP code is: *${otp}*\n\nThis code will expire in ${OTP_EXPIRY_MINUTES} minutes.\n\nIf you didn't request this, please ignore this message.\n\n- Biomexa Team`;
+    const result = await sendWhatsAppFree(phone, otpMsg);
+
+    if (!result.success) {
+      return res.status(500).json({ message: 'Failed to send WhatsApp message. Please ensure CallMeBot is configured or try again later.' });
+    }
+
+    res.json({ message: 'OTP sent to your WhatsApp number' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Verify OTP
+app.post('/api/auth/verify-otp', async (req, res) => {
+  try {
+    const { phone, otp } = req.body;
+
+    const otpRecord = await Otp.findOne({
+      phone,
+      otp,
+      used: false,
+      expiresAt: { $gt: new Date() }
+    });
+
+    if (!otpRecord) {
+      return res.status(400).json({ message: 'Invalid or expired OTP. Please request a new one.' });
+    }
+
+    res.json({ message: 'OTP verified', resetToken: otpRecord.resetToken });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Reset Password
+app.post('/api/auth/reset-password', async (req, res) => {
+  try {
+    const { phone, resetToken, newPassword } = req.body;
+
+    // Verify reset token
+    const otpRecord = await Otp.findOne({
+      phone,
+      resetToken,
+      used: false,
+      expiresAt: { $gt: new Date() }
+    });
+
+    if (!otpRecord) {
+      return res.status(400).json({ message: 'Invalid or expired reset token. Please start over.' });
+    }
+
+    // Hash new password
+    const hashed = await bcrypt.hash(newPassword, 10);
+
+    // Update patient password
+    await Patient.findOneAndUpdate({ phone }, { password: hashed });
+
+    // Mark OTP as used
+    otpRecord.used = true;
+    await otpRecord.save();
+
+    // Send confirmation WhatsApp
+    const confirmMsg = `✅ *Password Reset Successful*\n\nYour Biomexa password has been reset successfully.\n\nIf you didn't do this, please contact support immediately.\n\n- Biomexa Team`;
+    sendWhatsAppFree(phone, confirmMsg);
+
+    res.json({ message: 'Password reset successful. Please login with your new password.' });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -149,20 +338,17 @@ app.post('/api/medicines', auth, async (req, res) => {
   try {
     const { name, dosage, time, frequency, foodNote } = req.body;
 
-    // Validate time format (must be HH:MM 24-hour)
     const timeRegex = /^([01]\d|2[0-3]):([0-5]\d)$/;
     if (!timeRegex.test(time)) {
       return res.status(400).json({ message: 'Time must be in 24-hour format (HH:MM), e.g. 14:30' });
     }
 
-    // Add medicine to patient profile
     const patient = await Patient.findOneAndUpdate(
       { phone: req.user.phone },
       { $push: { medicines: { name, dosage, time, frequency, foodNote, active: true } } },
       { new: true }
     );
 
-    // Create dose for TODAY
     const today = new Date().toISOString().split('T')[0];
     await Dose.create({
       patientPhone: req.user.phone,
@@ -174,7 +360,10 @@ app.post('/api/medicines', auth, async (req, res) => {
       status: 'pending'
     });
 
-    console.log(`💊 Medicine added: ${name} at ${time} for ${req.user.phone}`);
+    // Send confirmation WhatsApp
+    const confirmMsg = `💊 *Medicine Added*\n\n${name} — ${dosage}\n⏰ ${time}\n${foodNote ? '🍽️ ' + foodNote + '\n' : ''}\nYou'll receive a WhatsApp reminder when it's time to take it.\n\n- Biomexa Team`;
+    sendWhatsAppFree(req.user.phone, confirmMsg);
+
     res.json({ message: 'Medicine added and dose scheduled for today', medicines: patient.medicines });
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -216,6 +405,11 @@ app.post('/api/doses/:id/confirm', auth, async (req, res) => {
       { new: true }
     );
     if (!dose) return res.status(404).json({ message: 'Dose not found' });
+
+    // Send confirmation WhatsApp
+    const confirmMsg = `✅ *Dose Confirmed*\n\n${dose.medicineName} — ${dose.dosage}\n⏰ Taken at ${new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}\n\nGreat job staying on track! 💪\n\n- Biomexa Team`;
+    sendWhatsAppFree(req.user.phone, confirmMsg);
+
     res.json({ message: 'Dose confirmed', dose });
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -223,8 +417,6 @@ app.post('/api/doses/:id/confirm', auth, async (req, res) => {
 });
 
 // ========== WHATSAPP REMINDER CRON ==========
-// Runs every minute
-
 cron.schedule('* * * * *', async () => {
   const now = new Date();
   const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
@@ -249,19 +441,15 @@ cron.schedule('* * * * *', async () => {
         continue;
       }
 
-      const message = `⏰ *Dose Reminder*\n\nHello ${patient.name},\n\nIt's time to take your medicine:\n*${dose.medicineName}* — ${dose.dosage}\n\n${dose.foodNote ? `🍽️ ${dose.foodNote}\n\n` : ''}Reply CONFIRM once you've taken it.`;
+      const message = `⏰ *Dose Reminder*\n\nHello ${patient.name},\n\nIt's time to take your medicine:\n*${dose.medicineName}* — ${dose.dosage}\n\n${dose.foodNote ? '🍽️ ' + dose.foodNote + '\n\n' : ''}Reply CONFIRM once you've taken it.\n\n- Biomexa Team`;
 
-      try {
-        await client.messages.create({
-          from: `whatsapp:+${twilioPhone}`,
-          to: `whatsapp:${dose.patientPhone}`,
-          body: message
-        });
+      const result = await sendWhatsAppFree(dose.patientPhone, message);
 
+      if (result.success) {
         await Dose.findByIdAndUpdate(dose._id, { sentReminder: true });
         console.log(`✅ Reminder sent to ${dose.patientPhone} for ${dose.medicineName} at ${currentTime}`);
-      } catch (err) {
-        console.error(`❌ Twilio error for ${dose.patientPhone}:`, err.message);
+      } else {
+        console.log(`❌ Failed to send reminder to ${dose.patientPhone}`);
       }
     }
   } catch (err) {
@@ -269,9 +457,67 @@ cron.schedule('* * * * *', async () => {
   }
 });
 
+// ========== DOCTOR ROUTES (Mock for compatibility) ==========
+app.get('/api/doctor/login', async (req, res) => {
+  const auth = req.headers.authorization;
+  if (!auth || !auth.startsWith('Basic ')) {
+    return res.status(401).json({ message: 'Basic auth required' });
+  }
+  const creds = Buffer.from(auth.split(' ')[1], 'base64').toString().split(':');
+  if (creds[0] === 'drsharma' && creds[1] === 'biomexa2026') {
+    return res.json({ message: 'Doctor authenticated' });
+  }
+  res.status(401).json({ message: 'Invalid credentials' });
+});
+
+app.get('/api/patients', async (req, res) => {
+  // Mock data for doctor dashboard
+  const patients = await Patient.find().limit(50);
+  const data = patients.map((p, i) => ({
+    id: i + 1,
+    name: p.name,
+    phone: p.phone,
+    medicine: p.medicines[0]?.name || 'None',
+    adherence_score: Math.floor(60 + Math.random() * 40),
+    risk_score: Math.random(),
+    ai_risk_label: Math.random() > 0.7 ? 'Critical' : Math.random() > 0.4 ? 'High' : 'Low',
+    ai_prediction: Math.random(),
+    missed_doses: Math.floor(Math.random() * 5),
+    next_dose: new Date(Date.now() + Math.random() * 86400000),
+    sentiment: ['positive', 'neutral', 'negative'][Math.floor(Math.random() * 3)]
+  }));
+  res.json(data);
+});
+
+app.get('/api/doctor/queue', async (req, res) => {
+  res.json([]);
+});
+
+app.get('/api/export/patients', async (req, res) => {
+  res.json({ message: 'Export feature coming soon' });
+});
+
+// ========== ADMIN ROUTES (Mock for compatibility) ==========
+app.get('/stats', async (req, res) => {
+  const total = await Patient.countDocuments();
+  res.json({
+    total_patients: total,
+    high_risk_patients: Math.floor(total * 0.2),
+    average_adherence: Math.floor(70 + Math.random() * 25),
+    total_interactions: Math.floor(total * 10 + Math.random() * 100)
+  });
+});
+
 // ========== START SERVER ==========
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`🚀 Biomexa Server running on port ${PORT}`);
   console.log(`📱 WhatsApp reminders active (checking every minute)`);
+  console.log(`🔐 Password reset via WhatsApp OTP enabled`);
+  if (!CALLMEBOT_API_KEY) {
+    console.log(`\n⚠️  WARNING: CALLMEBOT_API_KEY not set!`);
+    console.log(`   WhatsApp messages will NOT be sent.`);
+    console.log(`   Get your free API key at: https://www.callmebot.com/blog/free-api-whatsapp-messages/`);
+    console.log(`   Then set CALLMEBOT_API_KEY in your environment variables.\n`);
+  }
 });
