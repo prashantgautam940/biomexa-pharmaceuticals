@@ -132,9 +132,38 @@ const otpSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now }
 });
 
+// Doctor account — real signup/login for the doctor connect portal
+const doctorSchema = new mongoose.Schema({
+  name: String,
+  email: { type: String, unique: true, sparse: true },
+  phone: { type: String, unique: true }, // WhatsApp number, used for connect alerts
+  password: String,
+  specialty: { type: String, default: 'General Physician' },
+  licenseNumber: String,
+  experienceYears: { type: Number, default: 0 },
+  bio: String,
+  available: { type: Boolean, default: true }, // toggled by doctor from dashboard
+  status: { type: String, default: 'pending' }, // pending | verified (admin can flip later)
+  createdAt: { type: Date, default: Date.now }
+});
+
+// Logs every "Connect me with a doctor" request from the home page / patient portal
+const connectRequestSchema = new mongoose.Schema({
+  doctorId: String,
+  doctorName: String,
+  patientName: String,
+  patientPhone: String,
+  urgency: { type: String, default: 'normal' }, // normal | high — set when the patient's risk score is high
+  message: String,
+  status: { type: String, default: 'sent' },
+  createdAt: { type: Date, default: Date.now }
+});
+
 const Patient = mongoose.model('Patient', patientSchema);
 const Dose = mongoose.model('Dose', doseSchema);
 const Otp = mongoose.model('Otp', otpSchema);
+const Doctor = mongoose.model('Doctor', doctorSchema);
+const ConnectRequest = mongoose.model('ConnectRequest', connectRequestSchema);
 
 // ========== AUTH MIDDLEWARE ==========
 const auth = (req, res, next) => {
@@ -457,7 +486,7 @@ cron.schedule('* * * * *', async () => {
   }
 });
 
-// ========== DOCTOR ROUTES (Mock for compatibility) ==========
+// ========== DOCTOR ROUTES (Mock login kept for the legacy staff dashboard) ==========
 app.get('/api/doctor/login', async (req, res) => {
   const auth = req.headers.authorization;
   if (!auth || !auth.startsWith('Basic ')) {
@@ -468,6 +497,120 @@ app.get('/api/doctor/login', async (req, res) => {
     return res.json({ message: 'Doctor authenticated' });
   }
   res.status(401).json({ message: 'Invalid credentials' });
+});
+
+// ========== DOCTOR SIGNUP / LOGIN / AVAILABILITY (real accounts) ==========
+const doctorAuth = (req, res, next) => {
+  const token = req.headers.authorization?.split(' ')[1];
+  if (!token) return res.status(401).json({ message: 'No token provided' });
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    if (decoded.role !== 'doctor') return res.status(403).json({ message: 'Doctor account required' });
+    req.doctor = decoded;
+    next();
+  } catch {
+    res.status(401).json({ message: 'Invalid token' });
+  }
+};
+
+// Doctor signup — creates a real doctor account for the "Connect with a Doctor" portal
+app.post('/api/doctors/register', async (req, res) => {
+  try {
+    const { name, email, phone, password, specialty, licenseNumber, experienceYears, bio } = req.body;
+    if (!name || !phone || !password || !licenseNumber) {
+      return res.status(400).json({ message: 'Name, WhatsApp number, password and license number are required' });
+    }
+    const existing = await Doctor.findOne({ phone });
+    if (existing) return res.status(400).json({ message: 'A doctor account already exists with this phone number' });
+
+    const hashed = await bcrypt.hash(password, 10);
+    const doctor = new Doctor({ name, email, phone, password: hashed, specialty, licenseNumber, experienceYears, bio, available: true });
+    await doctor.save();
+
+    const token = jwt.sign({ id: doctor._id, phone, role: 'doctor' }, JWT_SECRET);
+
+    const welcomeMsg = `👨‍⚕️ *Welcome to Biomexa, Dr. ${name}!*\n\nYour doctor profile is now live on the Biomexa Connect network. Patients with a high risk score can reach you instantly via WhatsApp.\n\nYou're marked *Available* by default — toggle this anytime from your dashboard.\n\n- Biomexa Team`;
+    sendWhatsAppFree(phone, welcomeMsg);
+
+    res.json({ message: 'Doctor registered successfully', token, doctor: { id: doctor._id, name, phone, specialty: doctor.specialty, available: doctor.available } });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Doctor login (real accounts)
+app.post('/api/doctors/login', async (req, res) => {
+  try {
+    const { phone, password } = req.body;
+    const doctor = await Doctor.findOne({ phone });
+    if (!doctor) return res.status(400).json({ message: 'No doctor account found with this number' });
+
+    const match = await bcrypt.compare(password, doctor.password);
+    if (!match) return res.status(400).json({ message: 'Invalid password' });
+
+    const token = jwt.sign({ id: doctor._id, phone, role: 'doctor' }, JWT_SECRET);
+    res.json({ token, doctor: { id: doctor._id, name: doctor.name, phone: doctor.phone, specialty: doctor.specialty, available: doctor.available, experienceYears: doctor.experienceYears } });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Toggle / set availability — shown live on the home page & patient portal
+app.patch('/api/doctors/availability', doctorAuth, async (req, res) => {
+  try {
+    const { available } = req.body;
+    const doctor = await Doctor.findByIdAndUpdate(req.doctor.id, { available: !!available }, { new: true });
+    res.json({ message: 'Availability updated', available: doctor.available });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Doctor's own profile
+app.get('/api/doctors/me', doctorAuth, async (req, res) => {
+  try {
+    const doctor = await Doctor.findById(req.doctor.id).select('-password');
+    res.json(doctor);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Public list of doctors — powers the "Doctors Available" section on the home page & patient portal
+app.get('/api/doctors', async (req, res) => {
+  try {
+    const doctors = await Doctor.find().select('-password').sort({ available: -1, createdAt: -1 }).limit(50);
+    res.json(doctors);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// "Connect me now" — fired from the home page or patient portal when a patient wants a doctor urgently.
+// Notifies the doctor over WhatsApp with the patient's details and urgency level.
+app.post('/api/doctors/:id/connect', async (req, res) => {
+  try {
+    const { patientName, patientPhone, urgency, message } = req.body;
+    const doctor = await Doctor.findById(req.params.id);
+    if (!doctor) return res.status(404).json({ message: 'Doctor not found' });
+
+    const flag = urgency === 'high' ? '🚨 *HIGH RISK PATIENT — PLEASE RESPOND PROMPTLY*' : '📩 *New Patient Connect Request*';
+    const doctorMsg = `${flag}\n\nPatient: ${patientName || 'Anonymous'}\nContact: ${patientPhone || 'Not shared'}\n${message ? 'Note: ' + message + '\n' : ''}\nvia Biomexa Connect\n- Biomexa Team`;
+    const result = await sendWhatsAppFree(doctor.phone, doctorMsg);
+
+    await ConnectRequest.create({
+      doctorId: doctor._id, doctorName: doctor.name, patientName, patientPhone,
+      urgency: urgency || 'normal', message
+    });
+
+    res.json({
+      message: result.success ? 'Doctor has been notified on WhatsApp' : 'Request logged, but WhatsApp alert could not be sent',
+      doctorPhone: doctor.phone,
+      doctorName: doctor.name
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
 });
 
 app.get('/api/patients', async (req, res) => {
