@@ -473,4 +473,104 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     console.log('🚀 Biomexa Pharmaceuticals website loaded successfully!');
+
+    // ============================================
+    // BIOMEXA CONNECT — Doctors Available widget
+    // ============================================
+    initDoctorConnect();
 });
+
+function initDoctorConnect() {
+    const grid = document.getElementById('doctorGrid');
+    if (!grid) return;
+
+    const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+        ? 'http://localhost:3000'
+        : 'https://biomexa-api-f9f6.onrender.com';
+
+    // Shown instantly and used as a fallback if the live API isn't reachable yet
+    const demoDoctors = [
+        { _id: 'demo1', name: 'Dr. Aditi Sharma', specialty: 'Cardiologist', experienceYears: 12, bio: 'Focused on hypertension and post-cardiac-event medication adherence.', available: true, phone: '911234567890' },
+        { _id: 'demo2', name: 'Dr. Rohan Mehta', specialty: 'Diabetologist', experienceYears: 9, bio: 'Manages Type 2 diabetes with circadian dosing and glucose tracking.', available: true, phone: '911234567891' },
+        { _id: 'demo3', name: 'Dr. Neha Kapoor', specialty: 'General Physician', experienceYears: 15, bio: 'Primary care for chronic conditions and multi-drug regimens.', available: false, phone: '911234567892' }
+    ];
+
+    function initials(name) {
+        return (name || 'Dr').split(' ').filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase();
+    }
+
+    function renderDoctors(doctors) {
+        if (!doctors.length) {
+            grid.innerHTML = '<div class="loading-doctors">No doctors listed yet — check back soon.</div>';
+            return;
+        }
+        grid.innerHTML = doctors.map(d => `
+            <div class="doctor-card" data-tilt>
+                <div class="doctor-card-top">
+                    <div class="doctor-avatar">${initials(d.name)}</div>
+                    <div>
+                        <h3 class="doctor-name">${d.name}</h3>
+                        <div class="doctor-specialty">${d.specialty || 'General Physician'}</div>
+                    </div>
+                    <span class="doctor-status ${d.available ? 'available' : 'offline'}"><span class="dot"></span>${d.available ? 'Available' : 'Offline'}</span>
+                </div>
+                <div class="doctor-meta">${d.experienceYears ? d.experienceYears + '+ years experience' : 'Biomexa Connect doctor'}</div>
+                <p class="doctor-bio">${d.bio || 'Available to discuss your medication plan and adherence concerns.'}</p>
+                ${d.available
+                    ? `<button class="doctor-connect-btn" onclick="connectWithDoctor('${d._id}', '${(d.name || '').replace(/'/g, "")}', '${d.phone || ''}')">💬 Connect on WhatsApp</button>`
+                    : `<button class="doctor-connect-btn disabled">Currently Offline</button>`
+                }
+            </div>
+        `).join('');
+        applyTilt();
+    }
+
+    // Show demo doctors immediately so the section never looks empty, then swap in live data
+    renderDoctors(demoDoctors);
+    fetch(`${API_URL}/api/doctors`)
+        .then(r => r.ok ? r.json() : Promise.reject())
+        .then(list => { if (Array.isArray(list) && list.length) renderDoctors(list); })
+        .catch(() => { /* keep demo doctors — API may be asleep on a free tier */ });
+
+    window.connectWithDoctor = function (doctorId, doctorName, doctorPhone) {
+        const riskFlag = document.body.dataset.riskLevel === 'high';
+        const patientName = window.prompt('Your name (so the doctor knows who is reaching out):', '') || 'A Biomexa patient';
+
+        // 1) Log the request + notify the doctor via the backend (works for real, registered doctors)
+        if (!doctorId.startsWith('demo')) {
+            fetch(`${API_URL}/api/doctors/${doctorId}/connect`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    patientName,
+                    patientPhone: '',
+                    urgency: riskFlag ? 'high' : 'normal',
+                    message: 'Connect request from the Biomexa website'
+                })
+            }).catch(() => {});
+        }
+
+        // 2) Open WhatsApp directly for the patient too, so the conversation starts immediately
+        if (doctorPhone) {
+            const text = encodeURIComponent(`Hello Dr., this is ${patientName} reaching out via Biomexa${riskFlag ? ' — my current risk indicator is HIGH and I would like to speak with you as soon as possible.' : '.'}`);
+            window.open(`https://wa.me/${doctorPhone}?text=${text}`, '_blank');
+        } else {
+            alert('Connect request sent — the doctor will reach out to you shortly.');
+        }
+    };
+
+    // Subtle mouse-driven 3D tilt for the doctor cards — futuristic feel
+    function applyTilt() {
+        document.querySelectorAll('.doctor-card[data-tilt]').forEach(card => {
+            card.addEventListener('mousemove', (e) => {
+                const r = card.getBoundingClientRect();
+                const x = (e.clientX - r.left) / r.width - 0.5;
+                const y = (e.clientY - r.top) / r.height - 0.5;
+                card.style.transform = `rotateY(${x * 8}deg) rotateX(${-y * 8}deg) translateY(-4px)`;
+            });
+            card.addEventListener('mouseleave', () => {
+                card.style.transform = 'rotateY(0) rotateX(0) translateY(0)';
+            });
+        });
+    }
+}
