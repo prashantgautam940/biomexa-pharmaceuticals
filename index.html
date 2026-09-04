@@ -72,6 +72,7 @@
                 <a href="#portals" class="nav-link nav-dropdown-toggle">Portals ▾</a>
                 <ul class="nav-dropdown-menu">
                     <li><a href="doctor.html" class="nav-dropdown-link">Doctor Login</a></li>
+                    <li><a href="doctor-signup.html" class="nav-dropdown-link">Doctor Sign Up</a></li>
                     <li><a href="patient.html" class="nav-dropdown-link">Patient Portal</a></li>
                     <li><a href="admin.html" class="nav-dropdown-link">Admin</a></li>
                 </ul>
@@ -93,6 +94,7 @@
         <a href="products/">Products</a>
         <a href="ai-assistant.html">AI Assistant</a>
         <a href="doctor.html">Doctor Login</a>
+        <a href="doctor-signup.html">Doctor Sign Up</a>
         <a href="patient.html">Patient Portal</a>
         <a href="#ecosystem">Ecosystem</a>
         <a href="admin.html">Admin</a>
@@ -140,6 +142,29 @@
                 <div class="wheel"></div>
             </div>
             <span>Scroll to explore</span>
+        </div>
+    </section>
+
+    <!-- Doctors Available — Connect Now -->
+    <section class="section connect-section" id="connect-doctor">
+        <div class="connect-risk-banner fade-in">
+            <div class="risk-banner-icon">🚨</div>
+            <div>
+                <h3>Feeling your risk is high right now?</h3>
+                <p>Don't wait for your next appointment. Reach an available doctor on WhatsApp in seconds.</p>
+            </div>
+            <a href="#doctorGrid" class="cta-btn primary risk-banner-btn">Connect Instantly →</a>
+        </div>
+        <div class="section-header fade-in" style="text-align: center; max-width: 800px; margin: 3rem auto 3rem;">
+            <span class="section-tag" style="color: #14a085; font-size: 0.875rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em;">Biomexa Connect</span>
+            <h2 class="section-title" style="font-size: 2.5rem; font-weight: 700; margin: 1rem 0; color: #f3f4f6;">Doctors Available Right Now</h2>
+            <p class="section-subtitle" style="color: #9ca3af; font-size: 1.1rem;">Live availability from doctors on our network — tap Connect to message them on WhatsApp immediately.</p>
+        </div>
+        <div class="doctor-grid" id="doctorGrid">
+            <div class="loading-doctors">Loading available doctors…</div>
+        </div>
+        <div style="text-align: center; margin-top: 2.5rem;">
+            <a href="doctor-signup.html" class="cta-btn secondary">Are you a doctor? Join the network →</a>
         </div>
     </section>
 
@@ -729,6 +754,12 @@
                 <h3 style="color: #14a085; font-size: 1.4rem; margin-bottom: 0.75rem;">Admin Panel</h3>
                 <p style="color: #9ca3af; line-height: 1.6; margin-bottom: 1.5rem;">Oversee all patients, monitor platform metrics, and export system-wide data.</p>
                 <span style="display: inline-block; padding: 0.75rem 1.5rem; background: linear-gradient(135deg, #0d7377, #14a085); color: white; border-radius: 10px; font-weight: 600;">Admin Access →</span>
+            </a>
+            <a href="doctor-signup.html" style="background: rgba(17,24,39,0.8); border: 1px solid #374151; border-radius: 20px; padding: 2.5rem; text-decoration: none; color: #f3f4f6; text-align: center; transition: all 0.3s;" onmouseover="this.style.borderColor='#0d7377';this.style.transform='translateY(-5px)'" onmouseout="this.style.borderColor='#374151';this.style.transform='translateY(0)'">
+                <div style="font-size: 3rem; margin-bottom: 1rem;">🩺</div>
+                <h3 style="color: #14a085; font-size: 1.4rem; margin-bottom: 0.75rem;">Join as a Doctor</h3>
+                <p style="color: #9ca3af; line-height: 1.6; margin-bottom: 1.5rem;">Register your practice on Biomexa Connect and receive instant patient requests over WhatsApp.</p>
+                <span style="display: inline-block; padding: 0.75rem 1.5rem; background: linear-gradient(135deg, #0d7377, #14a085); color: white; border-radius: 10px; font-weight: 600;">Doctor Sign Up →</span>
             </a>
         </div>
     </section>
