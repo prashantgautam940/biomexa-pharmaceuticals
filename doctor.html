@@ -136,7 +136,21 @@ tr:hover { background: rgba(13,115,119,0.05); }
       </div>
       <button class="btn" onclick="login()"><i class="fas fa-lock"></i> Secure Login</button>
       <div id="loginError" class="error"></div>
+      <p style="margin-top:1.5rem;font-size:0.85rem;color:var(--text-muted);">New doctor? <a href="doctor-signup.html" style="color:var(--primary-light);font-weight:600;text-decoration:none;">Join Biomexa Connect →</a></p>
     </div>
+  </div>
+
+  <!-- BIOMEXA CONNECT — AVAILABILITY WIDGET (independent of the staff login above) -->
+  <div id="connectAvailabilityWidget" class="hidden" style="max-width:420px;margin:0 auto 2rem;background:linear-gradient(160deg,rgba(20,160,133,0.1),rgba(13,115,119,0.05));border:1px solid var(--primary);border-radius:16px;padding:1.25rem 1.5rem;display:flex;align-items:center;justify-content:space-between;gap:1rem;">
+    <div>
+      <div style="font-weight:700;color:var(--text);" id="connectDoctorName">Dr.</div>
+      <div style="font-size:0.8rem;color:var(--text-muted);">Biomexa Connect status — patients see this live</div>
+    </div>
+    <label style="position:relative;display:inline-block;width:52px;height:28px;flex-shrink:0;">
+      <input type="checkbox" id="availabilityToggle" onchange="toggleAvailability()" style="opacity:0;width:0;height:0;">
+      <span id="toggleTrack" style="position:absolute;cursor:pointer;inset:0;background:var(--border);border-radius:28px;transition:0.3s;"></span>
+      <span id="toggleThumb" style="position:absolute;height:22px;width:22px;left:3px;bottom:3px;background:white;border-radius:50%;transition:0.3s;"></span>
+    </label>
   </div>
 
   <!-- DASHBOARD -->
@@ -544,6 +558,41 @@ function logout() {
   document.getElementById('dashboardSection').classList.add('hidden');
   document.getElementById('logoutBtn').style.display = 'none';
   document.getElementById('loginError').style.display = 'none';
+}
+
+// ========== BIOMEXA CONNECT — AVAILABILITY WIDGET ==========
+// Uses the real doctor account (from doctor-signup.html), separate from the staff login above.
+const doctorToken = localStorage.getItem('doctorToken');
+const doctorProfile = JSON.parse(localStorage.getItem('doctorProfile') || 'null');
+
+if (doctorToken && doctorProfile) {
+  const widget = document.getElementById('connectAvailabilityWidget');
+  widget.classList.remove('hidden');
+  document.getElementById('connectDoctorName').textContent = 'Dr. ' + doctorProfile.name + ' — ' + (doctorProfile.specialty || 'General Physician');
+  const toggle = document.getElementById('availabilityToggle');
+  toggle.checked = !!doctorProfile.available;
+  paintToggle(toggle.checked);
+}
+
+function paintToggle(on) {
+  document.getElementById('toggleTrack').style.background = on ? 'var(--success)' : 'var(--border)';
+  document.getElementById('toggleThumb').style.transform = on ? 'translateX(24px)' : 'translateX(0)';
+}
+
+function toggleAvailability() {
+  const on = document.getElementById('availabilityToggle').checked;
+  paintToggle(on);
+  fetch(API_BASE + '/api/doctors/availability', {
+    method: 'PATCH',
+    headers: { 'Authorization': 'Bearer ' + doctorToken, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ available: on })
+  })
+    .then(r => r.json())
+    .then(() => {
+      doctorProfile.available = on;
+      localStorage.setItem('doctorProfile', JSON.stringify(doctorProfile));
+    })
+    .catch(() => { alert('Could not update availability — check your connection.'); });
 }
 </script>
 </body>
