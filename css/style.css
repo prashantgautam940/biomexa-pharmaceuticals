@@ -1883,3 +1883,109 @@ button { font-family: inherit; cursor: pointer; }
     .patient-row { flex-wrap: wrap; }
     .patient-action { width: 100%; margin-top: 0.5rem; }
 }
+
+/* ==========================================================================
+   BIOMEXA CONNECT — Doctors Available + High-Risk Connect (futuristic/3D)
+   ========================================================================== */
+.connect-section {
+    background: radial-gradient(ellipse at top, #0a3a3e 0%, #0a2e33 55%, #081f23 100%);
+    padding: 5rem 2rem 6rem;
+    position: relative;
+    overflow: hidden;
+}
+.connect-section::before,
+.connect-section::after {
+    content: '';
+    position: absolute;
+    width: 38vw;
+    height: 38vw;
+    max-width: 520px;
+    max-height: 520px;
+    border-radius: 50%;
+    filter: blur(110px);
+    opacity: 0.28;
+    pointer-events: none;
+    z-index: 0;
+}
+.connect-section::before { background: radial-gradient(circle, #20b2aa, transparent 70%); top: -10%; left: -8%; }
+.connect-section::after { background: radial-gradient(circle, #14a085, transparent 70%); bottom: -12%; right: -8%; }
+.connect-section > * { position: relative; z-index: 1; }
+
+.connect-risk-banner {
+    max-width: 1000px;
+    margin: 0 auto;
+    background: linear-gradient(135deg, rgba(239,68,68,0.16), rgba(245,158,11,0.10));
+    border: 1px solid rgba(239,68,68,0.4);
+    border-radius: 20px;
+    padding: 1.75rem 2rem;
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+    box-shadow: 0 20px 50px rgba(239,68,68,0.12), inset 0 1px 0 rgba(255,255,255,0.05);
+    animation: riskPulseGlow 3s ease-in-out infinite;
+}
+@keyframes riskPulseGlow {
+    0%, 100% { box-shadow: 0 20px 50px rgba(239,68,68,0.12), inset 0 1px 0 rgba(255,255,255,0.05); }
+    50% { box-shadow: 0 20px 60px rgba(239,68,68,0.28), inset 0 1px 0 rgba(255,255,255,0.08); }
+}
+.risk-banner-icon { font-size: 2.25rem; flex-shrink: 0; filter: drop-shadow(0 0 12px rgba(239,68,68,0.6)); }
+.connect-risk-banner h3 { color: #fff; font-size: 1.2rem; margin-bottom: 0.25rem; }
+.connect-risk-banner p { color: #d1d5db; font-size: 0.92rem; margin: 0; }
+.risk-banner-btn { flex-shrink: 0; margin-left: auto; white-space: nowrap; }
+
+.doctor-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 2rem;
+    max-width: 1100px;
+    margin: 0 auto;
+    perspective: 1400px;
+}
+.loading-doctors { grid-column: 1 / -1; text-align: center; color: #9ca3af; padding: 2rem; }
+
+.doctor-card {
+    background: linear-gradient(160deg, rgba(17,24,39,0.9), rgba(10,18,30,0.9));
+    border: 1px solid #374151;
+    border-radius: 20px;
+    padding: 2rem;
+    transform-style: preserve-3d;
+    transition: transform 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
+    box-shadow: 0 20px 45px rgba(0,0,0,0.35);
+    position: relative;
+}
+.doctor-card:hover {
+    border-color: #14a085;
+    box-shadow: 0 30px 70px rgba(20,160,133,0.25);
+}
+.doctor-card-top { display: flex; align-items: center; gap: 1rem; margin-bottom: 1.1rem; transform: translateZ(30px); }
+.doctor-avatar {
+    width: 58px; height: 58px; border-radius: 16px;
+    background: linear-gradient(135deg, #0d7377, #14a085);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.5rem; flex-shrink: 0;
+    box-shadow: 0 8px 20px rgba(13,115,119,0.4);
+}
+.doctor-name { color: #f3f4f6; font-size: 1.1rem; font-weight: 700; margin: 0; }
+.doctor-specialty { color: #14a085; font-size: 0.82rem; font-weight: 600; }
+.doctor-status { margin-left: auto; display: flex; align-items: center; gap: 0.4rem; font-size: 0.78rem; font-weight: 700; padding: 5px 10px; border-radius: 50px; }
+.doctor-status.available { background: rgba(16,185,129,0.15); color: #34d399; }
+.doctor-status.offline { background: rgba(107,114,128,0.2); color: #9ca3af; }
+.doctor-status .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.doctor-status.available .dot { animation: dotPulse 1.6s ease-in-out infinite; }
+@keyframes dotPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+.doctor-meta { color: #9ca3af; font-size: 0.85rem; margin-bottom: 1rem; transform: translateZ(20px); }
+.doctor-bio { color: #9ca3af; font-size: 0.88rem; line-height: 1.55; margin-bottom: 1.4rem; min-height: 2.6em; transform: translateZ(20px); }
+.doctor-connect-btn {
+    display: flex; align-items: center; justify-content: center; gap: 0.5rem;
+    width: 100%; padding: 0.85rem 1.2rem; border: none; border-radius: 12px;
+    background: linear-gradient(135deg, #0d7377, #14a085); color: #fff;
+    font-weight: 700; font-size: 0.92rem; cursor: pointer; text-decoration: none;
+    transform: translateZ(35px); transition: transform 0.2s, box-shadow 0.2s;
+}
+.doctor-connect-btn:hover { transform: translateZ(35px) translateY(-3px); box-shadow: 0 14px 30px rgba(20,160,133,0.4); }
+.doctor-connect-btn.disabled { background: #374151; color: #9ca3af; cursor: not-allowed; pointer-events: none; }
+
+@media (max-width: 768px) {
+    .connect-risk-banner { flex-direction: column; text-align: center; }
+    .risk-banner-btn { margin-left: 0; }
+}
