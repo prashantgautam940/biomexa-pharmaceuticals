@@ -87,6 +87,35 @@ body {
 .dose-info h4 { color: #f1f5f9; font-size: 14px; margin-bottom: 4px; }
 .dose-info p { color: #94a3b8; font-size: 12px; }
 .dose-time { color: #14b8a6; font-weight: 600; font-size: 14px; }
+
+/* Doctor Connect */
+#doctorConnectCard { transition: box-shadow 0.3s, border-color 0.3s; }
+#doctorConnectCard.high-risk {
+  border-color: #ef4444;
+  box-shadow: 0 0 0 1px rgba(239,68,68,0.3), 0 20px 45px rgba(239,68,68,0.18);
+  animation: cardPulse 2.4s ease-in-out infinite;
+}
+@keyframes cardPulse {
+  0%, 100% { box-shadow: 0 0 0 1px rgba(239,68,68,0.3), 0 20px 45px rgba(239,68,68,0.18); }
+  50% { box-shadow: 0 0 0 1px rgba(239,68,68,0.5), 0 24px 55px rgba(239,68,68,0.32); }
+}
+.risk-alert-line { display: none; align-items: center; gap: 8px; background: rgba(239,68,68,0.1); color: #f87171; border: 1px solid rgba(239,68,68,0.3); border-radius: 10px; padding: 10px 14px; font-size: 13px; margin-bottom: 12px; }
+#doctorConnectCard.high-risk .risk-alert-line { display: flex; }
+.doctor-row {
+  display: flex; align-items: center; gap: 12px; padding: 12px 14px; background: #0f172a; border-radius: 12px; margin-bottom: 10px;
+  transform-style: preserve-3d; transition: transform 0.2s ease;
+}
+.doctor-row-avatar { width: 42px; height: 42px; border-radius: 12px; background: linear-gradient(135deg, #0d7377, #14b8a6); display: flex; align-items: center; justify-content: center; font-weight: 700; color: #fff; flex-shrink: 0; }
+.doctor-row-info h4 { font-size: 14px; color: #f1f5f9; margin-bottom: 2px; }
+.doctor-row-info p { font-size: 12px; color: #94a3b8; }
+.doctor-row-status { font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 50px; margin-left: auto; }
+.doctor-row-status.on { background: rgba(34,197,94,0.15); color: #4ade80; }
+.doctor-row-status.off { background: rgba(148,163,184,0.15); color: #94a3b8; }
+.doctor-connect-mini {
+  padding: 9px 14px; border: none; border-radius: 9px; background: linear-gradient(135deg, #0d7377, #14b8a6); color: #fff;
+  font-weight: 700; font-size: 12px; cursor: pointer; white-space: nowrap; text-decoration: none;
+}
+.doctor-connect-mini.disabled { background: #334155; color: #64748b; cursor: not-allowed; }
 .btn {
   background: linear-gradient(135deg, #0d9488, #14b8a6);
   color: white;
@@ -206,6 +235,17 @@ input[type="time"] { color-scheme: dark; }
           <div class="stat-label">Active Medicines</div>
           <div class="stat-value" id="activeMedicines">0</div>
         </div>
+      </div>
+    </div>
+
+    <!-- Connect with a Doctor -->
+    <div class="card" id="doctorConnectCard">
+      <div class="card-header">
+        <span class="card-title">🩺 Talk to a Doctor</span>
+        <span id="doctorConnectHint" style="color:#64748b;font-size:12px;">Live WhatsApp connect</span>
+      </div>
+      <div id="doctorConnectList">
+        <div class="empty-state">Loading available doctors...</div>
       </div>
     </div>
 
@@ -358,15 +398,83 @@ input[type="time"] { color-scheme: dark; }
         if (rate >= 80) {
           document.getElementById('riskBadge').textContent = 'All Good';
           document.getElementById('riskBadge').className = 'status-badge ok';
+          setDoctorConnectUrgency(false);
         } else if (rate >= 50) {
           document.getElementById('riskBadge').textContent = 'Moderate';
           document.getElementById('riskBadge').className = 'status-badge';
+          setDoctorConnectUrgency(false);
         } else {
           document.getElementById('riskBadge').textContent = 'At Risk';
           document.getElementById('riskBadge').className = 'status-badge';
+          setDoctorConnectUrgency(true); // low adherence -> treated as high risk, surface the doctor connect card
         }
       } catch (e) {}
     }
+
+    // ========== TALK TO A DOCTOR ==========
+    let isHighRisk = false;
+    function setDoctorConnectUrgency(high) {
+      isHighRisk = high;
+      const card = document.getElementById('doctorConnectCard');
+      const hint = document.getElementById('doctorConnectHint');
+      card.classList.toggle('high-risk', high);
+      hint.textContent = high ? 'Your risk is high — connect now' : 'Live WhatsApp connect';
+    }
+
+    function initials(name) { return (name || 'Dr').split(' ').filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase(); }
+
+    function renderDoctorList(doctors) {
+      const el = document.getElementById('doctorConnectList');
+      if (!doctors.length) { el.innerHTML = '<div class="empty-state">No doctors listed yet.</div>'; return; }
+      el.innerHTML = `<div class="risk-alert-line">🚨 Your adherence indicates elevated risk — an available doctor can help right away.</div>` +
+        doctors.map(d => `
+          <div class="doctor-row">
+            <div class="doctor-row-avatar">${initials(d.name)}</div>
+            <div class="doctor-row-info">
+              <h4>${d.name}</h4>
+              <p>${d.specialty || 'General Physician'}${d.experienceYears ? ' · ' + d.experienceYears + '+ yrs' : ''}</p>
+            </div>
+            <span class="doctor-row-status ${d.available ? 'on' : 'off'}">${d.available ? 'Available' : 'Offline'}</span>
+            ${d.available
+              ? `<button class="doctor-connect-mini" onclick="connectPatientToDoctor('${d._id}', '${(d.name || '').replace(/'/g, '')}', '${d.phone || ''}')">Connect</button>`
+              : `<button class="doctor-connect-mini disabled">Offline</button>`}
+          </div>`).join('');
+    }
+
+    const demoDoctors = [
+      { _id: 'demo1', name: 'Dr. Aditi Sharma', specialty: 'Cardiologist', experienceYears: 12, available: true, phone: '911234567890' },
+      { _id: 'demo2', name: 'Dr. Rohan Mehta', specialty: 'Diabetologist', experienceYears: 9, available: true, phone: '911234567891' }
+    ];
+
+    function loadDoctors() {
+      renderDoctorList(demoDoctors);
+      fetch(`${API_URL}/api/doctors`).then(r => r.ok ? r.json() : Promise.reject()).then(list => {
+        if (Array.isArray(list) && list.length) renderDoctorList(list);
+      }).catch(() => {});
+    }
+
+    function connectPatientToDoctor(doctorId, doctorName, doctorPhone) {
+      if (!doctorId.startsWith('demo')) {
+        fetch(`${API_URL}/api/doctors/${doctorId}/connect`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({
+            patientName: user.name || 'Biomexa patient',
+            patientPhone: user.phone || '',
+            urgency: isHighRisk ? 'high' : 'normal',
+            message: 'Connect request from the Patient Portal'
+          })
+        }).catch(() => {});
+      }
+      if (doctorPhone) {
+        const text = encodeURIComponent(`Hello Dr. ${doctorName}, this is ${user.name || 'a Biomexa patient'}.${isHighRisk ? ' My current adherence risk is HIGH — I would like to speak with you as soon as possible.' : ''}`);
+        window.open(`https://wa.me/${doctorPhone}?text=${text}`, '_blank');
+      } else {
+        alert('Connect request sent — the doctor will reach out to you shortly.');
+      }
+    }
+
+    loadDoctors();
 
     document.getElementById('medicineForm').addEventListener('submit', async (e) => {
       e.preventDefault();
