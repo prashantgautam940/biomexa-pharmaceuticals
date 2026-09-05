@@ -13,11 +13,22 @@
 body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
 header { background: rgba(10,14,23,0.95); backdrop-filter: blur(10px); border-bottom: 1px solid var(--border); padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 100; }
 .logo { display: flex; align-items: center; gap: 0.75rem; font-weight: 800; font-size: 1.25rem; color: var(--primary-light); text-decoration: none; }
-.logo i { font-size: 1.5rem; }
 .nav-links { display: flex; gap: 1.5rem; align-items: center; }
 .nav-links a { color: var(--text-muted); text-decoration: none; font-weight: 500; font-size: 0.9rem; transition: color 0.3s; }
 .nav-links a:hover { color: var(--primary-light); }
+#logoutBtn { display: none; padding: 8px 16px; background: var(--bg-light); border: 1px solid var(--border); color: var(--text); border-radius: 8px; cursor: pointer; font-size: 0.85rem; }
 .container { max-width: 1200px; margin: 0 auto; padding: 2rem; }
+.hidden { display: none !important; }
+
+.login-wrap { min-height: 80vh; display: flex; align-items: center; justify-content: center; padding: 2rem; }
+.login-box { background: var(--bg-card); border: 1px solid var(--border); border-radius: 20px; padding: 2.5rem; max-width: 400px; width: 100%; text-align: center; }
+.login-box i.fa-user-shield { font-size: 3rem; color: var(--primary-light); margin-bottom: 1rem; }
+.login-box h2 { margin-bottom: 0.5rem; }
+.login-box p { color: var(--text-muted); margin-bottom: 1.5rem; font-size: 0.9rem; }
+.input-group { margin-bottom: 1rem; text-align: left; }
+.input-group label { display: block; font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.4rem; }
+.input-group input { width: 100%; padding: 12px 14px; background: var(--bg-light); border: 1px solid var(--border); border-radius: 10px; color: var(--text); font-size: 0.95rem; }
+.error { color: var(--danger); font-size: 0.85rem; margin-top: 0.75rem; display: none; }
 
 .page-header { margin-bottom: 2rem; }
 .page-header h1 { font-size: 2rem; margin-bottom: 0.5rem; }
@@ -35,15 +46,28 @@ header { background: rgba(10,14,23,0.95); backdrop-filter: blur(10px); border-bo
 .stat-card .change.up { color: var(--success); }
 .stat-card .change.down { color: var(--danger); }
 
+.ai-panel { background: linear-gradient(160deg, rgba(13,115,119,0.12), rgba(17,24,39,0.9)); border: 1px solid var(--primary); border-radius: 16px; padding: 1.75rem; margin-bottom: 2rem; }
+.ai-panel-head { display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 1rem; margin-bottom: 1rem; }
+.ai-panel-head h2 { font-size: 1.2rem; display: flex; align-items: center; gap: 0.5rem; }
+.ai-panel-head p { color: var(--text-muted); font-size: 0.88rem; margin-top: 0.35rem; max-width: 560px; }
+.ai-status-row { display: flex; gap: 1.5rem; flex-wrap: wrap; margin-bottom: 1.25rem; }
+.ai-status-item .label { font-size: 0.72rem; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.05em; }
+.ai-status-item .value { font-size: 1.3rem; font-weight: 700; margin-top: 0.2rem; }
+.ai-status-item .value.untrained { color: var(--accent); font-size: 1rem; }
+.train-btn { padding: 12px 24px; background: linear-gradient(135deg, var(--primary), var(--primary-light)); color: white; border: none; border-radius: 10px; font-size: 0.95rem; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 0.5rem; }
+.train-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.ai-msg { margin-top: 1rem; padding: 12px 14px; border-radius: 10px; font-size: 0.88rem; display: none; }
+.ai-msg.ok { display: block; background: rgba(16,185,129,0.12); color: #34d399; border: 1px solid rgba(16,185,129,0.3); }
+.ai-msg.err { display: block; background: rgba(239,68,68,0.12); color: #f87171; border: 1px solid rgba(239,68,68,0.3); }
+
 .actions { display: flex; gap: 0.75rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
 .btn { padding: 12px 24px; background: linear-gradient(135deg, var(--primary), var(--primary-light)); color: white; border: none; border-radius: 10px; font-size: 0.95rem; font-weight: 600; cursor: pointer; transition: transform 0.2s, box-shadow 0.2s; display: inline-flex; align-items: center; gap: 0.5rem; }
 .btn:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(13,115,119,0.3); }
 .btn-success { background: linear-gradient(135deg, var(--success), #059669); }
-.btn-danger { background: linear-gradient(135deg, var(--danger), #dc2626); }
 
-.table-wrap { background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px; overflow: hidden; }
+.table-wrap { background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px; overflow: hidden; overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; }
-th, td { padding: 16px; text-align: left; border-bottom: 1px solid var(--border); }
+th, td { padding: 16px; text-align: left; border-bottom: 1px solid var(--border); white-space: nowrap; }
 th { background: var(--bg-light); font-weight: 600; font-size: 0.8rem; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.03em; }
 tr:hover { background: rgba(13,115,119,0.05); }
 .patient-name { font-weight: 600; color: var(--text); }
@@ -71,13 +95,61 @@ tr:hover { background: rgba(13,115,119,0.05); }
     <a href="ai-assistant.html">AI Assistant</a>
     <a href="doctor.html">Doctor</a>
     <a href="patient.html">Patient</a>
+    <button id="logoutBtn" onclick="logout()"><i class="fas fa-sign-out-alt"></i> Logout</button>
   </div>
 </header>
 
-<div class="container">
+<div class="login-wrap" id="loginSection">
+  <div class="login-box">
+    <i class="fas fa-user-shield"></i>
+    <h2>Admin Login</h2>
+    <p>Restricted access — patient data and AI model controls</p>
+    <div class="input-group">
+      <label>Username</label>
+      <input type="text" id="adminUser" placeholder="Enter admin username">
+    </div>
+    <div class="input-group">
+      <label>Password</label>
+      <input type="password" id="adminPass" placeholder="Enter admin password">
+    </div>
+    <button class="btn" style="width:100%;justify-content:center;" onclick="login()"><i class="fas fa-lock"></i> Secure Login</button>
+    <div id="loginError" class="error"></div>
+  </div>
+</div>
+
+<div class="container hidden" id="dashboardSection">
   <div class="page-header">
     <h1><i class="fas fa-shield-alt"></i> Admin Panel</h1>
-    <p>Clinical Intelligence Command Center — Real-time oversight of all patients and platform metrics</p>
+    <p>Clinical Intelligence Command Center — real-time oversight of all patients and the adherence-risk AI model</p>
+  </div>
+
+  <div class="ai-panel">
+    <div class="ai-panel-head">
+      <div>
+        <h2><i class="fas fa-brain"></i> AI Risk Engine</h2>
+        <p>Trains a logistic-regression risk model directly from real patient dose history. Retrain any time new patient data comes in — the doctor dashboard and patient risk badges use this model automatically once trained.</p>
+      </div>
+      <button class="train-btn" id="trainBtn" onclick="trainModel()"><i class="fas fa-play"></i> Train Model Now</button>
+    </div>
+    <div class="ai-status-row">
+      <div class="ai-status-item">
+        <div class="label">Status</div>
+        <div class="value" id="modelStatus">Checking...</div>
+      </div>
+      <div class="ai-status-item">
+        <div class="label">Accuracy</div>
+        <div class="value" id="modelAccuracy">—</div>
+      </div>
+      <div class="ai-status-item">
+        <div class="label">Trained on</div>
+        <div class="value" id="modelSampleSize">—</div>
+      </div>
+      <div class="ai-status-item">
+        <div class="label">Last trained</div>
+        <div class="value" id="modelTrainedAt" style="font-size:0.95rem;">—</div>
+      </div>
+    </div>
+    <div id="aiMsg" class="ai-msg"></div>
   </div>
 
   <div class="stats-row">
@@ -97,9 +169,9 @@ tr:hover { background: rgba(13,115,119,0.05); }
       <div class="change up"><i class="fas fa-check"></i> Platform average</div>
     </div>
     <div class="stat-card warning">
-      <h3><i class="fas fa-comments"></i> Total Interactions</h3>
+      <h3><i class="fas fa-comments"></i> Total Dose Records</h3>
       <div class="number" id="statInteractions">-</div>
-      <div class="change up"><i class="fas fa-exchange-alt"></i> WhatsApp + QR scans</div>
+      <div class="change up"><i class="fas fa-exchange-alt"></i> Logged doses</div>
     </div>
   </div>
 
@@ -131,19 +203,119 @@ tr:hover { background: rgba(13,115,119,0.05); }
 </div>
 
 <script>
-const API_BASE = 'https://api.biomexapharmaceuticals.com';
+const API_BASE = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+  ? 'http://localhost:3000'
+  : 'https://biomexa-api-f9f6.onrender.com';
+
+let authHeader = sessionStorage.getItem('adminAuthHeader') || '';
+
+if (authHeader) {
+  enterDashboard();
+}
+
+function login() {
+  const u = document.getElementById('adminUser').value;
+  const p = document.getElementById('adminPass').value;
+  const err = document.getElementById('loginError');
+  err.style.display = 'none';
+  authHeader = 'Basic ' + btoa(u + ':' + p);
+
+  fetch(API_BASE + '/api/admin/login', { headers: { 'Authorization': authHeader } })
+    .then(r => { if (!r.ok) throw new Error('Invalid admin username or password.'); return r.json(); })
+    .then(() => {
+      sessionStorage.setItem('adminAuthHeader', authHeader);
+      enterDashboard();
+    })
+    .catch(e => {
+      err.textContent = e.message;
+      err.style.display = 'block';
+    });
+}
+
+function logout() {
+  authHeader = '';
+  sessionStorage.removeItem('adminAuthHeader');
+  document.getElementById('loginSection').classList.remove('hidden');
+  document.getElementById('dashboardSection').classList.add('hidden');
+  document.getElementById('logoutBtn').style.display = 'none';
+}
+
+function enterDashboard() {
+  document.getElementById('loginSection').classList.add('hidden');
+  document.getElementById('dashboardSection').classList.remove('hidden');
+  document.getElementById('logoutBtn').style.display = 'inline-flex';
+  loadModelStatus();
+  loadData();
+}
+
+function authFetch(path, opts) {
+  opts = opts || {};
+  opts.headers = Object.assign({ 'Authorization': authHeader }, opts.headers || {});
+  return fetch(API_BASE + path, opts).then(r => {
+    if (r.status === 401) { logout(); throw new Error('Session expired — please log in again.'); }
+    return r;
+  });
+}
+
+function loadModelStatus() {
+  authFetch('/api/admin/model')
+    .then(r => r.json())
+    .then(m => {
+      if (m.trained) {
+        document.getElementById('modelStatus').textContent = 'Trained ✓';
+        document.getElementById('modelStatus').style.color = 'var(--success)';
+        document.getElementById('modelAccuracy').textContent = m.accuracy;
+        document.getElementById('modelSampleSize').textContent = m.sampleSize + ' patients';
+        document.getElementById('modelTrainedAt').textContent = new Date(m.trainedAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+      } else {
+        document.getElementById('modelStatus').textContent = 'Not trained yet';
+        document.getElementById('modelStatus').className = 'value untrained';
+        document.getElementById('modelAccuracy').textContent = '—';
+        document.getElementById('modelSampleSize').textContent = '—';
+        document.getElementById('modelTrainedAt').textContent = '—';
+      }
+    })
+    .catch(() => {});
+}
+
+function trainModel() {
+  const btn = document.getElementById('trainBtn');
+  const msg = document.getElementById('aiMsg');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Training...';
+  msg.className = 'ai-msg';
+
+  authFetch('/api/admin/train-ai', { method: 'POST' })
+    .then(r => r.json().then(data => ({ ok: r.ok, data })))
+    .then(({ ok, data }) => {
+      if (!ok) throw new Error(data.message);
+      msg.className = 'ai-msg ok';
+      msg.textContent = data.message + ' — accuracy ' + data.accuracy + ' on ' + data.sampleSize + ' patients.';
+      loadModelStatus();
+      loadData();
+    })
+    .catch(e => {
+      msg.className = 'ai-msg err';
+      msg.textContent = e.message;
+    })
+    .finally(() => {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-play"></i> Train Model Now';
+    });
+}
 
 function loadData() {
-  fetch(API_BASE + '/stats')
+  authFetch('/api/admin/stats')
     .then(r => r.json())
     .then(stats => {
       document.getElementById('statTotal').textContent = stats.total_patients;
       document.getElementById('statHighRisk').textContent = stats.high_risk_patients;
       document.getElementById('statAdherence').textContent = stats.average_adherence + '%';
       document.getElementById('statInteractions').textContent = stats.total_interactions;
-    });
+    })
+    .catch(() => {});
 
-  fetch(API_BASE + '/patients')
+  authFetch('/api/admin/patients')
     .then(r => r.json())
     .then(data => renderPatients(data))
     .catch(() => {
@@ -155,33 +327,39 @@ function renderPatients(data) {
   const tb = document.getElementById('patientTable');
   if (!data.length) { tb.innerHTML = '<tr><td colspan="9" class="empty">No patients in the system yet</td></tr>'; return; }
 
-  tb.innerHTML = data.map(p => {
+  tb.innerHTML = data.map(function(p) {
     const riskClass = p.ai_risk_label === 'Critical' ? 'risk-critical' : p.ai_risk_label === 'High' ? 'risk-high' : 'risk-low';
     const adhClass = p.adherence_score >= 80 ? 'adh-good' : 'adh-bad';
     const sentiment = p.sentiment || 'neutral';
     const sentIcon = sentiment === 'positive' ? '<i class="fas fa-smile" style="color:var(--success)"></i>' : sentiment === 'negative' ? '<i class="fas fa-frown" style="color:var(--danger)"></i>' : '<i class="fas fa-meh" style="color:var(--text-muted)"></i>';
-    return `<tr>
-      <td>#${p.id}</td>
-      <td><div class="patient-name">${p.name}</div></td>
-      <td class="patient-phone">${p.phone}</td>
-      <td>${p.medicine}</td>
-      <td class="${adhClass}">${p.adherence_score}%</td>
-      <td>${(p.risk_score * 100).toFixed(0)}%</td>
-      <td><span class="risk-badge ${riskClass}">${p.ai_risk_label}</span></td>
-      <td>${p.missed_doses}</td>
-      <td>${sentIcon} ${sentiment}</td>
-    </tr>`;
+    return '<tr>' +
+      '<td>#' + p.id + '</td>' +
+      '<td><div class="patient-name">' + p.name + '</div></td>' +
+      '<td class="patient-phone">' + p.phone + '</td>' +
+      '<td>' + p.medicine + '</td>' +
+      '<td class="' + adhClass + '">' + p.adherence_score + '%</td>' +
+      '<td>' + (p.risk_score * 100).toFixed(0) + '%</td>' +
+      '<td><span class="risk-badge ' + riskClass + '">' + p.ai_risk_label + '</span></td>' +
+      '<td>' + p.missed_doses + '</td>' +
+      '<td>' + sentIcon + ' ' + sentiment + '</td>' +
+    '</tr>';
   }).join('');
 }
 
-function exportCSV() { window.open(API_BASE + '/export/patients', '_blank'); }
-function refreshData() { 
-  document.getElementById('patientTable').innerHTML = '<tr><td colspan="9" class="loading"><i class="fas fa-spinner fa-spin"></i> Refreshing...</td></tr>';
-  loadData(); 
+function exportCSV() {
+  authFetch('/api/admin/export/patients').then(r => r.blob()).then(blob => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'biomexa-patients.csv'; a.click();
+    URL.revokeObjectURL(url);
+  });
 }
 
-// Load on page open
-loadData();
+function refreshData() {
+  document.getElementById('patientTable').innerHTML = '<tr><td colspan="9" class="loading"><i class="fas fa-spinner fa-spin"></i> Refreshing...</td></tr>';
+  loadModelStatus();
+  loadData();
+}
 </script>
 </body>
 </html>

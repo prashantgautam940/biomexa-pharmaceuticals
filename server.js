@@ -621,34 +621,53 @@ const MEDICINE_CATALOG = {
 const CATALOG_NAMES = Object.keys(MEDICINE_CATALOG);
 
 app.get('/api/patients', async (req, res) => {
-  // Mock data for doctor dashboard — real deployments should replace the random figures
-  // below with aggregates computed from the Dose collection (adherence) and a Vitals
-  // collection (BP), keyed by patientPhone.
-  const patients = await Patient.find().limit(50);
-  const data = patients.map((p, i) => {
-    const medName = p.medicines[0]?.name || CATALOG_NAMES[i % CATALOG_NAMES.length];
-    const catalogEntry = MEDICINE_CATALOG[medName] || null;
-    const bpBaseSys = p.baselineVitals?.bpSystolic || (115 + Math.floor(Math.random() * 30));
-    const bpBaseDia = p.baselineVitals?.bpDiastolic || (75 + Math.floor(Math.random() * 15));
-    return {
-      id: i + 1,
-      name: p.name,
-      phone: p.phone,
-      medicine: medName,
-      medicineInfo: catalogEntry,
-      adherence_score: Math.floor(60 + Math.random() * 40),
-      bpSystolic: bpBaseSys,
-      bpDiastolic: bpBaseDia,
-      bpStatus: bpBaseSys >= 140 || bpBaseDia >= 90 ? 'high' : bpBaseSys < 100 ? 'low' : 'normal',
-      risk_score: Math.random(),
-      ai_risk_label: Math.random() > 0.7 ? 'Critical' : Math.random() > 0.4 ? 'High' : 'Low',
-      ai_prediction: Math.random(),
-      missed_doses: Math.floor(Math.random() * 5),
-      next_dose: new Date(Date.now() + Math.random() * 86400000),
-      sentiment: ['positive', 'neutral', 'negative'][Math.floor(Math.random() * 3)]
-    };
-  });
-  res.json(data);
+  // Uses the trained AI risk model (Admin panel → AI Risk Engine) when one exists.
+  // Falls back to a deterministic adherence-based heuristic — never random — if no model has
+  // been trained yet. BP figures remain baseline/simulated until real vitals logging is wired up.
+  try {
+    const model = await TrainedModel.findOne().sort({ trainedAt: -1 });
+    const patients = await Patient.find().limit(50);
+    const data = [];
+    for (let i = 0; i < patients.length; i++) {
+      const p = patients[i];
+      const medName = p.medicines[0]?.name || CATALOG_NAMES[i % CATALOG_NAMES.length];
+      const catalogEntry = MEDICINE_CATALOG[medName] || null;
+      const bpBaseSys = p.baselineVitals?.bpSystolic || (115 + Math.floor(Math.random() * 30));
+      const bpBaseDia = p.baselineVitals?.bpDiastolic || (75 + Math.floor(Math.random() * 15));
+
+      const { features, adherence, missed } = await computePatientFeatures(p);
+      let riskProb;
+      if (model) {
+        const norm = features.map((v, j) => (v - model.featureMeans[j]) / model.featureStds[j]);
+        const z = norm.reduce((s, v, j) => s + v * model.weights[j], 0) + model.bias;
+        riskProb = sigmoid(z);
+      } else {
+        riskProb = Math.max(0, Math.min(1, 1 - adherence));
+      }
+      const label = riskProb > 0.66 ? 'Critical' : riskProb > 0.33 ? 'High' : 'Low';
+
+      data.push({
+        id: i + 1,
+        name: p.name,
+        phone: p.phone,
+        medicine: medName,
+        medicineInfo: catalogEntry,
+        adherence_score: Math.round(adherence * 100),
+        bpSystolic: bpBaseSys,
+        bpDiastolic: bpBaseDia,
+        bpStatus: bpBaseSys >= 140 || bpBaseDia >= 90 ? 'high' : bpBaseSys < 100 ? 'low' : 'normal',
+        risk_score: riskProb,
+        ai_risk_label: label,
+        ai_prediction: riskProb,
+        missed_doses: missed,
+        next_dose: new Date(Date.now() + Math.random() * 86400000),
+        sentiment: adherence > 0.8 ? 'positive' : adherence < 0.5 ? 'negative' : 'neutral'
+      });
+    }
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
 });
 
 // 7-day adherence + BP trend for one patient — powers the "View Trends" panel in the doctor dashboard
@@ -691,7 +710,199 @@ app.get('/api/export/patients', async (req, res) => {
   res.json({ message: 'Export feature coming soon' });
 });
 
-// ========== ADMIN ROUTES (Mock for compatibility) ==========
+// ========== ADMIN AUTH + AI ENGINE ==========
+const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'biomexadmin';
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'BiomexaAdmin@2026';
+
+function adminAuth(req, res, next) {
+  const auth = req.headers.authorization;
+  if (!auth || !auth.startsWith('Basic ')) {
+    return res.status(401).json({ message: 'Admin login required' });
+  }
+  const [u, p] = Buffer.from(auth.split(' ')[1], 'base64').toString().split(':');
+  if (u === ADMIN_USERNAME && p === ADMIN_PASSWORD) return next();
+  res.status(401).json({ message: 'Invalid admin username or password' });
+}
+
+app.get('/api/admin/login', adminAuth, (req, res) => {
+  res.json({ message: 'Admin authenticated' });
+});
+
+// A trained risk model — retrained from real patient/dose data via the Admin AI Engine panel
+const trainedModelSchema = new mongoose.Schema({
+  weights: [Number],
+  bias: Number,
+  featureMeans: [Number],
+  featureStds: [Number],
+  accuracy: Number,
+  sampleSize: Number,
+  trainedAt: { type: Date, default: Date.now }
+});
+const TrainedModel = mongoose.model('TrainedModel', trainedModelSchema);
+
+function sigmoid(z) { return 1 / (1 + Math.exp(-z)); }
+
+// Turns one patient's real Dose history into a feature vector for the risk model.
+// Features deliberately exclude adherence itself (that's the training label) to avoid circularity —
+// they capture regimen complexity and history instead: how many medicines, how many missed doses
+// logged, how long they've been on the platform, and how often doses are scheduled per day.
+async function computePatientFeatures(patient) {
+  const doses = await Dose.find({ patientPhone: patient.phone });
+  const total = doses.length;
+  const missed = doses.filter(d => d.status === 'missed').length;
+  const taken = doses.filter(d => d.status === 'taken').length;
+  const adherence = total ? taken / total : 1;
+  const daysSince = patient.createdAt ? Math.max(1, Math.floor((Date.now() - new Date(patient.createdAt)) / 86400000)) : 1;
+  const numMedicines = (patient.medicines || []).length || 1;
+  const doseFreq = total / daysSince;
+  return { features: [numMedicines, missed, daysSince, doseFreq], adherence, missed, total };
+}
+
+// Trains a logistic-regression risk model from whatever real patient + dose data exists right now.
+// Re-run this from the Admin panel any time new patient data comes in — it always retrains from scratch
+// on the current data rather than incrementally updating, which keeps the model simple and reproducible.
+app.post('/api/admin/train-ai', adminAuth, async (req, res) => {
+  try {
+    const patients = await Patient.find();
+    const rows = [];
+    for (const p of patients) {
+      const { features, adherence, total } = await computePatientFeatures(p);
+      if (total === 0) continue; // needs logged dose history to be useful training data
+      rows.push({ features, label: adherence < 0.7 ? 1 : 0 });
+    }
+    if (rows.length < 3) {
+      return res.status(400).json({ message: `Need at least 3 patients with logged dose history to train. Currently have ${rows.length}.` });
+    }
+
+    const nFeat = rows[0].features.length;
+    const means = new Array(nFeat).fill(0);
+    const stds = new Array(nFeat).fill(1);
+    for (let j = 0; j < nFeat; j++) {
+      const vals = rows.map(r => r.features[j]);
+      const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
+      const variance = vals.reduce((a, b) => a + (b - mean) ** 2, 0) / vals.length;
+      means[j] = mean;
+      stds[j] = Math.sqrt(variance) || 1;
+    }
+    const X = rows.map(r => r.features.map((v, j) => (v - means[j]) / stds[j]));
+    const y = rows.map(r => r.label);
+
+    let w = new Array(nFeat).fill(0);
+    let b = 0;
+    const lr = 0.15;
+    const epochs = 600;
+    for (let e = 0; e < epochs; e++) {
+      const gradW = new Array(nFeat).fill(0);
+      let gradB = 0;
+      for (let i = 0; i < X.length; i++) {
+        const z = X[i].reduce((s, v, j) => s + v * w[j], 0) + b;
+        const err = sigmoid(z) - y[i];
+        for (let j = 0; j < nFeat; j++) gradW[j] += err * X[i][j];
+        gradB += err;
+      }
+      for (let j = 0; j < nFeat; j++) w[j] -= lr * gradW[j] / X.length;
+      b -= lr * gradB / X.length;
+    }
+
+    let correct = 0;
+    for (let i = 0; i < X.length; i++) {
+      const z = X[i].reduce((s, v, j) => s + v * w[j], 0) + b;
+      if ((sigmoid(z) >= 0.5 ? 1 : 0) === y[i]) correct++;
+    }
+    const accuracy = correct / X.length;
+
+    await TrainedModel.deleteMany({});
+    const model = await TrainedModel.create({ weights: w, bias: b, featureMeans: means, featureStds: stds, accuracy, sampleSize: rows.length });
+
+    res.json({
+      message: 'Model trained successfully on real patient data',
+      accuracy: (accuracy * 100).toFixed(1) + '%',
+      sampleSize: rows.length,
+      trainedAt: model.trainedAt
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+app.get('/api/admin/model', adminAuth, async (req, res) => {
+  const model = await TrainedModel.findOne().sort({ trainedAt: -1 });
+  if (!model) return res.json({ trained: false });
+  res.json({ trained: true, accuracy: (model.accuracy * 100).toFixed(1) + '%', sampleSize: model.sampleSize, trainedAt: model.trainedAt });
+});
+
+// Admin's patient view — risk scores come from the trained model when one exists,
+// and fall back to a deterministic adherence-based heuristic (never random) otherwise.
+app.get('/api/admin/patients', adminAuth, async (req, res) => {
+  try {
+    const model = await TrainedModel.findOne().sort({ trainedAt: -1 });
+    const patients = await Patient.find().limit(200);
+    const data = [];
+    for (let i = 0; i < patients.length; i++) {
+      const p = patients[i];
+      const { features, adherence, missed, total } = await computePatientFeatures(p);
+      let riskProb;
+      if (model) {
+        const norm = features.map((v, j) => (v - model.featureMeans[j]) / model.featureStds[j]);
+        const z = norm.reduce((s, v, j) => s + v * model.weights[j], 0) + model.bias;
+        riskProb = sigmoid(z);
+      } else {
+        riskProb = Math.max(0, Math.min(1, 1 - adherence));
+      }
+      const label = riskProb > 0.66 ? 'Critical' : riskProb > 0.33 ? 'High' : 'Low';
+      data.push({
+        id: i + 1,
+        name: p.name,
+        phone: p.phone,
+        medicine: p.medicines[0]?.name || 'None',
+        adherence_score: Math.round(adherence * 100),
+        risk_score: riskProb,
+        ai_risk_label: label,
+        ai_prediction: riskProb,
+        missed_doses: missed,
+        sentiment: total === 0 ? 'neutral' : (adherence > 0.8 ? 'positive' : adherence < 0.5 ? 'negative' : 'neutral')
+      });
+    }
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+app.get('/api/admin/stats', adminAuth, async (req, res) => {
+  try {
+    const patients = await Patient.find();
+    const total = patients.length;
+    let sumAdh = 0, highRisk = 0, counted = 0;
+    for (const p of patients) {
+      const { adherence, total: t } = await computePatientFeatures(p);
+      if (t > 0) { sumAdh += adherence; counted++; if (adherence < 0.6) highRisk++; }
+    }
+    const avgAdh = counted ? Math.round((sumAdh / counted) * 100) : 0;
+    const doseCount = await Dose.countDocuments();
+    res.json({ total_patients: total, high_risk_patients: highRisk, average_adherence: avgAdh, total_interactions: doseCount });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+app.get('/api/admin/export/patients', adminAuth, async (req, res) => {
+  try {
+    const patients = await Patient.find();
+    let csv = 'Name,Phone,Medicines,RegisteredAt\n';
+    patients.forEach(p => {
+      const meds = (p.medicines || []).map(m => m.name).join('; ');
+      csv += `"${p.name}","${p.phone}","${meds}","${p.createdAt || ''}"\n`;
+    });
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename="biomexa-patients.csv"');
+    res.send(csv);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// ========== ADMIN ROUTES (legacy mock, kept for backward compatibility) ==========
 app.get('/stats', async (req, res) => {
   const total = await Patient.countDocuments();
   res.json({
