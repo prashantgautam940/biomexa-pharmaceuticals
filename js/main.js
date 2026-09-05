@@ -483,6 +483,11 @@ document.addEventListener('DOMContentLoaded', function() {
     // BIOMEXA CONNECT — Doctors Available widget
     // ============================================
     initDoctorConnect();
+
+    // ============================================
+    // 3D SCROLL BADGE — company logo rotates in 3D as you scroll
+    // ============================================
+    initScroll3DBadge();
 });
 
 function initDoctorConnect() {
@@ -612,4 +617,35 @@ function initGallery() {
     });
 
     startAuto();
+}
+
+function initScroll3DBadge() {
+    const badge = document.getElementById('scroll3dBadge');
+    const logo = document.getElementById('scroll3dLogo');
+    if (!badge || !logo) return;
+
+    let ticking = false;
+
+    function update() {
+        const scrollY = window.scrollY || window.pageYOffset;
+
+        // Show the badge once the visitor has scrolled past the hero
+        badge.classList.toggle('visible', scrollY > 200);
+
+        // Continuous 3D spin tied to scroll position, with a slight tilt for depth
+        const angle = (scrollY * 0.5) % 360;
+        const tilt = 12 * Math.sin(scrollY / 400);
+        logo.style.transform = `rotateY(${angle}deg) rotateX(${tilt}deg)`;
+
+        ticking = false;
+    }
+
+    window.addEventListener('scroll', () => {
+        if (!ticking) {
+            window.requestAnimationFrame(update);
+            ticking = true;
+        }
+    }, { passive: true });
+
+    update();
 }
