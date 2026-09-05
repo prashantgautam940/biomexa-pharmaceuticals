@@ -613,23 +613,74 @@ app.post('/api/doctors/:id/connect', async (req, res) => {
   }
 });
 
+// ========== MEDICINE CATALOG (links doctor view to the products already on the site) ==========
+const MEDICINE_CATALOG = {
+  'Telmexa AM': { slug: 'telmexa-am', dosage: '40mg/5mg', category: 'BP Management', url: '/products/telmexa-am.html' },
+  'Diabmexa M 500': { slug: 'diabmexa-m-500', dosage: '500mg', category: 'Diabetes Care', url: '/products/diabmexa-m-500.html' }
+};
+const CATALOG_NAMES = Object.keys(MEDICINE_CATALOG);
+
 app.get('/api/patients', async (req, res) => {
-  // Mock data for doctor dashboard
+  // Mock data for doctor dashboard — real deployments should replace the random figures
+  // below with aggregates computed from the Dose collection (adherence) and a Vitals
+  // collection (BP), keyed by patientPhone.
   const patients = await Patient.find().limit(50);
-  const data = patients.map((p, i) => ({
-    id: i + 1,
-    name: p.name,
-    phone: p.phone,
-    medicine: p.medicines[0]?.name || 'None',
-    adherence_score: Math.floor(60 + Math.random() * 40),
-    risk_score: Math.random(),
-    ai_risk_label: Math.random() > 0.7 ? 'Critical' : Math.random() > 0.4 ? 'High' : 'Low',
-    ai_prediction: Math.random(),
-    missed_doses: Math.floor(Math.random() * 5),
-    next_dose: new Date(Date.now() + Math.random() * 86400000),
-    sentiment: ['positive', 'neutral', 'negative'][Math.floor(Math.random() * 3)]
-  }));
+  const data = patients.map((p, i) => {
+    const medName = p.medicines[0]?.name || CATALOG_NAMES[i % CATALOG_NAMES.length];
+    const catalogEntry = MEDICINE_CATALOG[medName] || null;
+    const bpBaseSys = p.baselineVitals?.bpSystolic || (115 + Math.floor(Math.random() * 30));
+    const bpBaseDia = p.baselineVitals?.bpDiastolic || (75 + Math.floor(Math.random() * 15));
+    return {
+      id: i + 1,
+      name: p.name,
+      phone: p.phone,
+      medicine: medName,
+      medicineInfo: catalogEntry,
+      adherence_score: Math.floor(60 + Math.random() * 40),
+      bpSystolic: bpBaseSys,
+      bpDiastolic: bpBaseDia,
+      bpStatus: bpBaseSys >= 140 || bpBaseDia >= 90 ? 'high' : bpBaseSys < 100 ? 'low' : 'normal',
+      risk_score: Math.random(),
+      ai_risk_label: Math.random() > 0.7 ? 'Critical' : Math.random() > 0.4 ? 'High' : 'Low',
+      ai_prediction: Math.random(),
+      missed_doses: Math.floor(Math.random() * 5),
+      next_dose: new Date(Date.now() + Math.random() * 86400000),
+      sentiment: ['positive', 'neutral', 'negative'][Math.floor(Math.random() * 3)]
+    };
+  });
   res.json(data);
+});
+
+// 7-day adherence + BP trend for one patient — powers the "View Trends" panel in the doctor dashboard
+app.get('/api/doctor/patient/:phone/vitals', async (req, res) => {
+  try {
+    const phone = req.params.phone;
+    const patient = await Patient.findOne({ phone });
+    if (!patient) return res.status(404).json({ message: 'Patient not found' });
+
+    const today = new Date();
+    const days = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(today);
+      d.setDate(d.getDate() - i);
+      const dateStr = d.toISOString().split('T')[0];
+
+      const dayDoses = await Dose.find({ patientPhone: phone, scheduledDate: dateStr });
+      const taken = dayDoses.filter(x => x.status === 'taken').length;
+      const adherence = dayDoses.length ? Math.round((taken / dayDoses.length) * 100) : null;
+
+      days.push({
+        date: dateStr,
+        label: d.toLocaleDateString('en-IN', { weekday: 'short' }),
+        adherence: adherence === null ? Math.floor(60 + Math.random() * 40) : adherence, // fallback demo value if no doses logged yet
+        bpSystolic: (patient.baselineVitals?.bpSystolic || 120) + Math.floor(Math.random() * 10 - 5),
+        bpDiastolic: (patient.baselineVitals?.bpDiastolic || 80) + Math.floor(Math.random() * 8 - 4)
+      });
+    }
+    res.json({ patient: { name: patient.name, phone: patient.phone, baselineVitals: patient.baselineVitals }, days });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
 });
 
 app.get('/api/doctor/queue', async (req, res) => {

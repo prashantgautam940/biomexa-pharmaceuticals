@@ -56,18 +56,13 @@
     <!-- Navigation -->
     <nav class="navbar" id="navbar">
         <a href="#home" class="logo">
-            <!-- <div class="logo-icon">⚕</div> -->
-             <img class="logo-icon" src="logo.png"/>
-            <span>Biomexa Pharmaceuticals</span>
+            <img class="logo-full-img" src="images/logo-full.png" alt="Biomexa Pharmaceuticals">
         </a>
         <ul class="nav-links" id="navLinks">
-            <li><a href="#challenge" class="nav-link">The Challenge</a></li>
-            <li><a href="#journey" class="nav-link">Patient Journey</a></li>
+            <li><a href="#products" class="nav-link">Products</a></li>
             <li><a href="#solution" class="nav-link">Solution</a></li>
-            <li><a href="products/" class="nav-link">Products</a></li>
+            <li><a href="#connect-doctor" class="nav-link">Doctors</a></li>
             <li><a href="ai-assistant.html" class="nav-link">AI Assistant</a></li>
-            <li><a href="#ecosystem" class="nav-link">Ecosystem</a></li>
-            <li><a href="#dashboard" class="nav-link">Dashboard</a></li>
             <li class="nav-dropdown">
                 <a href="#portals" class="nav-link nav-dropdown-toggle">Portals ▾</a>
                 <ul class="nav-dropdown-menu">
@@ -88,17 +83,14 @@
 
     <!-- Mobile Menu -->
     <div class="mobile-menu" id="mobileMenu">
-        <a href="#challenge">The Challenge</a>
-        <a href="#journey">Patient Journey</a>
+        <a href="#products">Products</a>
         <a href="#solution">Solution</a>
-        <a href="products/">Products</a>
+        <a href="#connect-doctor">Doctors</a>
         <a href="ai-assistant.html">AI Assistant</a>
         <a href="doctor.html">Doctor Login</a>
         <a href="doctor-signup.html">Doctor Sign Up</a>
         <a href="patient.html">Patient Portal</a>
-        <a href="#ecosystem">Ecosystem</a>
         <a href="admin.html">Admin</a>
-        <a href="#dashboard">Dashboard</a>
         <a href="#contact">Contact</a>
         <a href="login.html">Login</a>
         <a href="signup.html" style="color: #14a085; font-weight: 600;">Get Started</a>
@@ -168,137 +160,51 @@
         </div>
     </section>
 
-    <!-- Products Showcase -->
-    <section class="section products-showcase" id="products" style="background: linear-gradient(180deg, #0a3a3e 0%, #0a2e33 100%); padding: 5rem 2rem;">
-        <div class="section-header fade-in" style="text-align: center; max-width: 800px; margin: 0 auto 3rem;">
+    <!-- 3D Product Gallery — walk in and find your product rotating on its plinth -->
+    <section class="section gallery-section" id="products">
+        <div class="gallery-floor"></div>
+        <div class="section-header fade-in" style="text-align: center; max-width: 800px; margin: 0 auto; position: relative; z-index: 1;">
             <span class="section-tag" style="color: #14a085; font-size: 0.875rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em;">Our Medicines</span>
-            <h2 class="section-title" style="font-size: 2.5rem; font-weight: 700; margin: 1rem 0; color: #f3f4f6;">AI-Guided Therapies</h2>
-            <p class="section-subtitle" style="color: #9ca3af; font-size: 1.1rem;">Scan the QR code on your Biomexa packaging to unlock personalized AI voice guidance, circadian dosing, and adherence tracking.</p>
+            <h2 class="section-title" style="font-size: 2.5rem; font-weight: 700; margin: 1rem 0; color: #f3f4f6;">Walk into the Biomexa gallery</h2>
+            <p class="section-subtitle" style="color: #9ca3af; font-size: 1.1rem;">Scan the QR code on your packaging to unlock AI voice guidance, circadian dosing, and adherence tracking.</p>
         </div>
-        <div class="products-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 2rem; max-width: 1000px; margin: 0 auto;">
-            <div class="product-card-featured" style="background: rgba(17, 24, 39, 0.8); border: 1px solid #374151; border-radius: 20px; padding: 2.5rem; transition: all 0.3s; cursor: pointer;" onmouseover="this.style.borderColor='#0d7377'" onmouseout="this.style.borderColor='#374151'">
-                <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 1.5rem;">
-                    <div style="width: 60px; height: 60px; border-radius: 16px; background: linear-gradient(135deg, #0d7377, #14a085); display: flex; align-items: center; justify-content: center; font-size: 1.5rem;">🛡️</div>
-                    <div>
-                        <h3 style="color: #f3f4f6; font-size: 1.5rem; font-weight: 700; margin: 0;">Telmexa AM</h3>
-                        <p style="color: #9ca3af; margin: 0; font-size: 0.9rem;">Telmisartan 40mg & Amlodipine 5mg</p>
+
+        <div class="gallery-stage">
+            <div class="gallery-track" id="galleryTrack">
+                <div class="gallery-plinth active" data-index="0">
+                    <div class="gallery-card">
+                        <img class="product-spin" src="images/products/telmexa-am-box.jpg" alt="Telmexa AM package">
+                        <h3 class="gallery-name">Telmexa AM</h3>
+                        <p class="gallery-sub">Telmisartan 40mg &amp; Amlodipine 5mg</p>
+                        <div class="gallery-tags"><span>Once Daily</span><span>BP Management</span><span>QR + AI</span></div>
+                        <div class="gallery-cta">
+                            <a href="products/telmexa-am.html" class="primary">View details →</a>
+                            <a href="products/ai/telmexa-am-ai.html" class="ghost">AI guide</a>
+                        </div>
                     </div>
                 </div>
-                <p style="color: #9ca3af; line-height: 1.6; margin-bottom: 1.5rem;">Dual-action antihypertensive with circadian-optimized morning dosing. AI-guided food interaction alerts and BP monitoring.</p>
-                <div style="display: flex; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 1.5rem;">
-                    <span style="background: rgba(13,115,119,0.2); color: #14a085; padding: 0.35rem 0.9rem; border-radius: 50px; font-size: 0.8rem;">Once Daily</span>
-                    <span style="background: rgba(13,115,119,0.2); color: #14a085; padding: 0.35rem 0.9rem; border-radius: 50px; font-size: 0.8rem;">BP Management</span>
-                    <span style="background: rgba(13,115,119,0.2); color: #14a085; padding: 0.35rem 0.9rem; border-radius: 50px; font-size: 0.8rem;">QR + AI</span>
-                </div>
-                <div style="display: flex; gap: 0.75rem;">
-                    <a href="products/telmexa-am.html" style="display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.75rem 1.5rem; background: linear-gradient(135deg, #0d7377, #14a085); color: white; border-radius: 10px; text-decoration: none; font-weight: 600; font-size: 0.9rem; transition: all 0.3s;">View Details →</a>
-                    <a href="products/ai/telmexa-am-ai.html" style="display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.75rem 1.5rem; background: transparent; border: 1px solid #374151; color: #14a085; border-radius: 10px; text-decoration: none; font-weight: 600; font-size: 0.9rem; transition: all 0.3s;">🤖 AI Guide</a>
-                </div>
-            </div>
-            <div class="product-card-featured" style="background: rgba(17, 24, 39, 0.8); border: 1px solid #374151; border-radius: 20px; padding: 2.5rem; transition: all 0.3s; cursor: pointer;" onmouseover="this.style.borderColor='#0d7377'" onmouseout="this.style.borderColor='#374151'">
-                <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 1.5rem;">
-                    <div style="width: 60px; height: 60px; border-radius: 16px; background: linear-gradient(135deg, #0d7377, #14a085); display: flex; align-items: center; justify-content: center; font-size: 1.5rem;">💧</div>
-                    <div>
-                        <h3 style="color: #f3f4f6; font-size: 1.5rem; font-weight: 700; margin: 0;">Diabmexa M 500</h3>
-                        <p style="color: #9ca3af; margin: 0; font-size: 0.9rem;">Metformin Hydrochloride IP 500mg</p>
+                <div class="gallery-plinth" data-index="1">
+                    <div class="gallery-card">
+                        <img class="product-spin" src="images/products/diabmexa-m-box.jpg" alt="Diabmexa M 500 package">
+                        <h3 class="gallery-name">Diabmexa M 500</h3>
+                        <p class="gallery-sub">Metformin Hydrochloride IP 500mg</p>
+                        <div class="gallery-tags"><span>Twice Daily</span><span>Diabetes Care</span><span>QR + AI</span></div>
+                        <div class="gallery-cta">
+                            <a href="products/diabmexa-m-500.html" class="primary">View details →</a>
+                            <a href="products/ai/diabmexa-m-500-ai.html" class="ghost">AI guide</a>
+                        </div>
                     </div>
                 </div>
-                <p style="color: #9ca3af; line-height: 1.6; margin-bottom: 1.5rem;">First-line oral hypoglycemic for Type 2 Diabetes. Dawn-phenomenon targeted dosing with AI glucose monitoring and adherence tracking.</p>
-                <div style="display: flex; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 1.5rem;">
-                    <span style="background: rgba(13,115,119,0.2); color: #14a085; padding: 0.35rem 0.9rem; border-radius: 50px; font-size: 0.8rem;">Twice Daily</span>
-                    <span style="background: rgba(13,115,119,0.2); color: #14a085; padding: 0.35rem 0.9rem; border-radius: 50px; font-size: 0.8rem;">Diabetes Care</span>
-                    <span style="background: rgba(13,115,119,0.2); color: #14a085; padding: 0.35rem 0.9rem; border-radius: 50px; font-size: 0.8rem;">QR + AI</span>
-                </div>
-                <div style="display: flex; gap: 0.75rem;">
-                    <a href="products/diabmexa-m-500.html" style="display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.75rem 1.5rem; background: linear-gradient(135deg, #0d7377, #14a085); color: white; border-radius: 10px; text-decoration: none; font-weight: 600; font-size: 0.9rem; transition: all 0.3s;">View Details →</a>
-                    <a href="products/ai/diabmexa-m-500-ai.html" style="display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.75rem 1.5rem; background: transparent; border: 1px solid #374151; color: #14a085; border-radius: 10px; text-decoration: none; font-weight: 600; font-size: 0.9rem; transition: all 0.3s;">🤖 AI Guide</a>
-                </div>
             </div>
-        </div>
-        <div style="text-align: center; margin-top: 2.5rem;">
-            <a href="products/" style="display: inline-flex; align-items: center; gap: 0.5rem; padding: 1rem 2rem; background: transparent; border: 2px solid #0d7377; color: #14a085; border-radius: 12px; text-decoration: none; font-weight: 600; transition: all 0.3s;">View All Products →</a>
-        </div>
-    </section>
-
-    <!-- The Challenge -->
-    <section class="section problem-section" id="challenge">
-        <div class="section-header fade-in">
-            <span class="section-tag">The Challenge</span>
-            <h2 class="section-title">Medication Non-Adherence Is a Silent Crisis</h2>
-            <p class="section-subtitle">From prescription to poor outcomes — the broken chain that costs lives and billions in healthcare spending.</p>
-        </div>
-        <div class="problem-grid fade-in">
-            <div class="problem-card">
-                <div class="problem-icon">📝</div>
-                <h4>Prescription</h4>
-                <p>Doctor writes the prescription</p>
+            <div class="gallery-nav" id="galleryNav">
+                <button class="gallery-dot active" data-index="0" aria-label="Show Telmexa AM"></button>
+                <button class="gallery-dot" data-index="1" aria-label="Show Diabmexa M 500"></button>
             </div>
-            <div class="problem-arrow">→</div>
-            <div class="problem-card">
-                <div class="problem-icon">💊</div>
-                <h4>Medicine Dispensed</h4>
-                <p>Patient collects from pharmacy</p>
-            </div>
-            <div class="problem-arrow">→</div>
-            <div class="problem-card highlight">
-                <div class="problem-icon">❌</div>
-                <h4>Missed Doses</h4>
-                <p>No tracking or reminders</p>
-            </div>
-            <div class="problem-arrow">→</div>
-            <div class="problem-card">
-                <div class="problem-icon">📉</div>
-                <h4>Poor Outcomes</h4>
-                <p>Disease progression worsens</p>
-            </div>
-            <div class="problem-arrow">→</div>
-            <div class="problem-card">
-                <div class="problem-icon">💰</div>
-                <h4>Higher Costs</h4>
-                <p>Hospitalizations & complications</p>
-            </div>
-        </div>
-        <div class="vulnerable-patients fade-in">
-            <div class="vp-icon">👥</div>
-            <div class="vp-content">
-                <h4>Vulnerable Patients Need More</h4>
-                <p>Elderly patients managing complex regimens. Visually impaired patients unable to read instructions. Pregnant women needing safe medication guidance. Tuberculosis patients requiring strict, observed therapy.</p>
-            </div>
-        </div>
-    </section>
-
-    <!-- Patient Journey -->
-    <section class="section journey-section" id="journey">
-        <div class="section-header fade-in">
-            <span class="section-tag">The Experience</span>
-            <h2 class="section-title">Complete Patient Journey</h2>
-            <p class="section-subtitle">See how Biomexa transforms the entire treatment experience from prescription to recovery.</p>
         </div>
 
-        <div class="disease-tabs fade-in">
-            <button class="disease-tab active" data-disease="diabetes">
-                <span class="tab-icon">🩸</span>Diabetes
-            </button>
-            <button class="disease-tab" data-disease="hypertension">
-                <span class="tab-icon">🫀</span>Hypertension
-            </button>
-            <button class="disease-tab" data-disease="tb">
-                <span class="tab-icon">🫁</span>Tuberculosis
-            </button>
-            <button class="disease-tab" data-disease="pregnancy">
-                <span class="tab-icon">🤰</span>Pregnancy Care
-            </button>
-            <button class="disease-tab" data-disease="cholesterol">
-                <span class="tab-icon">🧬</span>Cholesterol
-            </button>
+        <div style="text-align: center; margin-top: 2.5rem; position: relative; z-index: 1;">
+            <a href="products/" style="display: inline-flex; align-items: center; gap: 0.5rem; padding: 1rem 2rem; background: transparent; border: 2px solid #0d7377; color: #14a085; border-radius: 12px; text-decoration: none; font-weight: 600; transition: all 0.3s;">View all products →</a>
         </div>
-
-        <div class="journey-timeline fade-in">
-            <div class="timeline-line"></div>
-            <div class="journey-steps" id="journeySteps"></div>
-        </div>
-
-        <div id="journeyDetail"></div>
     </section>
 
     <!-- Solution -->
@@ -380,316 +286,6 @@
                     <span class="feature-tag">Risk Alerts</span>
                     <span class="feature-tag">Clinical View</span>
                 </div>
-            </div>
-        </div>
-    </section>
-
-    <!-- Food Interaction Table -->
-    <section class="section food-section" id="food">
-        <div class="section-header fade-in">
-            <span class="section-tag">Safety Intelligence</span>
-            <h2 class="section-title">Drug-Food Interaction Management</h2>
-            <p class="section-subtitle">Biomexa guides patients on meals, beverages, and supplements to maximize drug effectiveness and safety.</p>
-        </div>
-        <div class="fade-in">
-            <div class="food-table-wrapper">
-                <table class="food-table">
-                    <thead>
-                        <tr>
-                            <th>Medicine</th>
-                            <th>Food Interaction</th>
-                            <th>Biomexa Patient Guidance</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr>
-                            <td class="medicine-name">Levothyroxine</td>
-                            <td class="warning">Food can reduce absorption</td>
-                            <td>Take on an empty stomach before breakfast. Reminder: <em>"Take at 6:00 AM with water. Wait 30 min before eating."</em></td>
-                        </tr>
-                        <tr>
-                            <td class="medicine-name">Tetracycline Antibiotics</td>
-                            <td class="warning">Dairy products reduce absorption</td>
-                            <td>Avoid milk or calcium-rich foods close to dose. QR alert: <em>"Avoid dairy within 2 hours of this dose."</em></td>
-                        </tr>
-                        <tr>
-                            <td class="medicine-name">Warfarin</td>
-                            <td class="warning">Vitamin K affects anticoagulation</td>
-                            <td>Maintain consistent leafy green intake. Dashboard flags sudden dietary changes for clinician review.</td>
-                        </tr>
-                        <tr>
-                            <td class="medicine-name">Metformin</td>
-                            <td class="warning">Food affects GI tolerance</td>
-                            <td>Take with meals if prescribed. Audio: <em>"Take with your evening meal to reduce stomach upset."</em></td>
-                        </tr>
-                        <tr>
-                            <td class="medicine-name">Statins</td>
-                            <td class="warning">Grapefruit may increase drug levels</td>
-                            <td>Avoid grapefruit products when advised. Reminder includes food timing for optimal cholesterol control.</td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-        <div class="food-example fade-in">
-            <div class="example-icon">💡</div>
-            <div class="example-content">
-                <h4>Real-World Example</h4>
-                <p>A patient prescribed <strong>doxycycline</strong> scans their QR package. The system says: <em>"Avoid taking this medicine with milk or calcium supplements within 2 hours of the dose."</em> Their 8:00 AM reminder reads: <em>"Take doxycycline with water. Avoid dairy products around this dose."</em> <strong>Result:</strong> Improved drug absorption and better treatment effectiveness.</p>
-            </div>
-        </div>
-    </section>
-
-    <!-- The Ecosystem -->
-    <section class="section ecosystem-section" id="ecosystem">
-        <div class="section-header fade-in">
-            <span class="section-tag">The Complete Picture</span>
-            <h2 class="section-title">The Biomexa Ecosystem</h2>
-            <p class="section-subtitle">One connected system — from manufacturing to measurable patient outcomes.</p>
-        </div>
-        <div class="ecosystem-container fade-in">
-            <div class="ecosystem-center">
-                <div class="ecosystem-hub">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
-                </div>
-                <span class="hub-label">Biomexa<br>Platform</span>
-            </div>
-            <div class="ecosystem-ring">
-                <div class="ecosystem-item" data-pos="0">
-                    <div class="eco-icon">🏭</div>
-                    <span>Medicine<br>Manufacturing</span>
-                </div>
-                <div class="ecosystem-item" data-pos="1">
-                    <div class="eco-icon">📦</div>
-                    <span>QR<br>Packaging</span>
-                </div>
-                <div class="ecosystem-item" data-pos="2">
-                    <div class="eco-icon">📱</div>
-                    <span>Patient<br>Scan</span>
-                </div>
-                <div class="ecosystem-item" data-pos="3">
-                    <div class="eco-icon">🤖</div>
-                    <span>AI<br>Guidance</span>
-                </div>
-                <div class="ecosystem-item" data-pos="4">
-                    <div class="eco-icon">🍽️</div>
-                    <span>Biological Clock<br>& Food Alerts</span>
-                </div>
-                <div class="ecosystem-item" data-pos="5">
-                    <div class="eco-icon">⏰</div>
-                    <span>Reminder<br>System</span>
-                </div>
-                <div class="ecosystem-item" data-pos="6">
-                    <div class="eco-icon">📊</div>
-                    <span>Adherence<br>Data</span>
-                </div>
-                <div class="ecosystem-item" data-pos="7">
-                    <div class="eco-icon">🧬</div>
-                    <span>Therapeutic Effect<br>Calculation</span>
-                </div>
-                <div class="ecosystem-item" data-pos="8">
-                    <div class="eco-icon">👨‍⚕️</div>
-                    <span>Doctor<br>Dashboard</span>
-                </div>
-                <div class="ecosystem-item" data-pos="9">
-                    <div class="eco-icon">📈</div>
-                    <span>RWE<br>Generation</span>
-                </div>
-                <div class="ecosystem-item" data-pos="10">
-                    <div class="eco-icon">🎯</div>
-                    <span>Commercialization<br>& Outcomes</span>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <!-- Dashboard Preview -->
-    <section class="section dashboard-section" id="dashboard">
-        <div class="section-header fade-in">
-            <span class="section-tag">Clinical Intelligence</span>
-            <h2 class="section-title">Doctor & Healthcare Dashboard</h2>
-            <p class="section-subtitle">Real-time visibility into treatment response. Data-driven clinical decisions.</p>
-        </div>
-        <div class="dashboard-preview fade-in">
-            <div class="dash-header">
-                <div class="dash-title">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
-                    Biomexa Clinical Dashboard
-                </div>
-                <div class="dash-filters">
-                    <button class="dash-filter active">Today</button>
-                    <button class="dash-filter">Week</button>
-                    <button class="dash-filter">Month</button>
-                    <button class="dash-filter">Quarter</button>
-                </div>
-            </div>
-            <div class="dash-grid">
-                <div class="dash-metric">
-                    <div class="dash-metric-value" data-count="87">0</div>
-                    <div class="dash-metric-suffix">%</div>
-                    <div class="dash-metric-label">Avg Adherence</div>
-                    <div class="dash-metric-trend up">↑ 4.2%</div>
-                </div>
-                <div class="dash-metric">
-                    <div class="dash-metric-value" data-count="12">0</div>
-                    <div class="dash-metric-label">At-Risk Patients</div>
-                    <div class="dash-metric-trend down">↓ 3</div>
-                </div>
-                <div class="dash-metric">
-                    <div class="dash-metric-value" data-count="94">0</div>
-                    <div class="dash-metric-suffix">%</div>
-                    <div class="dash-metric-label">Dose Confirmation</div>
-                    <div class="dash-metric-trend up">↑ 2.1%</div>
-                </div>
-                <div class="dash-metric">
-                    <div class="dash-metric-value" data-count="3">0</div>
-                    <div class="dash-metric-label">Interventions Today</div>
-                    <div class="dash-metric-trend neutral">—</div>
-                </div>
-                <div class="dash-chart-area">
-                    <div class="chart-header">
-                        <span>Adherence Trend (Last 7 Days)</span>
-                        <span class="chart-legend"><span class="legend-dot"></span>Confirmed Doses</span>
-                    </div>
-                    <div class="chart-bar-container" id="adherenceChart"></div>
-                </div>
-                <div class="dash-chart-area">
-                    <div class="chart-header">
-                        <span>Therapeutic Effect Score</span>
-                        <span class="chart-legend"><span class="legend-dot teal"></span>Effect Score</span>
-                    </div>
-                    <div class="chart-bar-container" id="therapeuticChart"></div>
-                </div>
-            </div>
-            <div class="dash-patients">
-                <div class="dash-patients-header">
-                    <h4>Patients Requiring Attention</h4>
-                    <a href="#" class="view-all">View All →</a>
-                </div>
-                <div class="patient-row">
-                    <div class="patient-avatar">RK</div>
-                    <div class="patient-info">
-                        <span class="patient-name">Ravi Kumar</span>
-                        <span class="patient-condition">Hypertension · 3 missed doses</span>
-                    </div>
-                    <div class="patient-risk high">High Risk</div>
-                    <button class="patient-action">Intervene</button>
-                </div>
-                <div class="patient-row">
-                    <div class="patient-avatar">SP</div>
-                    <div class="patient-info">
-                        <span class="patient-name">Sunita Patel</span>
-                        <span class="patient-condition">Diabetes · Timing issue</span>
-                    </div>
-                    <div class="patient-risk medium">Medium Risk</div>
-                    <button class="patient-action">Review</button>
-                </div>
-                <div class="patient-row">
-                    <div class="patient-avatar">AM</div>
-                    <div class="patient-info">
-                        <span class="patient-name">Amit Mishra</span>
-                        <span class="patient-condition">TB · Food interaction alert</span>
-                    </div>
-                    <div class="patient-risk medium">Medium Risk</div>
-                    <button class="patient-action">Review</button>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <!-- Path to Scale -->
-    <section class="section scale-section" id="scale">
-        <div class="section-header fade-in">
-            <span class="section-tag">Go-To-Market</span>
-            <h2 class="section-title">Path to Scale</h2>
-            <p class="section-subtitle">From prototype to commercial partnerships — our strategic roadmap.</p>
-        </div>
-        <div class="scale-timeline fade-in">
-            <div class="scale-phase" data-phase="1">
-                <div class="phase-num">1</div>
-                <div class="phase-icon">🔧</div>
-                <h4>Prototype</h4>
-                <p>Platform development and initial QR packaging integration</p>
-                <div class="phase-status">In Progress</div>
-            </div>
-            <div class="scale-connector"></div>
-            <div class="scale-phase" data-phase="2">
-                <div class="phase-num">2</div>
-                <div class="phase-icon">🧪</div>
-                <h4>Pilot</h4>
-                <p>Diabetes & hypertension medicine pilots with partner clinics</p>
-                <div class="phase-status">Planned</div>
-            </div>
-            <div class="scale-connector"></div>
-            <div class="scale-phase" data-phase="3">
-                <div class="phase-num">3</div>
-                <div class="phase-icon">✅</div>
-                <h4>Validation</h4>
-                <p>Integration with clinics, pharmacies, and health systems</p>
-                <div class="phase-status">Planned</div>
-            </div>
-            <div class="scale-connector"></div>
-            <div class="scale-phase" data-phase="4">
-                <div class="phase-num">4</div>
-                <div class="phase-icon">📈</div>
-                <h4>Scale-Up</h4>
-                <p>Expansion to TB, pregnancy care, and chronic disease</p>
-                <div class="phase-status">Planned</div>
-            </div>
-            <div class="scale-connector"></div>
-            <div class="scale-phase" data-phase="5">
-                <div class="phase-num">5</div>
-                <div class="phase-icon">🤝</div>
-                <h4>Commercial</h4>
-                <p>RWE reporting and pharma partnerships at scale</p>
-                <div class="phase-status">Planned</div>
-            </div>
-        </div>
-    </section>
-
-    <!-- Business Model -->
-    <section class="section business-section" id="business">
-        <div class="section-header fade-in">
-            <span class="section-tag">Commercialization</span>
-            <h2 class="section-title">Services</h2>
-            <p class="section-subtitle">Diversified and defensible — multiple non-overlapping revenue streams.</p>
-        </div>
-        <div class="revenue-grid fade-in">
-            <div class="revenue-card">
-                <div class="rev-icon">📦</div>
-                <h3>QR-Enabled Packaging</h3>
-                <p>Revenue from QR-coded medicine packaging services for pharmaceutical manufacturers and pharmacies.</p>
-                <div class="rev-arrow">→ Platform Services</div>
-            </div>
-            <div class="revenue-card">
-                <div class="rev-icon">💳</div>
-                <h3>Platform Subscriptions</h3>
-                <p>Recurring subscription fees for the adherence platform from hospitals, clinics, and healthcare providers.</p>
-                <div class="rev-arrow">→ Patient Data</div>
-            </div>
-            <div class="revenue-card">
-                <div class="rev-icon">📈</div>
-                <h3>RWE & Analytics</h3>
-                <p>Real-world evidence reports and analytics products for pharmaceutical companies and regulators.</p>
-                <div class="rev-arrow">→ Analytics Products</div>
-            </div>
-            <div class="revenue-card">
-                <div class="rev-icon">🔬</div>
-                <h3>AI Technology Licensing</h3>
-                <p>Licensing of AI reminder, therapeutic analysis, and drug interaction technology to healthcare platforms.</p>
-                <div class="rev-arrow">→ Pharma & Healthcare</div>
-            </div>
-            <div class="revenue-card">
-                <div class="rev-icon">🤝</div>
-                <h3>Strategic Partnerships</h3>
-                <p>Partnerships with hospitals, clinics, government health programs, and insurance providers.</p>
-                <div class="rev-arrow">→ Revenue</div>
-            </div>
-            <div class="revenue-card highlight">
-                <div class="rev-icon">🌍</div>
-                <h3>Value Chain Impact</h3>
-                <p>Better adherence → Better outcomes → Lower costs → Higher drug effectiveness across the ecosystem.</p>
-                <div class="rev-arrow">→ Shared Value</div>
             </div>
         </div>
     </section>
@@ -786,8 +382,7 @@
         <div class="footer-grid">
             <div class="footer-brand">
                 <div class="logo">
-                    <div class="logo-icon">⚕</div>
-                    <span>Biomexa Pharmaceuticals</span>
+                    <img class="logo-full-img" src="images/logo-full.png" alt="Biomexa Pharmaceuticals">
                 </div>
                 <p>AI-Enabled Medicine Adherence & Treatment Intelligence Platform. Improving outcomes through connected medicines, patient engagement, and real-world evidence.</p>
                 <div class="footer-social">
@@ -797,17 +392,14 @@
             </div>
             <div class="footer-col">
                 <h4>Platform</h4>
+                <a href="#products">Our Medicines</a>
                 <a href="#solution">Smart Packaging</a>
                 <a href="#solution">AI Reminders</a>
-                <a href="#food">Food Interactions</a>
-                <a href="#dashboard">Doctor Dashboard</a>
-                <a href="#solution">Therapeutic Analysis</a>
+                <a href="#connect-doctor">Doctor Connect</a>
             </div>
             <div class="footer-col">
                 <h4>Company</h4>
                 <a href="#">About Us</a>
-                <a href="#scale">Roadmap</a>
-                <a href="#business">Business Model</a>
                 <a href="#value">Value Proposition</a>
                 <a href="#contact">Careers</a>
             </div>

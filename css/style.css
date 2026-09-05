@@ -121,6 +121,13 @@ button { font-family: inherit; cursor: pointer; }
     box-shadow: 0 0 20px var(--accent-glow);
 }
 
+.logo-full-img {
+    height: 34px;
+    width: auto;
+    display: block;
+}
+.footer-brand .logo-full-img { height: 30px; filter: brightness(0) invert(1); }
+
 .nav-links {
     display: flex;
     gap: 2.2rem;
@@ -1988,4 +1995,95 @@ button { font-family: inherit; cursor: pointer; }
 @media (max-width: 768px) {
     .connect-risk-banner { flex-direction: column; text-align: center; }
     .risk-banner-btn { margin-left: 0; }
+}
+
+/* ==========================================================================
+   3D PRODUCT GALLERY — "walk into the gallery" rotating showcase
+   ========================================================================== */
+.gallery-section {
+    background: radial-gradient(ellipse at center, #0a2e33 0%, #06181b 70%, #040f11 100%);
+    padding: 5rem 2rem 6rem;
+    position: relative;
+    overflow: hidden;
+}
+.gallery-floor {
+    position: absolute;
+    left: 0; right: 0; bottom: 0;
+    height: 45%;
+    background: linear-gradient(180deg, transparent 0%, rgba(20,160,133,0.06) 100%);
+    -webkit-mask-image: repeating-linear-gradient(90deg, rgba(0,0,0,0.5) 0px, rgba(0,0,0,0.5) 1px, transparent 1px, transparent 60px);
+    mask-image: repeating-linear-gradient(90deg, rgba(0,0,0,0.5) 0px, rgba(0,0,0,0.5) 1px, transparent 1px, transparent 60px);
+    pointer-events: none;
+}
+.gallery-stage {
+    position: relative;
+    max-width: 1000px;
+    margin: 3rem auto 0;
+    perspective: 1600px;
+    perspective-origin: 50% 40%;
+}
+.gallery-track {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 3rem;
+    transform-style: preserve-3d;
+    min-height: 480px;
+}
+.gallery-plinth {
+    position: relative;
+    width: 320px;
+    transform-style: preserve-3d;
+    transition: transform 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+    transform: rotateY(0deg) translateZ(0px) scale(0.85);
+    opacity: 0.55;
+    cursor: pointer;
+}
+.gallery-plinth.active {
+    transform: rotateY(0deg) translateZ(60px) scale(1);
+    opacity: 1;
+}
+.gallery-plinth:not(.active):hover { opacity: 0.85; }
+.gallery-card {
+    background: linear-gradient(160deg, rgba(17,24,39,0.92), rgba(8,15,25,0.95));
+    border: 1px solid #1f6f68;
+    border-radius: 18px;
+    padding: 1.75rem 1.75rem 1.5rem;
+    box-shadow: 0 40px 80px rgba(0,0,0,0.55), 0 0 60px rgba(20,160,133,0.12);
+    transform-style: preserve-3d;
+}
+.gallery-plinth .product-spin {
+    width: 100%;
+    border-radius: 12px;
+    display: block;
+    box-shadow: 0 20px 40px rgba(0,0,0,0.4);
+    animation: gallerySpin 9s ease-in-out infinite;
+    transform-style: preserve-3d;
+}
+.gallery-plinth.active .product-spin { animation-play-state: running; }
+.gallery-plinth:not(.active) .product-spin { animation-play-state: paused; }
+@keyframes gallerySpin {
+    0%, 8% { transform: rotateY(0deg); }
+    46%, 54% { transform: rotateY(180deg); }
+    92%, 100% { transform: rotateY(360deg); }
+}
+.gallery-name { color: #f3f4f6; font-size: 1.15rem; font-weight: 700; margin: 1.1rem 0 0.25rem; }
+.gallery-sub { color: #14a085; font-size: 0.82rem; font-weight: 600; margin: 0 0 0.9rem; }
+.gallery-tags { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1.1rem; }
+.gallery-tags span { background: rgba(13,115,119,0.2); color: #14a085; font-size: 0.72rem; padding: 4px 10px; border-radius: 50px; }
+.gallery-cta { display: flex; gap: 0.6rem; }
+.gallery-cta a { flex: 1; text-align: center; padding: 0.65rem 0.8rem; border-radius: 9px; font-weight: 600; font-size: 0.82rem; text-decoration: none; }
+.gallery-cta a.primary { background: linear-gradient(135deg, #0d7377, #14a085); color: #fff; }
+.gallery-cta a.ghost { border: 1px solid #374151; color: #cbd5e1; }
+.gallery-nav {
+    display: flex; justify-content: center; gap: 0.6rem; margin-top: 2.5rem;
+}
+.gallery-dot {
+    width: 9px; height: 9px; border-radius: 50%; background: #374151; border: none; cursor: pointer; transition: all 0.3s;
+}
+.gallery-dot.active { background: #14a085; width: 26px; border-radius: 5px; }
+@media (max-width: 900px) {
+    .gallery-track { flex-direction: column; }
+    .gallery-plinth { width: 100%; max-width: 340px; transform: none !important; opacity: 1 !important; }
+    .gallery-plinth:not(.active) { display: none; }
 }

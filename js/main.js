@@ -475,6 +475,11 @@ document.addEventListener('DOMContentLoaded', function() {
     console.log('🚀 Biomexa Pharmaceuticals website loaded successfully!');
 
     // ============================================
+    // 3D PRODUCT GALLERY — walk-through rotation
+    // ============================================
+    initGallery();
+
+    // ============================================
     // BIOMEXA CONNECT — Doctors Available widget
     // ============================================
     initDoctorConnect();
@@ -573,4 +578,38 @@ function initDoctorConnect() {
             });
         });
     }
+}
+
+function initGallery() {
+    const plinths = document.querySelectorAll('.gallery-plinth');
+    const dots = document.querySelectorAll('.gallery-dot');
+    if (!plinths.length) return;
+
+    let current = 0;
+    let autoTimer = null;
+
+    function goTo(index) {
+        current = index;
+        plinths.forEach((p, i) => p.classList.toggle('active', i === index));
+        dots.forEach((d, i) => d.classList.toggle('active', i === index));
+    }
+
+    function startAuto() {
+        clearInterval(autoTimer);
+        autoTimer = setInterval(() => {
+            goTo((current + 1) % plinths.length);
+        }, 7000);
+    }
+
+    plinths.forEach((p, i) => {
+        p.addEventListener('click', () => {
+            if (i !== current) { goTo(i); startAuto(); }
+        });
+    });
+
+    dots.forEach((d, i) => {
+        d.addEventListener('click', () => { goTo(i); startAuto(); });
+    });
+
+    startAuto();
 }

@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Doctor Dashboard | Biomexa Pharmaceuticals</title>
+<link rel="icon" type="image/svg+xml" href="logo.svg">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 <style>
@@ -99,6 +100,22 @@ tr:hover { background: rgba(13,115,119,0.05); }
 .ai-pred { font-size: 0.85rem; color: var(--text-muted); }
 .hidden { display: none !important; }
 .loading { text-align: center; padding: 3rem; color: var(--text-muted); }
+.med-badge { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 8px; background: rgba(13,115,119,0.12); color: var(--primary-light); text-decoration: none; font-weight: 600; font-size: 0.82rem; border: 1px solid rgba(13,115,119,0.3); }
+.med-badge:hover { background: rgba(13,115,119,0.22); }
+.bp-reading { font-weight: 700; }
+.bp-normal { color: var(--success); }
+.bp-high { color: var(--danger); }
+.bp-low { color: var(--accent); }
+.bp-sub { display: block; font-size: 0.72rem; color: var(--text-muted); font-weight: 400; text-transform: uppercase; letter-spacing: 0.04em; }
+.trend-btn { background: var(--bg-light); border: 1px solid var(--border); color: var(--primary-light); border-radius: 8px; padding: 8px 12px; cursor: pointer; font-weight: 600; font-size: 0.8rem; }
+.trend-btn:hover { border-color: var(--primary); }
+.mini-bar-col { display: flex; flex-direction: column; align-items: center; gap: 6px; flex: 1; }
+.mini-bar-track { width: 100%; max-width: 26px; height: 100px; background: rgba(255,255,255,0.05); border-radius: 6px; display: flex; align-items: flex-end; overflow: hidden; }
+.mini-bar-fill { width: 100%; border-radius: 6px 6px 0 0; transition: height 0.4s ease; }
+.mini-bar-label { font-size: 0.7rem; color: var(--text-muted); }
+.mini-bar-value { font-size: 0.72rem; font-weight: 700; color: var(--text); }
+.bp-dual-track { width: 100%; max-width: 34px; height: 100px; display: flex; gap: 3px; align-items: flex-end; }
+.bp-dual-bar { flex: 1; border-radius: 4px 4px 0 0; }
 .logout { padding: 8px 18px; background: transparent; border: 1px solid var(--border); color: var(--text-muted); border-radius: 8px; cursor: pointer; font-weight: 500; }
 .logout:hover { border-color: var(--danger); color: var(--danger); }
 @media (max-width: 768px) { .container { padding: 1rem; } .nav-links { display: none; } .filters { flex-direction: column; } .export-btn { margin-left: 0; } }
@@ -107,7 +124,7 @@ tr:hover { background: rgba(13,115,119,0.05); }
 <body>
 
 <header>
-  <a href="index.html" class="logo"><i class="fas fa-dna"></i> Biomexa</a>
+  <a href="index.html" class="logo"><img src="images/logo-full-white.png" alt="Biomexa Pharmaceuticals" style="height:30px;width:auto;"></a>
   <div class="nav-links">
     <a href="index.html">Home</a>
     <a href="products/index.html">Products</a>
@@ -127,16 +144,17 @@ tr:hover { background: rgba(13,115,119,0.05); }
       <h2>Doctor Login</h2>
       <p>Access patient adherence data & AI risk intelligence</p>
       <div class="input-group">
-        <label>Username</label>
-        <input type="text" id="username" value="drsharma" placeholder="Enter username">
+        <label>WhatsApp Number</label>
+        <input type="text" id="username" placeholder="e.g. +919812345678 (or demo username)">
       </div>
       <div class="input-group">
         <label>Password</label>
-        <input type="password" id="password" value="biomexa2026" placeholder="Enter password">
+        <input type="password" id="password" placeholder="Enter password">
       </div>
       <button class="btn" onclick="login()"><i class="fas fa-lock"></i> Secure Login</button>
       <div id="loginError" class="error"></div>
-      <p style="margin-top:1.5rem;font-size:0.85rem;color:var(--text-muted);">New doctor? <a href="doctor-signup.html" style="color:var(--primary-light);font-weight:600;text-decoration:none;">Join Biomexa Connect →</a></p>
+      <p style="margin-top:1rem;font-size:0.78rem;color:var(--text-muted);">Signed up on <a href="doctor-signup.html" style="color:var(--primary-light);">Join Biomexa Connect</a>? Log in here with the same WhatsApp number and password. Just exploring? Try username <strong>drsharma</strong> / password <strong>biomexa2026</strong>.</p>
+      <p style="margin-top:0.75rem;font-size:0.85rem;color:var(--text-muted);">New doctor? <a href="doctor-signup.html" style="color:var(--primary-light);font-weight:600;text-decoration:none;">Join Biomexa Connect →</a></p>
     </div>
   </div>
 
@@ -215,17 +233,40 @@ tr:hover { background: rgba(13,115,119,0.05); }
             <th>Patient</th>
             <th>Medicine</th>
             <th>Adherence</th>
+            <th>Blood Pressure</th>
             <th>Risk Score</th>
             <th>AI Prediction</th>
             <th>AI Risk</th>
             <th>Missed</th>
             <th>Next Dose</th>
+            <th>Trends</th>
           </tr>
         </thead>
         <tbody id="patientTable">
-          <tr><td colspan="8" class="loading"><i class="fas fa-spinner fa-spin"></i> Loading patients...</td></tr>
+          <tr><td colspan="10" class="loading"><i class="fas fa-spinner fa-spin"></i> Loading patients...</td></tr>
         </tbody>
       </table>
+    </div>
+
+    <!-- Patient Trends Modal — 7-day adherence & BP -->
+    <div class="modal hidden" id="trendsModal">
+      <div class="modal-backdrop" onclick="closeTrendsModal()"></div>
+      <div class="modal-card">
+        <div class="modal-header">
+          <h3 id="trendsPatientName"><i class="fas fa-chart-line"></i> Patient Trends</h3>
+          <button class="close-btn" onclick="closeTrendsModal()">✕</button>
+        </div>
+        <div class="modal-body">
+          <div>
+            <small style="color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05em;font-size:0.75rem;">Daily Adherence — last 7 days</small>
+            <div id="adherenceChart" style="display:flex;align-items:flex-end;gap:10px;height:140px;margin-top:10px;padding:10px;background:var(--bg-light);border-radius:10px;"></div>
+          </div>
+          <div>
+            <small style="color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05em;font-size:0.75rem;">Blood Pressure — last 7 days (systolic/diastolic)</small>
+            <div id="bpChart" style="display:flex;align-items:flex-end;gap:10px;height:140px;margin-top:10px;padding:10px;background:var(--bg-light);border-radius:10px;"></div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -295,22 +336,49 @@ let selectedConsultation = null;
 function login() {
   const u = document.getElementById('username').value;
   const p = document.getElementById('password').value;
-  authHeader = 'Basic ' + btoa(u + ':' + p);
+  const err = document.getElementById('loginError');
+  err.style.display = 'none';
 
-  fetch(API_BASE + '/api/doctor/login', { headers: { 'Authorization': authHeader } })
-    .then(r => { if (!r.ok) throw new Error('Invalid credentials'); return r.json(); })
-    .then(() => {
-      document.getElementById('loginSection').classList.add('hidden');
-      document.getElementById('dashboardSection').classList.remove('hidden');
-      document.getElementById('logoutBtn').style.display = 'inline-block';
-      loadPatients();
-      loadDoctorQueue();
+  // 1) Try a real doctor account first (created via doctor-signup.html — logs in with WhatsApp number + password)
+  fetch(API_BASE + '/api/doctors/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ phone: u, password: p })
+  })
+    .then(r => r.json().then(data => ({ ok: r.ok, data })))
+    .then(({ ok, data }) => {
+      if (ok) {
+        localStorage.setItem('doctorToken', data.token);
+        localStorage.setItem('doctorProfile', JSON.stringify(data.doctor));
+        authHeader = 'Basic ' + btoa('drsharma:biomexa2026'); // dashboard data endpoints are demo/open — reuse the shared view
+        enterDashboard();
+        return;
+      }
+      // 2) Fall back to the built-in demo staff login (username/password combo)
+      tryLegacyLogin(u, p);
     })
+    .catch(() => tryLegacyLogin(u, p));
+}
+
+function tryLegacyLogin(u, p) {
+  authHeader = 'Basic ' + btoa(u + ':' + p);
+  fetch(API_BASE + '/api/doctor/login', { headers: { 'Authorization': authHeader } })
+    .then(r => { if (!r.ok) throw new Error('Invalid WhatsApp number/password. If you signed up on Join Biomexa Connect, use that number here.'); return r.json(); })
+    .then(() => enterDashboard())
     .catch(e => {
       const err = document.getElementById('loginError');
       err.textContent = e.message;
       err.style.display = 'block';
     });
+}
+
+function enterDashboard() {
+  document.getElementById('loginSection').classList.add('hidden');
+  document.getElementById('dashboardSection').classList.remove('hidden');
+  document.getElementById('logoutBtn').style.display = 'inline-block';
+  loadPatients();
+  loadDoctorQueue();
+  initAvailabilityWidget();
 }
 
 function loadDoctorQueue() {
@@ -499,7 +567,7 @@ function loadPatients() {
       updateStats(data);
     })
     .catch(() => {
-      document.getElementById('patientTable').innerHTML = '<tr><td colspan="8" class="loading"><i class="fas fa-exclamation-circle"></i> Failed to load data. Please login again.</td></tr>';
+      document.getElementById('patientTable').innerHTML = '<tr><td colspan="10" class="loading"><i class="fas fa-exclamation-circle"></i> Failed to load data. Please login again.</td></tr>';
     });
 }
 
@@ -522,22 +590,74 @@ function updateStats(patients) {
 
 function renderPatients(list) {
   const tb = document.getElementById('patientTable');
-  if (!list.length) { tb.innerHTML = '<tr><td colspan="8" class="loading">No patients found</td></tr>'; return; }
+  if (!list.length) { tb.innerHTML = '<tr><td colspan="10" class="loading">No patients found</td></tr>'; return; }
 
   tb.innerHTML = list.map(p => {
     const riskClass = p.ai_risk_label === 'Critical' ? 'risk-critical' : p.ai_risk_label === 'High' ? 'risk-high' : 'risk-low';
     const adhClass = p.adherence_score >= 80 ? 'adh-good' : 'adh-bad';
     const nd = p.next_dose ? new Date(p.next_dose).toLocaleString('en-IN', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' }) : '-';
+    const bpClass = p.bpStatus === 'high' ? 'bp-high' : p.bpStatus === 'low' ? 'bp-low' : 'bp-normal';
+    const medCell = p.medicineInfo
+      ? `<a class="med-badge" href=".${p.medicineInfo.url}" target="_blank"><i class="fas fa-pills"></i> ${p.medicine}</a>`
+      : `<span>${p.medicine}</span>`;
     return `<tr>
       <td><div class="patient-name">${p.name}</div><div class="patient-phone">${p.phone}</div></td>
-      <td>${p.medicine}</td>
+      <td>${medCell}</td>
       <td class="${adhClass}">${p.adherence_score}%</td>
+      <td><span class="bp-reading ${bpClass}">${p.bpSystolic}/${p.bpDiastolic}</span><span class="bp-sub">${p.bpStatus}</span></td>
       <td>${(p.risk_score * 100).toFixed(0)}%</td>
       <td class="ai-pred">${(p.ai_prediction * 100).toFixed(0)}% miss chance</td>
       <td><span class="risk-badge ${riskClass}">${p.ai_risk_label}</span></td>
       <td>${p.missed_doses}</td>
       <td>${nd}</td>
+      <td><button class="trend-btn" onclick="openTrendsModal('${p.phone}', '${(p.name || '').replace(/'/g, '')}')"><i class="fas fa-chart-line"></i> View</button></td>
     </tr>`;
+  }).join('');
+}
+
+// ========== PATIENT TRENDS — 7-DAY ADHERENCE & BLOOD PRESSURE ==========
+function openTrendsModal(phone, name) {
+  document.getElementById('trendsModal').classList.remove('hidden');
+  document.getElementById('trendsPatientName').innerHTML = `<i class="fas fa-chart-line"></i> ${name} — 7-Day Trends`;
+  document.getElementById('adherenceChart').innerHTML = '<div class="loading">Loading...</div>';
+  document.getElementById('bpChart').innerHTML = '';
+
+  fetch(API_BASE + '/api/doctor/patient/' + encodeURIComponent(phone) + '/vitals', { headers: { 'Authorization': authHeader } })
+    .then(r => r.json())
+    .then(data => renderTrends(data.days || []))
+    .catch(() => { document.getElementById('adherenceChart').innerHTML = '<div class="loading">Unable to load trends.</div>'; });
+}
+
+function closeTrendsModal() {
+  document.getElementById('trendsModal').classList.add('hidden');
+}
+
+function renderTrends(days) {
+  const adhEl = document.getElementById('adherenceChart');
+  const bpEl = document.getElementById('bpChart');
+
+  adhEl.innerHTML = days.map(d => {
+    const color = d.adherence >= 80 ? 'var(--success)' : d.adherence >= 50 ? 'var(--accent)' : 'var(--danger)';
+    return `<div class="mini-bar-col">
+      <div class="mini-bar-value">${d.adherence}%</div>
+      <div class="mini-bar-track"><div class="mini-bar-fill" style="height:${d.adherence}%;background:${color};"></div></div>
+      <div class="mini-bar-label">${d.label}</div>
+    </div>`;
+  }).join('');
+
+  bpEl.innerHTML = days.map(d => {
+    const sysPct = Math.min(100, Math.round((d.bpSystolic / 180) * 100));
+    const diaPct = Math.min(100, Math.round((d.bpDiastolic / 120) * 100));
+    const sysColor = d.bpSystolic >= 140 ? 'var(--danger)' : 'var(--primary-light)';
+    const diaColor = d.bpDiastolic >= 90 ? 'var(--danger)' : '#60a5fa';
+    return `<div class="mini-bar-col">
+      <div class="mini-bar-value">${d.bpSystolic}/${d.bpDiastolic}</div>
+      <div class="bp-dual-track">
+        <div class="bp-dual-bar" style="height:${sysPct}%;background:${sysColor};" title="Systolic ${d.bpSystolic}"></div>
+        <div class="bp-dual-bar" style="height:${diaPct}%;background:${diaColor};" title="Diastolic ${d.bpDiastolic}"></div>
+      </div>
+      <div class="mini-bar-label">${d.label}</div>
+    </div>`;
   }).join('');
 }
 
@@ -562,17 +682,22 @@ function logout() {
 
 // ========== BIOMEXA CONNECT — AVAILABILITY WIDGET ==========
 // Uses the real doctor account (from doctor-signup.html), separate from the staff login above.
-const doctorToken = localStorage.getItem('doctorToken');
-const doctorProfile = JSON.parse(localStorage.getItem('doctorProfile') || 'null');
+let doctorToken = localStorage.getItem('doctorToken');
+let doctorProfile = JSON.parse(localStorage.getItem('doctorProfile') || 'null');
 
-if (doctorToken && doctorProfile) {
-  const widget = document.getElementById('connectAvailabilityWidget');
-  widget.classList.remove('hidden');
-  document.getElementById('connectDoctorName').textContent = 'Dr. ' + doctorProfile.name + ' — ' + (doctorProfile.specialty || 'General Physician');
-  const toggle = document.getElementById('availabilityToggle');
-  toggle.checked = !!doctorProfile.available;
-  paintToggle(toggle.checked);
+function initAvailabilityWidget() {
+  doctorToken = localStorage.getItem('doctorToken');
+  doctorProfile = JSON.parse(localStorage.getItem('doctorProfile') || 'null');
+  if (doctorToken && doctorProfile) {
+    const widget = document.getElementById('connectAvailabilityWidget');
+    widget.classList.remove('hidden');
+    document.getElementById('connectDoctorName').textContent = 'Dr. ' + doctorProfile.name + ' — ' + (doctorProfile.specialty || 'General Physician');
+    const toggle = document.getElementById('availabilityToggle');
+    toggle.checked = !!doctorProfile.available;
+    paintToggle(toggle.checked);
+  }
 }
+initAvailabilityWidget();
 
 function paintToggle(on) {
   document.getElementById('toggleTrack').style.background = on ? 'var(--success)' : 'var(--border)';
