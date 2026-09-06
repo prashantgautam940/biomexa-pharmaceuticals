@@ -58,6 +58,94 @@ async function callAiEngine(path, payload) {
   }
 }
 
+// ========== MSG91 WHATSAPP — TWO-WAY DOSE CONFIRMATION & VITALS CAPTURE ==========
+// Unlike CallMeBot (send-only, one key per recipient), MSG91 is a real WhatsApp Business
+// Solution Provider: one business number, real webhooks for inbound replies, and quick-reply
+// buttons — which is what makes "patient taps Taken/Not Taken, then texts their BP" possible.
+//
+// Setup required on your end before this does anything (see .env.example for full steps):
+// 1. Get WhatsApp Business API access in your MSG91 dashboard (control.msg91.com).
+// 2. Create + get Meta approval for a template with two quick-reply buttons, e.g.:
+//      Body: "Time for your {{1}} dose ({{2}}). Did you take it?"
+//      Buttons: "Taken" / "Not Taken"
+// 3. Set MSG91_AUTH_KEY, MSG91_INTEGRATED_NUMBER, MSG91_DOSE_TEMPLATE_NAME,
+//    MSG91_TEMPLATE_NAMESPACE below.
+// 4. In MSG91 dashboard → Settings → Webhooks, point the inbound WhatsApp webhook at:
+//      https://<your-render-url>/api/webhooks/msg91-whatsapp
+//
+// Until these are set, sendDoseReminderTemplate() logs a clear "not configured" message and
+// falls back to the existing plain-text WhatsApp reminder (CallMeBot/Twilio) — nothing breaks.
+const MSG91_AUTH_KEY = process.env.MSG91_AUTH_KEY || null;
+const MSG91_INTEGRATED_NUMBER = process.env.MSG91_INTEGRATED_NUMBER || null;
+const MSG91_DOSE_TEMPLATE_NAME = process.env.MSG91_DOSE_TEMPLATE_NAME || 'dose_reminder';
+const MSG91_TEMPLATE_NAMESPACE = process.env.MSG91_TEMPLATE_NAMESPACE || '';
+const MSG91_TEMPLATE_LANG = process.env.MSG91_TEMPLATE_LANG || 'en';
+const MSG91_CONFIGURED = !!(MSG91_AUTH_KEY && MSG91_INTEGRATED_NUMBER);
+
+// Sends the dose reminder as a real WhatsApp template message with Taken/Not Taken quick-reply
+// buttons. Returns { success, provider } same shape as sendWhatsAppFree, so callers can fall
+// back the same way. NOTE: exact button component naming (button_1 vs quick_reply_1 etc.) can
+// vary by how you defined the template in MSG91's dashboard — check the request MSG91 shows you
+// there and adjust the `components` object below if delivery fails with a template-mismatch error.
+async function sendDoseReminderTemplate(phone, medicineName, dosage) {
+  if (!MSG91_CONFIGURED) {
+    return { success: false, provider: 'msg91_not_configured' };
+  }
+  try {
+    const res = await fetch('https://api.msg91.com/api/v5/whatsapp/whatsapp-outbound-message/bulk/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'authkey': MSG91_AUTH_KEY },
+      body: JSON.stringify({
+        integrated_number: MSG91_INTEGRATED_NUMBER,
+        content_type: 'template',
+        payload: {
+          messaging_product: 'whatsapp',
+          type: 'template',
+          template: {
+            name: MSG91_DOSE_TEMPLATE_NAME,
+            language: { code: MSG91_TEMPLATE_LANG, policy: 'deterministic' },
+            namespace: MSG91_TEMPLATE_NAMESPACE,
+            to_and_components: [{
+              to: [phone.replace(/\D/g, '')],
+              components: {
+                body_1: { type: 'text', value: medicineName },
+                body_2: { type: 'text', value: dosage }
+              }
+            }]
+          }
+        }
+      }),
+      signal: AbortSignal.timeout(10000)
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      console.log('⚠️ MSG91 template send failed:', JSON.stringify(data).substring(0, 200));
+      return { success: false, provider: 'msg91', detail: data };
+    }
+    console.log('✅ MSG91 WhatsApp template sent to', phone);
+    return { success: true, provider: 'msg91' };
+  } catch (err) {
+    console.log('⚠️ MSG91 send error:', err.message);
+    return { success: false, provider: 'msg91', detail: err.message };
+  }
+}
+
+// Parses free-text vitals like "BP 120/80, temp 98.6, pulse 72" — deliberately permissive since
+// real patients won't format this consistently. Returns only the fields it actually found.
+function parseVitalsFromText(text) {
+  const result = {};
+  const bpMatch = text.match(/(\d{2,3})\s*\/\s*(\d{2,3})/); // "120/80" anywhere in the message
+  if (bpMatch) {
+    result.bpSystolic = parseInt(bpMatch[1], 10);
+    result.bpDiastolic = parseInt(bpMatch[2], 10);
+  }
+  const tempMatch = text.match(/temp(?:erature)?[:\s]*([\d.]+)/i) || text.match(/([\d.]{3,5})\s*(?:f|°f|degrees)/i);
+  if (tempMatch) result.temperature = parseFloat(tempMatch[1]);
+  const hrMatch = text.match(/(?:pulse|hr|heart\s*rate)[:\s]*(\d{2,3})/i);
+  if (hrMatch) result.heartRate = parseInt(hrMatch[1], 10);
+  return result;
+}
+
 // ========== EMAIL SETUP (fallback for password reset — doesn't depend on WhatsApp opt-in) ==========
 // Uses Gmail SMTP with an App Password (not your normal Gmail password — generate one free at
 // https://myaccount.google.com/apppasswords). This exists because WhatsApp reset OTPs only reach
@@ -245,11 +333,36 @@ const connectRequestSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now }
 });
 
+// Real vitals captured from the WhatsApp dose/vitals flow (MSG91 webhook) — a proper time-series
+// log, not just the single baseline snapshot. This is what makes the AI engine's effectiveness
+// analysis genuinely accurate over time instead of approximated from one baseline reading.
+const vitalsLogSchema = new mongoose.Schema({
+  patientPhone: String,
+  bpSystolic: Number,
+  bpDiastolic: Number,
+  temperature: Number,
+  heartRate: Number,
+  source: { type: String, default: 'whatsapp' }, // whatsapp | manual | doctor
+  recordedAt: { type: Date, default: Date.now }
+});
+
+// Tracks what we're waiting for next from a patient on WhatsApp — dose confirmation, then vitals,
+// then nothing. This is what lets the inbound webhook interpret a short reply like "Taken" or
+// "120/80" correctly, based on where the conversation currently is.
+const conversationStateSchema = new mongoose.Schema({
+  patientPhone: { type: String, unique: true },
+  state: { type: String, default: null }, // 'awaiting_dose_confirm' | 'awaiting_vitals' | null
+  doseId: String,
+  updatedAt: { type: Date, default: Date.now }
+});
+
 const Patient = mongoose.model('Patient', patientSchema);
 const Dose = mongoose.model('Dose', doseSchema);
 const Otp = mongoose.model('Otp', otpSchema);
 const Doctor = mongoose.model('Doctor', doctorSchema);
 const ConnectRequest = mongoose.model('ConnectRequest', connectRequestSchema);
+const VitalsLog = mongoose.model('VitalsLog', vitalsLogSchema);
+const ConversationState = mongoose.model('ConversationState', conversationStateSchema);
 
 // ========== AUTH MIDDLEWARE ==========
 const auth = (req, res, next) => {
@@ -594,19 +707,141 @@ cron.schedule('* * * * *', async () => {
         continue;
       }
 
-      const message = `⏰ *Dose Reminder*\n\nHello ${patient.name},\n\nIt's time to take your medicine:\n*${dose.medicineName}* — ${dose.dosage}\n\n${dose.foodNote ? '🍽️ ' + dose.foodNote + '\n\n' : ''}Reply CONFIRM once you've taken it.\n\n- Biomexa Team`;
+      // Prefer MSG91's real two-way template (Taken/Not Taken buttons) when configured —
+      // this is what lets the webhook below capture a structured reply instead of parsing
+      // free text like "CONFIRM". Falls back to the plain-text CallMeBot/Twilio reminder.
+      let sentVia = null;
+      if (MSG91_CONFIGURED) {
+        const msg91Result = await sendDoseReminderTemplate(dose.patientPhone, dose.medicineName, dose.dosage);
+        if (msg91Result.success) {
+          sentVia = 'msg91';
+          await ConversationState.findOneAndUpdate(
+            { patientPhone: dose.patientPhone },
+            { state: 'awaiting_dose_confirm', doseId: dose._id.toString(), updatedAt: new Date() },
+            { upsert: true }
+          );
+        }
+      }
 
-      const result = await sendWhatsAppFree(dose.patientPhone, message, patient.whatsappApiKey);
+      if (!sentVia) {
+        const message = `⏰ *Dose Reminder*\n\nHello ${patient.name},\n\nIt's time to take your medicine:\n*${dose.medicineName}* — ${dose.dosage}\n\n${dose.foodNote ? '🍽️ ' + dose.foodNote + '\n\n' : ''}Reply CONFIRM once you've taken it.\n\n- Biomexa Team`;
+        const result = await sendWhatsAppFree(dose.patientPhone, message, patient.whatsappApiKey);
+        if (result.success) sentVia = 'fallback';
+      }
 
-      if (result.success) {
+      if (sentVia) {
         await Dose.findByIdAndUpdate(dose._id, { sentReminder: true });
-        console.log(`✅ Reminder sent to ${dose.patientPhone} for ${dose.medicineName} at ${currentTime}`);
+        console.log(`✅ Reminder sent to ${dose.patientPhone} for ${dose.medicineName} at ${currentTime} via ${sentVia}`);
       } else {
         console.log(`❌ Failed to send reminder to ${dose.patientPhone}`);
       }
     }
   } catch (err) {
     console.error('❌ Cron error:', err.message);
+  }
+});
+
+// ========== MSG91 WHATSAPP WEBHOOK — inbound dose confirmation & vitals ==========
+// This is the endpoint you point MSG91's inbound WhatsApp webhook at (see setup notes above
+// sendDoseReminderTemplate). It's intentionally defensive about field names — MSG91's exact
+// inbound JSON shape can vary slightly by how your webhook's "Customize Data Parameters" is
+// configured in their dashboard. If replies aren't being matched, log the raw req.body (already
+// done below) and adjust the field names pulled out here to match what you actually receive.
+app.post('/api/webhooks/msg91-whatsapp', async (req, res) => {
+  // Acknowledge immediately — MSG91 (like most WhatsApp BSPs) expects a fast 200 response
+  // and will retry on timeout, which could cause duplicate processing otherwise.
+  res.status(200).json({ received: true });
+
+  try {
+    console.log('📩 MSG91 webhook payload:', JSON.stringify(req.body).substring(0, 500));
+    const body = req.body || {};
+    const payload = body.payload || body; // some MSG91 webhook configs nest under "payload"
+
+    // Only handle genuinely inbound messages (direction 0), ignore delivery/status callbacks
+    if (payload.direction !== undefined && String(payload.direction) !== '0') return;
+
+    const rawPhone = payload.mobile || payload.customerNumber || payload.msisdn
+      || (payload.user && payload.user.msisdn) || payload.from;
+    if (!rawPhone) { console.log('⚠️ Could not find sender phone in MSG91 webhook payload'); return; }
+    const phone = '+' + rawPhone.replace(/\D/g, '');
+
+    // Button reply comes as payload.button = {"payload":"Taken","text":"Taken"} (JSON string or object)
+    let buttonText = null;
+    if (payload.button) {
+      try {
+        const btn = typeof payload.button === 'string' ? JSON.parse(payload.button) : payload.button;
+        buttonText = (btn.text || btn.payload || '').toLowerCase();
+      } catch { buttonText = String(payload.button).toLowerCase(); }
+    }
+
+    // Free text comes as payload.content = {"text":"..."} (JSON string) or payload.content.text
+    let freeText = '';
+    if (payload.content) {
+      try {
+        const c = typeof payload.content === 'string' ? JSON.parse(payload.content) : payload.content;
+        freeText = (c.text || '').trim();
+      } catch { freeText = String(payload.content).trim(); }
+    }
+
+    const convo = await ConversationState.findOne({ patientPhone: phone });
+    const patient = await Patient.findOne({ phone });
+
+    if (convo && convo.state === 'awaiting_dose_confirm') {
+      const reply = buttonText || freeText.toLowerCase();
+      const took = /taken|yes|confirm/.test(reply) && !/not\s*taken|no\b/.test(reply);
+      const explicitlyMissed = /not\s*taken|missed|no\b/.test(reply);
+
+      if (took || explicitlyMissed) {
+        await Dose.findByIdAndUpdate(convo.doseId, { status: took ? 'taken' : 'missed' });
+
+        if (took) {
+          await sendWhatsAppFree(phone, `✅ Great, logged as taken! Quick check-in — reply with your BP, temperature and pulse if you have them handy (e.g. "BP 120/80, temp 98.6, pulse 72"). Or just reply "skip".`, patient?.whatsappApiKey);
+          await ConversationState.findOneAndUpdate({ patientPhone: phone }, { state: 'awaiting_vitals', updatedAt: new Date() });
+        } else {
+          await sendWhatsAppFree(phone, `Noted — marked as not taken. Please try to take it as soon as possible, or reach out to your doctor via the Biomexa app if you're having trouble with this medicine.`, patient?.whatsappApiKey);
+          await ConversationState.findOneAndUpdate({ patientPhone: phone }, { state: null, doseId: null, updatedAt: new Date() });
+        }
+      }
+      return;
+    }
+
+    if (convo && convo.state === 'awaiting_vitals') {
+      if (/^skip$/i.test(freeText.trim())) {
+        await sendWhatsAppFree(phone, `No problem — see you at the next dose! 💪`, patient?.whatsappApiKey);
+        await ConversationState.findOneAndUpdate({ patientPhone: phone }, { state: null, updatedAt: new Date() });
+        return;
+      }
+
+      const vitals = parseVitalsFromText(freeText);
+      if (Object.keys(vitals).length === 0) {
+        await sendWhatsAppFree(phone, `Sorry, I couldn't read any vitals from that. Try a format like "BP 120/80, temp 98.6, pulse 72" — or reply "skip".`, patient?.whatsappApiKey);
+        return;
+      }
+
+      await VitalsLog.create({ patientPhone: phone, ...vitals, source: 'whatsapp' });
+
+      // Keep the patient's baseline snapshot current too, so anywhere that reads baselineVitals
+      // (dashboards, the AI engine fallback) reflects their latest reading.
+      const baselineUpdate = {};
+      if (vitals.bpSystolic) baselineUpdate['baselineVitals.bpSystolic'] = vitals.bpSystolic;
+      if (vitals.bpDiastolic) baselineUpdate['baselineVitals.bpDiastolic'] = vitals.bpDiastolic;
+      if (vitals.temperature) baselineUpdate['baselineVitals.temperature'] = vitals.temperature;
+      if (Object.keys(baselineUpdate).length) await Patient.findOneAndUpdate({ phone }, baselineUpdate);
+
+      const summary = [
+        vitals.bpSystolic && `BP ${vitals.bpSystolic}/${vitals.bpDiastolic}`,
+        vitals.temperature && `Temp ${vitals.temperature}°F`,
+        vitals.heartRate && `Pulse ${vitals.heartRate}`
+      ].filter(Boolean).join(', ');
+      await sendWhatsAppFree(phone, `📊 Logged: ${summary}. Thanks — this is saved to your Biomexa dashboard now.`, patient?.whatsappApiKey);
+      await ConversationState.findOneAndUpdate({ patientPhone: phone }, { state: null, doseId: null, updatedAt: new Date() });
+      return;
+    }
+
+    // No active conversation state — unsolicited message, just acknowledge quietly in logs.
+    console.log(`ℹ️ Unsolicited WhatsApp message from ${phone}, no active flow: "${freeText || buttonText}"`);
+  } catch (err) {
+    console.error('❌ MSG91 webhook processing error:', err.message);
   }
 });
 
@@ -869,22 +1104,35 @@ app.get('/api/doctor/patient/:phone/effectiveness', async (req, res) => {
       return res.status(400).json({ message: 'No dose history yet for this patient — nothing to analyze.' });
     }
 
+    // Real vitals logged via the WhatsApp flow, if any — grouped by calendar day so each dose
+    // can use the vitals actually recorded closest to that day instead of a flat baseline.
+    const vitalsLogs = await VitalsLog.find({ patientPhone: phone }).sort({ recordedAt: 1 });
+    const vitalsByDay = {};
+    for (const v of vitalsLogs) {
+      const day = v.recordedAt.toISOString().split('T')[0];
+      vitalsByDay[day] = v; // last log of the day wins if there are several
+    }
+    const usedRealVitals = vitalsLogs.length > 0;
+
     const primaryMed = patient.medicines?.[0] || { name: doses[0].medicineName, dosage: doses[0].dosage, time: doses[0].scheduledTime };
     const schedule = [...new Set(patient.medicines?.map(m => m.time) || [doses[0].scheduledTime])];
 
     const dose_history = doses
       .filter(d => d.status !== 'pending') // only doses that have actually happened
-      .map(d => ({
-        date: d.scheduledDate,
-        status: d.status === 'taken' ? 'taken' : 'not_taken',
-        vitals: {
-          bp_systolic: patient.baselineVitals?.bpSystolic || 130,
-          bp_diastolic: patient.baselineVitals?.bpDiastolic || 85,
-          glucose: patient.baselineVitals?.glucose || 110,
-          temperature: patient.baselineVitals?.temperature || 98.6
-        },
-        symptoms: [] // not tracked yet — see note above
-      }));
+      .map(d => {
+        const dayLog = vitalsByDay[d.scheduledDate];
+        return {
+          date: d.scheduledDate,
+          status: d.status === 'taken' ? 'taken' : 'not_taken',
+          vitals: {
+            bp_systolic: dayLog?.bpSystolic || patient.baselineVitals?.bpSystolic || 130,
+            bp_diastolic: dayLog?.bpDiastolic || patient.baselineVitals?.bpDiastolic || 85,
+            glucose: patient.baselineVitals?.glucose || 110,
+            temperature: dayLog?.temperature || patient.baselineVitals?.temperature || 98.6
+          },
+          symptoms: []
+        };
+      });
 
     if (!dose_history.length) {
       return res.status(400).json({ message: 'All doses for this patient are still pending — nothing to analyze yet.' });
@@ -916,7 +1164,7 @@ app.get('/api/doctor/patient/:phone/effectiveness', async (req, res) => {
       return res.status(503).json({ message: messages[result.reason] || 'AI engine unavailable', reason: result.reason });
     }
 
-    res.json(result.data);
+    res.json({ ...result.data, usedRealVitals });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

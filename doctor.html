@@ -675,7 +675,11 @@ function runEffectivenessAnalysis() {
       const d = data.dashboard;
       const insights = (d.top_insights || []).map(i => `<li>${i}</li>`).join('');
       const recs = (d.top_recommendations || []).map(r => `<li>${r}</li>`).join('');
+      const vitalsNote = data.usedRealVitals
+        ? '<span style="color:var(--success);">✓ Using real WhatsApp-logged vitals</span>'
+        : '<span style="color:var(--accent);">⚠ Approximated from baseline — no WhatsApp vitals logged yet</span>';
       box.innerHTML = `
+        <div style="font-size:0.72rem;margin-bottom:10px;">${vitalsNote}</div>
         <div style="display:flex;gap:16px;margin-bottom:12px;flex-wrap:wrap;">
           <div><strong style="font-size:1.4rem;color:var(--primary-light);">${d.effectiveness_score}</strong><div style="font-size:0.72rem;color:var(--text-muted);">Effectiveness (${d.effectiveness_category})</div></div>
           <div><span class="risk-badge" style="background:${d.risk_label.color}22;color:${d.risk_label.color};">${d.risk_label.label}</span></div>
