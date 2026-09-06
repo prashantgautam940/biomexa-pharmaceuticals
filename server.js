@@ -29,6 +29,35 @@ try {
   console.log('ℹ️ Twilio not configured - using free CallMeBot API');
 }
 
+// ========== PYTHON AI ENGINE (ai_engine.py — Flask microservice) ==========
+// This repo already contains a real drug-effectiveness AI engine (ai_engine.py) — vital-sign
+// trend analysis, symptom tracking, target-achievement scoring, clinical insights, and treatment
+// recommendations. It was never actually deployed or called from here until now.
+//
+// It runs as its OWN separate service (Python/Flask, see requirements.txt), not inside this
+// Node process. Deploy it as its own Render "Web Service" (Python runtime, start command
+// `python ai_engine.py`, or better `gunicorn ai_engine:app`), then set AI_ENGINE_URL to that
+// service's URL below. Until AI_ENGINE_URL is set, the endpoints that use it degrade gracefully
+// and say so explicitly — they do not silently fall back to fake data.
+const AI_ENGINE_URL = process.env.AI_ENGINE_URL || null;
+
+async function callAiEngine(path, payload) {
+  if (!AI_ENGINE_URL) return { ok: false, reason: 'not_configured' };
+  try {
+    const res = await fetch(`${AI_ENGINE_URL}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(15000)
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) return { ok: false, reason: 'engine_error', detail: data.error || `HTTP ${res.status}` };
+    return { ok: true, data };
+  } catch (err) {
+    return { ok: false, reason: 'unreachable', detail: err.message };
+  }
+}
+
 // ========== EMAIL SETUP (fallback for password reset — doesn't depend on WhatsApp opt-in) ==========
 // Uses Gmail SMTP with an App Password (not your normal Gmail password — generate one free at
 // https://myaccount.google.com/apppasswords). This exists because WhatsApp reset OTPs only reach
@@ -818,6 +847,76 @@ app.get('/api/doctor/patient/:phone/vitals', async (req, res) => {
       });
     }
     res.json({ patient: { name: patient.name, phone: patient.phone, baselineVitals: patient.baselineVitals }, days });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Full effectiveness analysis via the Python AI engine (ai_engine.py) — real vital-trend
+// analysis, adherence scoring, clinical insights and treatment recommendations, computed from
+// this patient's actual dose history. Note: since this platform doesn't yet log per-dose vitals
+// or symptoms separately, those fields are approximated from the patient's baseline vitals —
+// the adherence-driven parts of the analysis are fully real, the vital-trend parts are limited
+// until per-dose vitals logging is added.
+app.get('/api/doctor/patient/:phone/effectiveness', async (req, res) => {
+  try {
+    const phone = req.params.phone;
+    const patient = await Patient.findOne({ phone });
+    if (!patient) return res.status(404).json({ message: 'Patient not found' });
+
+    const doses = await Dose.find({ patientPhone: phone }).sort({ scheduledDate: 1 });
+    if (!doses.length) {
+      return res.status(400).json({ message: 'No dose history yet for this patient — nothing to analyze.' });
+    }
+
+    const primaryMed = patient.medicines?.[0] || { name: doses[0].medicineName, dosage: doses[0].dosage, time: doses[0].scheduledTime };
+    const schedule = [...new Set(patient.medicines?.map(m => m.time) || [doses[0].scheduledTime])];
+
+    const dose_history = doses
+      .filter(d => d.status !== 'pending') // only doses that have actually happened
+      .map(d => ({
+        date: d.scheduledDate,
+        status: d.status === 'taken' ? 'taken' : 'not_taken',
+        vitals: {
+          bp_systolic: patient.baselineVitals?.bpSystolic || 130,
+          bp_diastolic: patient.baselineVitals?.bpDiastolic || 85,
+          glucose: patient.baselineVitals?.glucose || 110,
+          temperature: patient.baselineVitals?.temperature || 98.6
+        },
+        symptoms: [] // not tracked yet — see note above
+      }));
+
+    if (!dose_history.length) {
+      return res.status(400).json({ message: 'All doses for this patient are still pending — nothing to analyze yet.' });
+    }
+
+    const payload = {
+      patient: {
+        id: patient.phone,
+        drug_name: primaryMed.name || 'Unknown',
+        drug_dose: primaryMed.dosage || '',
+        schedule: schedule.length ? schedule : ['08:00'],
+        baseline_bp: [patient.baselineVitals?.bpSystolic || 140, patient.baselineVitals?.bpDiastolic || 90],
+        baseline_glucose: patient.baselineVitals?.glucose || 110,
+        baseline_temp: patient.baselineVitals?.temperature || 98.6,
+        history: patient.medicalHistory || [],
+        baseline_blood_test: {}
+      },
+      dose_history,
+      indication: req.query.indication || 'hypertension'
+    };
+
+    const result = await callAiEngine('/analyze', payload);
+    if (!result.ok) {
+      const messages = {
+        not_configured: 'The AI engine (ai_engine.py) isn\'t deployed yet — set AI_ENGINE_URL in your environment once it is. See .env.example for deployment steps.',
+        unreachable: 'Could not reach the AI engine service: ' + result.detail,
+        engine_error: 'The AI engine returned an error: ' + result.detail
+      };
+      return res.status(503).json({ message: messages[result.reason] || 'AI engine unavailable', reason: result.reason });
+    }
+
+    res.json(result.data);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
