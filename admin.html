@@ -114,6 +114,7 @@ tr:hover { background: rgba(13,115,119,0.05); }
     </div>
     <button class="btn" style="width:100%;justify-content:center;" onclick="login()"><i class="fas fa-lock"></i> Secure Login</button>
     <div id="loginError" class="error"></div>
+    <p style="margin-top:1rem;font-size:0.78rem;color:var(--text-muted);">Admin credentials are set via server environment variables (<code>ADMIN_USERNAME</code> / <code>ADMIN_PASSWORD</code>), not stored per-user — there's no self-service reset here. To change them, update your host's environment variables and redeploy.</p>
   </div>
 </div>
 

@@ -1,262 +1,122 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Patient Dashboard | Biomexa</title>
-<link rel="icon" type="image/svg+xml" href="logo.svg">
-<style>
-* { margin: 0; padding: 0; box-sizing: border-box; }
-body {
-  background: #0f172a;
-  font-family: system-ui, -apple-system, sans-serif;
-  color: #f1f5f9;
-  min-height: 100vh;
-}
-.navbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 16px 24px;
-  background: rgba(15, 23, 42, 0.95);
-  border-bottom: 1px solid #334155;
-  position: sticky;
-  top: 0;
-  z-index: 100;
-  backdrop-filter: blur(10px);
-}
-.logo { color: #14b8a6; font-size: 20px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
-.nav-links { display: flex; gap: 20px; align-items: center; }
-.nav-links a { color: #94a3b8; text-decoration: none; font-size: 14px; cursor: pointer; }
-.nav-links a:hover { color: #14b8a6; }
-.logout-btn {
-  background: transparent;
-  border: 1px solid #334155;
-  color: #94a3b8;
-  padding: 6px 14px;
-  border-radius: 6px;
-  font-size: 13px;
-  cursor: pointer;
-}
-.logout-btn:hover { border-color: #ef4444; color: #ef4444; }
-.container { max-width: 900px; margin: 0 auto; padding: 40px 24px; }
-.card {
-  background: #1e293b;
-  border: 1px solid #334155;
-  border-radius: 16px;
-  padding: 24px;
-  margin-bottom: 24px;
-}
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 16px;
-}
-.card-title { color: #14b8a6; font-size: 14px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
-.status-badge {
-  background: rgba(239, 68, 68, 0.1);
-  color: #f87171;
-  padding: 4px 12px;
-  border-radius: 50px;
-  font-size: 12px;
-  font-weight: 600;
-}
-.status-badge.ok { background: rgba(34, 197, 94, 0.1); color: #4ade80; }
-.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-.stat-box {
-  background: #0f172a;
-  border-radius: 12px;
-  padding: 16px;
-}
-.stat-label { color: #94a3b8; font-size: 12px; text-transform: uppercase; margin-bottom: 8px; }
-.stat-value { color: #f1f5f9; font-size: 24px; font-weight: 700; }
-.dose-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px 16px;
-  background: #0f172a;
-  border-radius: 10px;
-  margin-bottom: 8px;
-  transition: all 0.2s;
-}
-.dose-item:hover { background: #1e293b; }
-.dose-item.pending { border-left: 3px solid #f59e0b; }
-.dose-item.taken { border-left: 3px solid #22c55e; }
-.dose-item.missed { border-left: 3px solid #ef4444; }
-.dose-info h4 { color: #f1f5f9; font-size: 14px; margin-bottom: 4px; }
-.dose-info p { color: #94a3b8; font-size: 12px; }
-.dose-time { color: #14b8a6; font-weight: 600; font-size: 14px; }
-.btn {
-  background: linear-gradient(135deg, #0d9488, #14b8a6);
-  color: white;
-  border: none;
-  border-radius: 8px;
-  padding: 8px 16px;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-.btn:hover { opacity: 0.9; transform: translateY(-1px); }
-.btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
-.btn-confirm { background: #22c55e; }
-.btn-confirm:hover { background: #16a34a; }
-.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-.form-group { margin-bottom: 16px; }
-.form-group.full { grid-column: 1 / -1; }
-label { color: #cbd5e1; font-size: 13px; display: block; margin-bottom: 6px; }
-input, select {
-  width: 100%;
-  background: #0f172a;
-  border: 1px solid #334155;
-  border-radius: 8px;
-  padding: 10px 14px;
-  color: #f1f5f9;
-  font-size: 14px;
-  outline: none;
-}
-input:focus, select:focus { border-color: #14b8a6; }
-input[type="time"] { color-scheme: dark; }
-.empty-state {
-  text-align: center;
-  padding: 40px;
-  color: #64748b;
-}
-.error-msg {
-  background: rgba(239, 68, 68, 0.1);
-  border: 1px solid rgba(239, 68, 68, 0.3);
-  color: #f87171;
-  padding: 12px;
-  border-radius: 8px;
-  margin-bottom: 16px;
-  font-size: 14px;
-}
-.success-msg {
-  background: rgba(34, 197, 94, 0.1);
-  border: 1px solid rgba(34, 197, 94, 0.3);
-  color: #4ade80;
-  padding: 12px;
-  border-radius: 8px;
-  margin-bottom: 16px;
-  font-size: 14px;
-}
-.hidden { display: none; }
-.welcome-bar {
-  background: linear-gradient(135deg, rgba(13, 148, 136, 0.15), rgba(20, 184, 166, 0.1));
-  border: 1px solid rgba(20, 184, 166, 0.2);
-  border-radius: 12px;
-  padding: 16px 20px;
-  margin-bottom: 24px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-.welcome-bar h2 { color: #f1f5f9; font-size: 18px; }
-.welcome-bar p { color: #94a3b8; font-size: 13px; margin-top: 4px; }
-.whatsapp-status {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  background: rgba(16, 185, 129, 0.1);
-  color: #34d399;
-  padding: 4px 12px;
-  border-radius: 50px;
-  font-size: 12px;
-}
-@media (max-width: 640px) {
-  .grid-2 { grid-template-columns: 1fr; }
-  .form-grid { grid-template-columns: 1fr; }
-  .welcome-bar { flex-direction: column; gap: 10px; text-align: center; }
-}
-</style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Create Account | Biomexa</title>
+  <link rel="icon" type="image/svg+xml" href="logo.svg">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      min-height: 100vh;
+      background: #0f172a;
+      font-family: system-ui, -apple-system, sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #f1f5f9;
+      padding: 40px 0;
+    }
+    .container { width: 100%; max-width: 460px; padding: 40px 24px; }
+    .logo { text-align: center; margin-bottom: 8px; }
+    .subtitle { color: #94a3b8; text-align: center; margin-bottom: 28px; font-size: 14px; }
+    .error-box, .success-box {
+      padding: 12px 16px; border-radius: 8px; margin-bottom: 20px; font-size: 14px; display: none;
+    }
+    .error-box { background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3); color: #f87171; }
+    .success-box { background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.3); color: #34d399; }
+    .error-box.show, .success-box.show { display: flex; align-items: center; gap: 8px; }
+    .form-group { margin-bottom: 18px; }
+    label { color: #cbd5e1; font-size: 14px; display: block; margin-bottom: 8px; }
+    label .required { color: #f87171; }
+    label .optional { color: #64748b; font-weight: 400; }
+    .phone-row { display: flex; gap: 8px; }
+    .country-code {
+      background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 12px 16px;
+      color: #cbd5e1; display: flex; align-items: center; gap: 6px; font-size: 14px; white-space: nowrap;
+    }
+    input {
+      flex: 1; background: #1e293b; border: 1px solid #334155; border-radius: 8px;
+      padding: 12px 16px; color: #f1f5f9; font-size: 14px; outline: none; width: 100%; font-family: inherit;
+    }
+    input:focus { border-color: #14b8a6; }
+    input::placeholder { color: #64748b; }
+    button {
+      width: 100%; background: linear-gradient(135deg, #0d9488, #14b8a6); color: white; border: none;
+      border-radius: 8px; padding: 14px; font-size: 15px; font-weight: 600; cursor: pointer;
+      margin-top: 4px; transition: all 0.2s;
+    }
+    button:hover { opacity: 0.9; transform: translateY(-1px); }
+    button:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+    .footer-text { color: #94a3b8; text-align: center; font-size: 14px; margin-top: 20px; }
+    .footer-text a { color: #14b8a6; text-decoration: none; font-weight: 500; }
+    .footer-text a:hover { text-decoration: underline; }
+
+    .wa-panel {
+      background: #1e293b; border: 1px solid #334155; border-radius: 10px; padding: 16px; margin-bottom: 18px;
+    }
+    .wa-panel-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+    .wa-panel-head span { font-size: 13px; color: #cbd5e1; font-weight: 600; }
+    .wa-steps { font-size: 12.5px; color: #94a3b8; line-height: 1.7; margin-bottom: 10px; }
+    .wa-steps b { color: #cbd5e1; }
+    .wa-steps a { color: #14b8a6; }
+    .skip-note { font-size: 12px; color: #64748b; margin-top: 8px; }
+  </style>
 <base target="_blank">
 </head>
 <body>
-  <nav class="navbar">
-    <div class="logo"><img src="images/logo-full-white.png" alt="Biomexa Pharmaceuticals" style="height:26px;width:auto;"></div>
-    <div class="nav-links">
-      <a href="index.html">Home</a>
-      <a href="products/">Products</a>
-      <button class="logout-btn" onclick="logout()">Logout</button>
-    </div>
-  </nav>
-
   <div class="container">
-    <div class="welcome-bar">
-      <div>
-        <h2 id="welcomeName">Welcome!</h2>
-        <p>Your personal medication adherence dashboard</p>
-      </div>
-      <div class="whatsapp-status">💬 WhatsApp Active</div>
+    <div class="logo">
+      <h1><img src="images/logo-full-white.png" alt="Biomexa Pharmaceuticals" style="height:38px;width:auto;"></h1>
     </div>
+    <p class="subtitle">Create your account for WhatsApp dose reminders</p>
 
-    <!-- Stats -->
-    <div class="card">
-      <div class="card-header">
-        <span class="card-title">📊 Health Overview</span>
-        <span class="status-badge" id="riskBadge">Calculating...</span>
+    <div class="error-box" id="errorBox"><span>⚠️</span> <span id="errorText"></span></div>
+    <div class="success-box" id="successBox"><span>✅</span> <span id="successText"></span></div>
+
+    <form id="signupForm">
+      <div class="form-group">
+        <label>Full Name <span class="required">*</span></label>
+        <input type="text" id="name" placeholder="e.g., Ramesh Gupta" required>
       </div>
-      <div class="grid-2">
-        <div class="stat-box">
-          <div class="stat-label">Adherence Rate</div>
-          <div class="stat-value" id="adherenceRate">0%</div>
-        </div>
-        <div class="stat-box">
-          <div class="stat-label">Active Medicines</div>
-          <div class="stat-value" id="activeMedicines">0</div>
+
+      <div class="form-group">
+        <label>Phone Number <span class="required">*</span></label>
+        <div class="phone-row">
+          <div class="country-code">🇮🇳 +91</div>
+          <input type="tel" id="phone" placeholder="9876543210" required>
         </div>
       </div>
-    </div>
 
-    <!-- Today's Doses -->
-    <div class="card">
-      <div class="card-header">
-        <span class="card-title">💊 Today's Doses</span>
-        <span style="color:#64748b;font-size:12px;">Auto WhatsApp reminders</span>
+      <div class="form-group">
+        <label>Email <span class="optional">(optional — used as a backup way to reset your password)</span></label>
+        <input type="email" id="email" placeholder="you@example.com">
       </div>
-      <div id="dosesList">
-        <div class="empty-state">Loading doses...</div>
-      </div>
-    </div>
 
-    <!-- Add Medicine -->
-    <div class="card">
-      <div class="card-header">
-        <span class="card-title">➕ Add New Medicine</span>
+      <div class="form-group">
+        <label>Password <span class="required">*</span></label>
+        <input type="password" id="password" placeholder="Create a password" required minlength="6">
       </div>
-      <div id="formMsg"></div>
-      <form id="medicineForm">
-        <div class="form-grid">
-          <div class="form-group">
-            <label>Medicine Name *</label>
-            <input type="text" id="medName" placeholder="e.g., Metformin" required>
-          </div>
-          <div class="form-group">
-            <label>Dosage *</label>
-            <input type="text" id="medDosage" placeholder="e.g., 500mg" required>
-          </div>
-          <div class="form-group">
-            <label>Time (24-hour format) *</label>
-            <input type="time" id="medTime" required>
-          </div>
-          <div class="form-group">
-            <label>Frequency *</label>
-            <select id="medFreq" required>
-              <option value="daily">Daily</option>
-              <option value="twice-daily">Twice Daily</option>
-              <option value="weekly">Weekly</option>
-            </select>
-          </div>
-          <div class="form-group full">
-            <label>Food Note</label>
-            <input type="text" id="medFood" placeholder="e.g., Take after breakfast">
-          </div>
+
+      <div class="wa-panel">
+        <div class="wa-panel-head">
+          <span>💬 Connect WhatsApp reminders</span>
         </div>
-        <button type="submit" class="btn" id="addBtn" style="width:100%;margin-top:8px;">Add Medicine</button>
-      </form>
-    </div>
+        <div class="wa-steps">
+          1. Save <b>+34 644 52 53 53</b> to your phone's contacts.<br>
+          2. WhatsApp that number the text: <b>"I allow callmebot to send me messages"</b><br>
+          3. They'll reply with your personal API key — paste it below.
+          (<a href="https://www.callmebot.com/blog/free-api-whatsapp-messages/" target="_blank">more info</a>)
+        </div>
+        <input type="text" id="whatsappApiKey" placeholder="Paste your CallMeBot API key here">
+        <div class="skip-note">Optional — you can skip this and add it later from your dashboard, but reminders won't reach you on WhatsApp until it's set.</div>
+      </div>
+
+      <button type="submit" id="submitBtn">Create Account</button>
+    </form>
+
+    <p class="footer-text">Already have an account? <a href="login.html">Sign In</a></p>
+    <p class="footer-text" style="margin-top:8px;">Are you a doctor? <a href="doctor-signup.html">Join Biomexa Connect</a></p>
   </div>
 
   <script>
@@ -264,152 +124,55 @@ input[type="time"] { color-scheme: dark; }
       ? 'http://localhost:3000'
       : 'https://biomexa-api-f9f6.onrender.com';
 
-    const token = localStorage.getItem('token');
-    const user = JSON.parse(localStorage.getItem('user') || '{}');
-
-    if (!token) {
-      window.location.href = 'login.html';
-    } else if (user.name) {
-      document.getElementById('welcomeName').textContent = `Welcome, ${user.name}!`;
+    if (localStorage.getItem('token')) {
+      window.location.href = 'patient.html';
     }
 
-    function logout() {
-      localStorage.clear();
-      window.location.href = 'login.html';
-    }
-
-    function showMsg(msg, isError) {
-      const el = document.getElementById('formMsg');
-      el.className = isError ? 'error-msg' : 'success-msg';
-      el.textContent = msg;
-      el.classList.remove('hidden');
-      setTimeout(() => el.classList.add('hidden'), 4000);
-    }
-
-    async function loadDoses() {
-      try {
-        const res = await fetch(`${API_URL}/api/doses/today`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-        if (res.status === 401) {
-          logout();
-          return;
-        }
-        const doses = await res.json();
-        const list = document.getElementById('dosesList');
-
-        if (!doses || doses.length === 0) {
-          list.innerHTML = '<div class="empty-state">No doses scheduled for today. Add a medicine to get started!</div>';
-          return;
-        }
-
-        list.innerHTML = doses.map(d => `
-          <div class="dose-item ${d.status}">
-            <div class="dose-info">
-              <h4>${d.medicineName} — ${d.dosage}</h4>
-              <p>${d.foodNote || 'No food instructions'}</p>
-            </div>
-            <div style="text-align:right;">
-              <div class="dose-time">${d.scheduledTime}</div>
-              <div style="color:#94a3b8;font-size:11px;margin-top:4px;text-transform:uppercase;">${d.status}</div>
-              ${d.status === 'pending' ? `<button class="btn btn-confirm" onclick="confirmDose('${d._id}')">Confirm</button>` : ''}
-            </div>
-          </div>
-        `).join('');
-      } catch (err) {
-        document.getElementById('dosesList').innerHTML = '<div class="empty-state">Error loading doses. Is the server running?</div>';
-      }
-    }
-
-    async function confirmDose(id) {
-      try {
-        await fetch(`${API_URL}/api/doses/${id}/confirm`, {
-          method: 'POST',
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-        loadDoses();
-      } catch (err) {
-        alert('Failed to confirm dose');
-      }
-    }
-
-    async function loadStats() {
-      try {
-        const res = await fetch(`${API_URL}/api/patient/profile`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-        if (res.status === 401) {
-          logout();
-          return;
-        }
-        const profile = await res.json();
-        document.getElementById('activeMedicines').textContent = profile.medicines?.length || 0;
-
-        // Calculate adherence from doses
-        const today = new Date().toISOString().split('T')[0];
-        const dosesRes = await fetch(`${API_URL}/api/doses/today`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-        const doses = await dosesRes.json();
-        const total = doses.length;
-        const taken = doses.filter(d => d.status === 'taken').length;
-        const rate = total > 0 ? Math.round((taken / total) * 100) : 0;
-        document.getElementById('adherenceRate').textContent = rate + '%';
-
-        if (rate >= 80) {
-          document.getElementById('riskBadge').textContent = 'All Good';
-          document.getElementById('riskBadge').className = 'status-badge ok';
-        } else if (rate >= 50) {
-          document.getElementById('riskBadge').textContent = 'Moderate';
-          document.getElementById('riskBadge').className = 'status-badge';
-        } else {
-          document.getElementById('riskBadge').textContent = 'At Risk';
-          document.getElementById('riskBadge').className = 'status-badge';
-        }
-      } catch (e) {}
-    }
-
-    document.getElementById('medicineForm').addEventListener('submit', async (e) => {
+    document.getElementById('signupForm').addEventListener('submit', async (e) => {
       e.preventDefault();
-      const btn = document.getElementById('addBtn');
-      btn.disabled = true;
-      btn.textContent = 'Adding...';
+      const btn = document.getElementById('submitBtn');
+      const errorBox = document.getElementById('errorBox');
+      const successBox = document.getElementById('successBox');
+      const errorText = document.getElementById('errorText');
 
-      const payload = {
-        name: document.getElementById('medName').value,
-        dosage: document.getElementById('medDosage').value,
-        time: document.getElementById('medTime').value,
-        frequency: document.getElementById('medFreq').value,
-        foodNote: document.getElementById('medFood').value
-      };
+      btn.disabled = true;
+      btn.textContent = 'Creating account...';
+      errorBox.classList.remove('show');
+      successBox.classList.remove('show');
+
+      const name = document.getElementById('name').value.trim();
+      const phoneRaw = document.getElementById('phone').value.trim();
+      const phone = phoneRaw.startsWith('+') ? phoneRaw : '+91' + phoneRaw;
+      const email = document.getElementById('email').value.trim();
+      const password = document.getElementById('password').value;
+      const whatsappApiKey = document.getElementById('whatsappApiKey').value.trim();
 
       try {
-        const res = await fetch(`${API_URL}/api/medicines`, {
+        const res = await fetch(`${API_URL}/api/auth/register`, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify(payload)
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, phone, email, password, whatsappApiKey })
         });
         const data = await res.json();
-        if (!res.ok) throw new Error(data.message);
+        if (!res.ok) throw new Error(data.message || 'Registration failed');
 
-        showMsg('Medicine added! Dose scheduled for today.', false);
-        document.getElementById('medicineForm').reset();
-        loadDoses();
-        loadStats();
+        localStorage.setItem('token', data.token);
+        localStorage.setItem('user', JSON.stringify(data.patient));
+
+        successBox.classList.add('show');
+        document.getElementById('successText').textContent = whatsappApiKey
+          ? 'Account created! Check your WhatsApp for a welcome message. Redirecting...'
+          : 'Account created! Redirecting to your dashboard...';
+
+        setTimeout(() => { window.location.href = 'patient.html'; }, 1400);
       } catch (err) {
-        showMsg(err.message || 'Failed to add medicine', true);
+        errorText.textContent = err.message;
+        errorBox.classList.add('show');
       } finally {
         btn.disabled = false;
-        btn.textContent = 'Add Medicine';
+        btn.textContent = 'Create Account';
       }
     });
-
-    loadDoses();
-    loadStats();
-    setInterval(loadDoses, 30000);
   </script>
 </body>
 </html>

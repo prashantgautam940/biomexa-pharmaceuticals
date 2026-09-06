@@ -155,6 +155,7 @@ tr:hover { background: rgba(13,115,119,0.05); }
       <div id="loginError" class="error"></div>
       <p style="margin-top:1rem;font-size:0.78rem;color:var(--text-muted);">Signed up on <a href="doctor-signup.html" style="color:var(--primary-light);">Join Biomexa Connect</a>? Log in here with the same WhatsApp number and password. Just exploring? Try username <strong>drsharma</strong> / password <strong>biomexa2026</strong>.</p>
       <p style="margin-top:0.75rem;font-size:0.85rem;color:var(--text-muted);">New doctor? <a href="doctor-signup.html" style="color:var(--primary-light);font-weight:600;text-decoration:none;">Join Biomexa Connect →</a></p>
+      <p style="margin-top:0.5rem;font-size:0.85rem;"><a href="forgot-password.html?role=doctor" style="color:var(--primary-light);text-decoration:none;">Forgot password?</a></p>
     </div>
   </div>
 
@@ -169,6 +170,25 @@ tr:hover { background: rgba(13,115,119,0.05); }
       <span id="toggleTrack" style="position:absolute;cursor:pointer;inset:0;background:var(--border);border-radius:28px;transition:0.3s;"></span>
       <span id="toggleThumb" style="position:absolute;height:22px;width:22px;left:3px;bottom:3px;background:white;border-radius:50%;transition:0.3s;"></span>
     </label>
+  </div>
+
+  <!-- WhatsApp connection status for the real doctor account -->
+  <div id="doctorWaCard" class="hidden" style="max-width:420px;margin:0 auto 2rem;background:var(--bg-light);border:1px solid var(--border);border-radius:16px;padding:1.25rem 1.5rem;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+      <span style="font-weight:700;font-size:0.9rem;">💬 WhatsApp Alerts</span>
+      <span id="docWaStatusBadge" style="font-size:0.8rem;">Checking...</span>
+    </div>
+    <div id="docWaSteps" style="font-size:0.78rem;color:var(--text-muted);line-height:1.6;margin-bottom:10px;display:none;">
+      1. Save <strong>+34 644 52 53 53</strong> to your contacts.<br>
+      2. WhatsApp them: <strong>"I allow callmebot to send me messages"</strong><br>
+      3. Paste the API key they send back below.
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <input type="text" id="docWaKeyInput" placeholder="Paste your CallMeBot API key" style="flex:1;min-width:180px;padding:9px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:0.82rem;">
+      <button class="trend-btn" onclick="saveDocWhatsappKey()">Save</button>
+      <button class="trend-btn" id="docWaTestBtn" onclick="testDocWhatsapp()" disabled>Send Test</button>
+    </div>
+    <div id="docWaMsg" style="font-size:0.78rem;margin-top:8px;"></div>
   </div>
 
   <!-- DASHBOARD -->
@@ -695,9 +715,71 @@ function initAvailabilityWidget() {
     const toggle = document.getElementById('availabilityToggle');
     toggle.checked = !!doctorProfile.available;
     paintToggle(toggle.checked);
+    initDoctorWaCard();
   }
 }
 initAvailabilityWidget();
+
+function initDoctorWaCard() {
+  document.getElementById('doctorWaCard').classList.remove('hidden');
+  fetch(API_BASE + '/api/doctors/me', { headers: { 'Authorization': 'Bearer ' + doctorToken } })
+    .then(r => r.json())
+    .then(d => renderDocWaStatus(!!d.whatsappApiKey))
+    .catch(() => {});
+}
+
+function renderDocWaStatus(connected) {
+  const badge = document.getElementById('docWaStatusBadge');
+  const steps = document.getElementById('docWaSteps');
+  const testBtn = document.getElementById('docWaTestBtn');
+  if (connected) {
+    badge.textContent = '✅ Connected';
+    badge.style.color = 'var(--success)';
+    steps.style.display = 'none';
+    testBtn.disabled = false;
+  } else {
+    badge.textContent = 'Not connected';
+    badge.style.color = 'var(--danger)';
+    steps.style.display = 'block';
+    testBtn.disabled = true;
+  }
+}
+
+function saveDocWhatsappKey() {
+  const key = document.getElementById('docWaKeyInput').value.trim();
+  const msg = document.getElementById('docWaMsg');
+  if (!key) { msg.style.color = 'var(--danger)'; msg.textContent = 'Paste your CallMeBot key first.'; return; }
+  fetch(API_BASE + '/api/doctors/whatsapp-key', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + doctorToken },
+    body: JSON.stringify({ whatsappApiKey: key })
+  })
+    .then(r => r.json())
+    .then(() => {
+      msg.style.color = 'var(--success)';
+      msg.textContent = 'Saved! Click "Send Test" to confirm it works.';
+      doctorProfile.whatsappApiKey = key;
+      localStorage.setItem('doctorProfile', JSON.stringify(doctorProfile));
+      renderDocWaStatus(true);
+    })
+    .catch(() => { msg.style.color = 'var(--danger)'; msg.textContent = 'Could not save — try again.'; });
+}
+
+function testDocWhatsapp() {
+  const msg = document.getElementById('docWaMsg');
+  msg.style.color = 'var(--text-muted)';
+  msg.textContent = 'Sending test message...';
+  fetch(API_BASE + '/api/doctors/test-whatsapp', {
+    method: 'POST',
+    headers: { 'Authorization': 'Bearer ' + doctorToken }
+  })
+    .then(r => r.json().then(data => ({ ok: r.ok, data })))
+    .then(({ ok, data }) => {
+      msg.style.color = ok ? 'var(--success)' : 'var(--danger)';
+      msg.textContent = data.message;
+    })
+    .catch(() => { msg.style.color = 'var(--danger)'; msg.textContent = 'Test failed — check your connection.'; });
+}
 
 function paintToggle(on) {
   document.getElementById('toggleTrack').style.background = on ? 'var(--success)' : 'var(--border)';

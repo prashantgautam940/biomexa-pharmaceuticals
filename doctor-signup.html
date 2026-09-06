@@ -135,6 +135,16 @@ h1 { text-align: center; font-family: 'Playfair Display', serif; font-size: 2.1r
         <label>Password *</label>
         <input type="password" id="docPassword" placeholder="Create a password" required minlength="6">
       </div>
+      <div class="field" style="background:var(--bg-light);border-radius:12px;padding:14px 16px;border:1px solid var(--border);">
+        <label style="margin-bottom:8px;">💬 Connect WhatsApp (for patient connect alerts)</label>
+        <small style="display:block;margin-bottom:10px;line-height:1.6;">
+          1. Save <strong>+34 644 52 53 53</strong> to your contacts.<br>
+          2. WhatsApp them: <strong>"I allow callmebot to send me messages"</strong><br>
+          3. Paste the API key they send back below.
+        </small>
+        <input type="text" id="docWhatsappKey" placeholder="Paste your CallMeBot API key here">
+        <small style="display:block;margin-top:8px;">Optional — you can add this later, but you won't receive patient connect alerts on WhatsApp until it's set.</small>
+      </div>
       <button type="submit" class="submit-btn" id="signupBtn"><i class="fas fa-user-md"></i> Create Doctor Account</button>
       <div class="msg" id="formMsg"></div>
     </form>
@@ -173,7 +183,8 @@ document.getElementById('doctorSignupForm').addEventListener('submit', async (e)
     licenseNumber: document.getElementById('docLicense').value,
     experienceYears: Number(document.getElementById('docExperience').value) || 0,
     bio: document.getElementById('docBio').value,
-    password: document.getElementById('docPassword').value
+    password: document.getElementById('docPassword').value,
+    whatsappApiKey: document.getElementById('docWhatsappKey').value.trim()
   };
 
   try {
