@@ -356,6 +356,26 @@ const conversationStateSchema = new mongoose.Schema({
   updatedAt: { type: Date, default: Date.now }
 });
 
+// Auto-triggered whenever a WhatsApp-logged vital reading falls into a dangerous range — this is
+// what powers the "risk alert" system end to end: patient logs vitals → this fires → doctor gets
+// notified on WhatsApp → shows up on both dashboards until a doctor acknowledges it.
+const riskAlertSchema = new mongoose.Schema({
+  patientPhone: String,
+  patientName: String,
+  reason: String, // human-readable, e.g. "Hypertensive crisis: BP 185/122"
+  vitals: {
+    bpSystolic: Number,
+    bpDiastolic: Number,
+    temperature: Number,
+    heartRate: Number
+  },
+  severity: { type: String, default: 'high' }, // high | critical
+  notifiedDoctorPhone: String,
+  acknowledged: { type: Boolean, default: false },
+  acknowledgedBy: String,
+  createdAt: { type: Date, default: Date.now }
+});
+
 const Patient = mongoose.model('Patient', patientSchema);
 const Dose = mongoose.model('Dose', doseSchema);
 const Otp = mongoose.model('Otp', otpSchema);
@@ -363,6 +383,69 @@ const Doctor = mongoose.model('Doctor', doctorSchema);
 const ConnectRequest = mongoose.model('ConnectRequest', connectRequestSchema);
 const VitalsLog = mongoose.model('VitalsLog', vitalsLogSchema);
 const ConversationState = mongoose.model('ConversationState', conversationStateSchema);
+const RiskAlert = mongoose.model('RiskAlert', riskAlertSchema);
+
+// Clinical thresholds for auto-flagging a logged vital reading as dangerous. These are
+// deliberately conservative (err toward flagging) since a false alarm costs a doctor a glance,
+// but a missed one costs a lot more. Returns null if nothing is concerning, or a reason string.
+function checkVitalsDanger(vitals) {
+  const reasons = [];
+  let severity = 'high';
+
+  if (vitals.bpSystolic >= 180 || vitals.bpDiastolic >= 120) {
+    reasons.push(`Hypertensive crisis: BP ${vitals.bpSystolic}/${vitals.bpDiastolic}`);
+    severity = 'critical';
+  } else if (vitals.bpSystolic && vitals.bpSystolic < 90) {
+    reasons.push(`Low blood pressure: BP ${vitals.bpSystolic}/${vitals.bpDiastolic || '?'}`);
+  }
+
+  if (vitals.temperature >= 103) {
+    reasons.push(`High fever: ${vitals.temperature}°F`);
+    severity = 'critical';
+  } else if (vitals.temperature && vitals.temperature <= 95) {
+    reasons.push(`Low body temperature: ${vitals.temperature}°F`);
+  }
+
+  if (vitals.heartRate >= 120) {
+    reasons.push(`High heart rate: ${vitals.heartRate} bpm`);
+  } else if (vitals.heartRate && vitals.heartRate <= 45) {
+    reasons.push(`Low heart rate: ${vitals.heartRate} bpm`);
+    severity = 'critical';
+  }
+
+  return reasons.length ? { reason: reasons.join('; '), severity } : null;
+}
+
+// Fires a real risk alert: saves it, notifies an available doctor on WhatsApp, and warns the
+// patient too. Called from the MSG91 webhook right after vitals are logged.
+async function triggerRiskAlert(patient, vitals) {
+  const danger = checkVitalsDanger(vitals);
+  if (!danger) return null;
+
+  const availableDoctor = await Doctor.findOne({ available: true }).sort({ createdAt: -1 });
+
+  const alert = await RiskAlert.create({
+    patientPhone: patient.phone,
+    patientName: patient.name,
+    reason: danger.reason,
+    vitals,
+    severity: danger.severity,
+    notifiedDoctorPhone: availableDoctor?.phone || null
+  });
+
+  if (availableDoctor) {
+    const doctorMsg = `🚨 *RISK ALERT — ${danger.severity.toUpperCase()}*\n\nPatient: ${patient.name}\nPhone: ${patient.phone}\nIssue: ${danger.reason}\n\nLogged via Biomexa WhatsApp vitals capture. Please reach out as soon as possible.\n\n- Biomexa Team`;
+    sendWhatsAppFree(availableDoctor.phone, doctorMsg, availableDoctor.whatsappApiKey);
+  }
+
+  sendWhatsAppFree(
+    patient.phone,
+    `⚠️ Your recent reading (${danger.reason}) is outside the normal range. A doctor has been notified and may reach out. If you feel unwell, please seek medical attention now.`,
+    patient.whatsappApiKey
+  );
+
+  return alert;
+}
 
 // ========== AUTH MIDDLEWARE ==========
 const auth = (req, res, next) => {
@@ -844,7 +927,13 @@ app.post('/api/webhooks/msg91-whatsapp', async (req, res) => {
         vitals.temperature && `Temp ${vitals.temperature}°F`,
         vitals.heartRate && `Pulse ${vitals.heartRate}`
       ].filter(Boolean).join(', ');
-      await sendWhatsAppFree(phone, `📊 Logged: ${summary}. Thanks — this is saved to your Biomexa dashboard now.`, patient?.whatsappApiKey);
+
+      // Risk check — if this reading is dangerous, triggerRiskAlert handles notifying both the
+      // patient and an available doctor. The "logged" confirmation still goes out either way.
+      const alert = patient ? await triggerRiskAlert(patient, vitals) : null;
+      if (!alert) {
+        await sendWhatsAppFree(phone, `📊 Logged: ${summary}. Thanks — this is saved to your Biomexa dashboard now.`, patient?.whatsappApiKey);
+      }
       await ConversationState.findOneAndUpdate({ patientPhone: phone }, { state: null, doseId: null, updatedAt: new Date() });
       return;
     }
@@ -1176,6 +1265,39 @@ app.get('/api/doctor/patient/:phone/effectiveness', async (req, res) => {
     }
 
     res.json({ ...result.data, usedRealVitals });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Recent risk alerts — powers the alert banner on the doctor dashboard. Open (not doctorAuth-gated)
+// to match the existing pattern of /api/doctors and /api/doctor/patient/:phone/vitals, since any
+// doctor viewing the dashboard should see active alerts regardless of which patients are "theirs."
+app.get('/api/doctor/alerts', async (req, res) => {
+  try {
+    const alerts = await RiskAlert.find({ acknowledged: false }).sort({ createdAt: -1 }).limit(50);
+    res.json(alerts);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+app.patch('/api/doctor/alerts/:id/acknowledge', async (req, res) => {
+  try {
+    const { doctorName } = req.body;
+    await RiskAlert.findByIdAndUpdate(req.params.id, { acknowledged: true, acknowledgedBy: doctorName || 'Doctor' });
+    res.json({ message: 'Alert acknowledged' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// A patient's own most recent risk alert (if any, and if still unacknowledged) — powers the
+// urgent state on their "Talk to a Doctor" card, same treatment as low-adherence urgency.
+app.get('/api/patient/latest-alert', auth, async (req, res) => {
+  try {
+    const alert = await RiskAlert.findOne({ patientPhone: req.user.phone, acknowledged: false }).sort({ createdAt: -1 });
+    res.json(alert || null);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

@@ -433,12 +433,34 @@ input[type="time"] { color-scheme: dark; }
 
     // ========== TALK TO A DOCTOR ==========
     let isHighRisk = false;
+    let adherenceIsHighRisk = false;
+    let vitalsAlertActive = false;
+    let vitalsAlertReason = '';
+
     function setDoctorConnectUrgency(high) {
-      isHighRisk = high;
+      adherenceIsHighRisk = high;
+      refreshDoctorConnectUrgency();
+    }
+
+    function refreshDoctorConnectUrgency() {
+      isHighRisk = adherenceIsHighRisk || vitalsAlertActive;
       const card = document.getElementById('doctorConnectCard');
       const hint = document.getElementById('doctorConnectHint');
-      card.classList.toggle('high-risk', high);
-      hint.textContent = high ? 'Your risk is high — connect now' : 'Live WhatsApp connect';
+      card.classList.toggle('high-risk', isHighRisk);
+      hint.textContent = vitalsAlertActive
+        ? '⚠ ' + vitalsAlertReason
+        : (isHighRisk ? 'Your risk is high — connect now' : 'Live WhatsApp connect');
+    }
+
+    function checkVitalsAlert() {
+      fetch(`${API_URL}/api/patient/latest-alert`, { headers: { 'Authorization': `Bearer ${token}` } })
+        .then(r => r.ok ? r.json() : null)
+        .then(alert => {
+          vitalsAlertActive = !!alert;
+          vitalsAlertReason = alert ? alert.reason : '';
+          refreshDoctorConnectUrgency();
+        })
+        .catch(() => {});
     }
 
     function initials(name) { return (name || 'Dr').split(' ').filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase(); }
@@ -495,6 +517,8 @@ input[type="time"] { color-scheme: dark; }
     }
 
     loadDoctors();
+    checkVitalsAlert();
+    setInterval(checkVitalsAlert, 60000); // catches a new WhatsApp-logged alert without a manual refresh
 
     // ========== WHATSAPP CONNECTION ==========
     function renderWaStatus(connected) {

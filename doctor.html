@@ -100,6 +100,26 @@ tr:hover { background: rgba(13,115,119,0.05); }
 .ai-pred { font-size: 0.85rem; color: var(--text-muted); }
 .hidden { display: none !important; }
 .loading { text-align: center; padding: 3rem; color: var(--text-muted); }
+.risk-alert-card {
+  display: flex; align-items: center; gap: 14px; padding: 16px 18px; border-radius: 12px; margin-bottom: 10px;
+  background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.4);
+  animation: alertPulse 2.4s ease-in-out infinite;
+}
+.risk-alert-card.critical { background: rgba(239,68,68,0.18); border-color: var(--danger); }
+@keyframes alertPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(239,68,68,0.25); }
+  50% { box-shadow: 0 0 0 6px rgba(239,68,68,0); }
+}
+.risk-alert-icon { font-size: 1.5rem; flex-shrink: 0; }
+.risk-alert-body { flex: 1; }
+.risk-alert-body strong { color: var(--text); font-size: 0.95rem; }
+.risk-alert-body p { color: var(--text-muted); font-size: 0.82rem; margin-top: 2px; }
+.risk-alert-time { color: #64748b; font-size: 0.72rem; white-space: nowrap; }
+.risk-alert-ack {
+  padding: 8px 14px; border: 1px solid var(--danger); color: var(--danger); background: transparent;
+  border-radius: 8px; font-size: 0.78rem; font-weight: 600; cursor: pointer; white-space: nowrap;
+}
+.risk-alert-ack:hover { background: var(--danger); color: white; }
 .med-badge { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 8px; background: rgba(13,115,119,0.12); color: var(--primary-light); text-decoration: none; font-weight: 600; font-size: 0.82rem; border: 1px solid rgba(13,115,119,0.3); }
 .med-badge:hover { background: rgba(13,115,119,0.22); }
 .bp-reading { font-weight: 700; }
@@ -196,6 +216,11 @@ tr:hover { background: rgba(13,115,119,0.05); }
     <div class="page-header">
       <h1><i class="fas fa-heartbeat"></i> Doctor Dashboard</h1>
       <p>Real-time patient adherence monitoring & AI risk predictions</p>
+    </div>
+
+    <!-- RISK ALERTS — auto-triggered from dangerous vitals logged via WhatsApp -->
+    <div id="riskAlertsSection" class="hidden" style="margin-bottom: 1.5rem;">
+      <div id="riskAlertsList"></div>
     </div>
 
     <div class="stats-row">
@@ -406,6 +431,58 @@ function enterDashboard() {
   loadPatients();
   loadDoctorQueue();
   initAvailabilityWidget();
+  loadRiskAlerts();
+  setInterval(loadRiskAlerts, 60000); // refresh every minute so new alerts show up without a manual reload
+}
+
+// ========== RISK ALERTS ==========
+function loadRiskAlerts() {
+  fetch(API_BASE + '/api/doctor/alerts', { headers: { 'Authorization': authHeader } })
+    .then(r => r.json())
+    .then(renderRiskAlerts)
+    .catch(() => {});
+}
+
+function renderRiskAlerts(alerts) {
+  const section = document.getElementById('riskAlertsSection');
+  const list = document.getElementById('riskAlertsList');
+  if (!alerts || !alerts.length) {
+    section.classList.add('hidden');
+    return;
+  }
+  section.classList.remove('hidden');
+  list.innerHTML = alerts.map(a => `
+    <div class="risk-alert-card ${a.severity === 'critical' ? 'critical' : ''}">
+      <div class="risk-alert-icon">🚨</div>
+      <div class="risk-alert-body">
+        <strong>${a.patientName}</strong> — ${a.reason}
+        <p>${a.patientPhone}${a.notifiedDoctorPhone ? ' · notified an available doctor' : ' · no doctor was available to notify'}</p>
+      </div>
+      <div class="risk-alert-time">${timeAgo(a.createdAt)}</div>
+      <button class="risk-alert-ack" onclick="acknowledgeAlert('${a._id}')">Acknowledge</button>
+    </div>
+  `).join('');
+}
+
+function acknowledgeAlert(id) {
+  const doctorName = (doctorProfile && doctorProfile.name) || 'Doctor';
+  fetch(API_BASE + '/api/doctor/alerts/' + id + '/acknowledge', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', 'Authorization': authHeader },
+    body: JSON.stringify({ doctorName })
+  })
+    .then(() => loadRiskAlerts())
+    .catch(() => {});
+}
+
+function timeAgo(dateStr) {
+  const diffMs = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diffMs / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return mins + 'm ago';
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return hrs + 'h ago';
+  return Math.floor(hrs / 24) + 'd ago';
 }
 
 function loadDoctorQueue() {
