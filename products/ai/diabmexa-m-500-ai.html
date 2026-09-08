@@ -651,54 +651,67 @@
                 <div class="card-header" style="justify-content: center; color: #25d366;">
                     <i class="fab fa-whatsapp"></i> WhatsApp Reminders
                 </div>
-                <p>Get medication reminders and adherence confirmations directly on WhatsApp.</p>
+                <p>Get medication reminders directly on WhatsApp — sent from Biomexa's official number, real and automatic.</p>
 
                 <div class="reminder-options">
                     <label class="reminder-option">
-                        <input type="checkbox" id="remMorning" onchange="updateReminders()">
+                        <input type="checkbox" id="remMorning" checked>
                         <div>
                             <div style="font-weight: 600;">Morning Dose Reminder</div>
-                            <div class="time">Daily at 7:00 AM with breakfast</div>
+                            <div class="time">With breakfast — set your time below</div>
                         </div>
                     </label>
                     <label class="reminder-option">
-                        <input type="checkbox" id="remEvening" onchange="updateReminders()">
+                        <input type="checkbox" id="remEvening">
                         <div>
                             <div style="font-weight: 600;">Evening Dose Reminder</div>
-                            <div class="time">Daily at 7:00 PM with dinner</div>
+                            <div class="time">With dinner — if prescribed twice daily</div>
                         </div>
                     </label>
                     <label class="reminder-option">
-                        <input type="checkbox" id="remConfirm" onchange="updateReminders()">
+                        <input type="checkbox" checked disabled>
                         <div>
                             <div style="font-weight: 600;">Dose Confirmation</div>
-                            <div class="time">Confirm intake after each reminder</div>
+                            <div class="time">Included automatically — reply Taken/Not Taken on WhatsApp</div>
                         </div>
                     </label>
-                    <label class="reminder-option">
-                        <input type="checkbox" id="remWeekly" onchange="updateReminders()">
+                    <label class="reminder-option" style="opacity: 0.55;">
+                        <input type="checkbox" disabled>
                         <div>
                             <div style="font-weight: 600;">Weekly Glucose Report</div>
-                            <div class="time">Every Sunday at 9:00 AM</div>
+                            <div class="time">Coming soon</div>
                         </div>
                     </label>
-                    <label class="reminder-option">
-                        <input type="checkbox" id="remRefill" onchange="updateReminders()">
+                    <label class="reminder-option" style="opacity: 0.55;">
+                        <input type="checkbox" disabled>
                         <div>
                             <div style="font-weight: 600;">Refill Alert</div>
-                            <div class="time">When 3 days supply remains</div>
+                            <div class="time">Coming soon</div>
                         </div>
                     </label>
                 </div>
 
                 <div class="form-group" style="margin-bottom: 1rem;">
+                    <label>Your Name</label>
+                    <input type="text" id="whatsappName" placeholder="e.g. Priya Sharma">
+                </div>
+                <div class="form-group" style="margin-bottom: 1rem;">
                     <label>WhatsApp Number (with country code)</label>
                     <input type="tel" id="whatsappNumber" placeholder="+91 98765 43210" value="+91 ">
                 </div>
+                <div class="form-group" style="margin-bottom: 1rem;" id="morningTimeGroup">
+                    <label>Morning Reminder Time</label>
+                    <input type="time" id="whatsappTimeMorning" value="07:00">
+                </div>
+                <div class="form-group" style="margin-bottom: 1rem;" id="eveningTimeGroup">
+                    <label>Evening Reminder Time</label>
+                    <input type="time" id="whatsappTimeEvening" value="19:00">
+                </div>
 
-                <button class="voice-btn" style="background: linear-gradient(135deg, #25d366, #128c7e);" onclick="setupWhatsApp()">
+                <button class="voice-btn" id="waActivateBtn" style="background: linear-gradient(135deg, #25d366, #128c7e);" onclick="setupWhatsApp()">
                     <i class="fab fa-whatsapp"></i> Activate WhatsApp Reminders
                 </button>
+                <div id="waSetupMsg" style="font-size: 0.85rem; margin-top: 0.75rem; text-align: center;"></div>
             </div>
         </div>
 
@@ -986,44 +999,52 @@
             items.forEach(el => obs.observe(el));
         }
 
-        function setupWhatsApp() {
+        async function setupWhatsApp() {
+            const name = document.getElementById('whatsappName').value.trim();
             const number = document.getElementById('whatsappNumber').value.trim();
-            if (!number || number.length < 10) {
-                showToast('Please enter a valid WhatsApp number');
-                return;
+            const wantsMorning = document.getElementById('remMorning').checked;
+            const wantsEvening = document.getElementById('remEvening').checked;
+            const morningTime = document.getElementById('whatsappTimeMorning').value;
+            const eveningTime = document.getElementById('whatsappTimeEvening').value;
+            const btn = document.getElementById('waActivateBtn');
+            const msg = document.getElementById('waSetupMsg');
+
+            if (!name) { showToast('Please enter your name'); return; }
+            if (!number || number.replace(/\D/g, '').length < 10) { showToast('Please enter a valid WhatsApp number'); return; }
+            if (!wantsMorning && !wantsEvening) { showToast('Choose at least one reminder time'); return; }
+
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Setting up...';
+            msg.textContent = '';
+
+            const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+                ? 'http://localhost:3000'
+                : 'https://biomexa-api-f9f6.onrender.com';
+
+            const setOne = (time, foodNote) => fetch(`${API_URL}/api/quick-reminder`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, phone: number, medicineName: 'Diabmexa M 500', dosage: 'Metformin Hydrochloride 500mg', time, foodNote })
+            }).then(res => res.json().then(data => ({ ok: res.ok, data })));
+
+            try {
+                const calls = [];
+                if (wantsMorning) calls.push(setOne(morningTime, 'Take with breakfast'));
+                if (wantsEvening) calls.push(setOne(eveningTime, 'Take with dinner'));
+                const results = await Promise.all(calls);
+                const failed = results.find(r => !r.ok);
+                if (failed) throw new Error(failed.data.message || 'Something went wrong');
+
+                msg.style.color = '#34d399';
+                msg.textContent = '✅ Reminder(s) activated! Check your WhatsApp for confirmation.';
+                showToast('WhatsApp reminders activated!');
+            } catch (err) {
+                msg.style.color = '#f87171';
+                msg.textContent = err.message;
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fab fa-whatsapp"></i> Activate WhatsApp Reminders';
             }
-
-            const morning = document.getElementById('remMorning').checked;
-            const evening = document.getElementById('remEvening').checked;
-            const confirm = document.getElementById('remConfirm').checked;
-            const weekly = document.getElementById('remWeekly').checked;
-            const refill = document.getElementById('remRefill').checked;
-
-            let message = `Hello! I want to set up medication reminders for Diabmexa M 500 (Metformin 500mg).`;
-            if (morning) message += ` Please send me a daily reminder at 7:00 AM with breakfast.`;
-            if (evening) message += ` Please send me a daily reminder at 7:00 PM with dinner.`;
-            if (confirm) message += ` Please ask me to confirm I took my dose.`;
-            if (weekly) message += ` Please send me a weekly glucose report every Sunday.`;
-            if (refill) message += ` Please alert me when I have 3 days of medication left.`;
-
-            const encoded = encodeURIComponent(message);
-            const waLink = `https://wa.me/${number.replace(/\D/g,'')}?text=${encoded}`;
-            window.open(waLink, '_blank');
-
-            localStorage.setItem('diabmexa_whatsapp', number);
-            localStorage.setItem('diabmexa_reminders', JSON.stringify({morning, evening, confirm, weekly, refill}));
-            showToast('WhatsApp reminder setup initiated!');
-        }
-
-        function updateReminders() {
-            const prefs = {
-                morning: document.getElementById('remMorning').checked,
-                evening: document.getElementById('remEvening').checked,
-                confirm: document.getElementById('remConfirm').checked,
-                weekly: document.getElementById('remWeekly').checked,
-                refill: document.getElementById('remRefill').checked
-            };
-            localStorage.setItem('diabmexa_reminders', JSON.stringify(prefs));
         }
 
         document.getElementById('vitalDate').valueAsDate = new Date();
@@ -1185,16 +1206,6 @@
             renderPrescriptions();
             initTilt();
             initReveal();
-
-            const savedReminders = JSON.parse(localStorage.getItem('diabmexa_reminders') || '{}');
-            if (savedReminders.morning) document.getElementById('remMorning').checked = true;
-            if (savedReminders.evening) document.getElementById('remEvening').checked = true;
-            if (savedReminders.confirm) document.getElementById('remConfirm').checked = true;
-            if (savedReminders.weekly) document.getElementById('remWeekly').checked = true;
-            if (savedReminders.refill) document.getElementById('remRefill').checked = true;
-
-            const savedNumber = localStorage.getItem('diabmexa_whatsapp');
-            if (savedNumber) document.getElementById('whatsappNumber').value = savedNumber;
         });
     </script>
 </body>

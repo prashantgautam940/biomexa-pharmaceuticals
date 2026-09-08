@@ -12,11 +12,26 @@
       background: #0f172a;
       font-family: system-ui, -apple-system, sans-serif;
       display: flex;
-      align-items: center;
-      justify-content: center;
+      flex-direction: column;
       color: #f1f5f9;
-      padding: 40px 0;
+      padding: 0;
     }
+    .site-header {
+      background: rgba(10,14,23,0.95);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid #1f2937;
+      padding: 1rem 2rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-shrink: 0;
+    }
+    .site-logo img { height: 28px; width: auto; }
+    .site-nav { display: flex; gap: 1.5rem; align-items: center; flex-wrap: wrap; }
+    .site-nav a { color: #9ca3af; text-decoration: none; font-weight: 500; font-size: 0.88rem; }
+    .site-nav a:hover { color: #14b8a6; }
+    .site-nav a.cta { color: #14b8a6; font-weight: 600; }
+    .main-content { flex: 1; display: flex; align-items: center; justify-content: center; width: 100%; padding: 40px 0; }
     .container { width: 100%; max-width: 460px; padding: 40px 24px; }
     .logo { text-align: center; margin-bottom: 8px; }
     .subtitle { color: #94a3b8; text-align: center; margin-bottom: 28px; font-size: 14px; }
@@ -65,6 +80,18 @@
 <base target="_blank">
 </head>
 <body>
+  <header class="site-header">
+    <a href="index.html" class="site-logo"><img src="images/logo-full-white.png" alt="Biomexa Pharmaceuticals"></a>
+    <nav class="site-nav">
+      <a href="index.html">Home</a>
+      <a href="products/index.html">Products</a>
+      <a href="ai-assistant.html">AI Assistant</a>
+      <a href="doctor.html">Doctor Portal</a>
+      <a href="admin.html">Admin</a>
+      <a href="login.html" class="cta">Login</a>
+    </nav>
+  </header>
+  <div class="main-content">
   <div class="container">
     <div class="logo">
       <h1><img src="images/logo-full-white.png" alt="Biomexa Pharmaceuticals" style="height:38px;width:auto;"></h1>
@@ -122,6 +149,7 @@
 
     <p class="footer-text">Already have an account? <a href="login.html">Sign In</a></p>
     <p class="footer-text" style="margin-top:8px;">Are you a doctor? <a href="doctor-signup.html">Join Biomexa Connect</a></p>
+  </div>
   </div>
 
   <script>

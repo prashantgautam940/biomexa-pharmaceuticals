@@ -12,9 +12,30 @@
       background: #0f172a;
       font-family: system-ui, -apple-system, sans-serif;
       display: flex;
+      flex-direction: column;
+      color: #f1f5f9;
+    }
+    .site-header {
+      background: rgba(10,14,23,0.95);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid #1f2937;
+      padding: 1rem 2rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-shrink: 0;
+    }
+    .site-logo img { height: 28px; width: auto; }
+    .site-nav { display: flex; gap: 1.5rem; align-items: center; flex-wrap: wrap; }
+    .site-nav a { color: #9ca3af; text-decoration: none; font-weight: 500; font-size: 0.88rem; }
+    .site-nav a:hover { color: #14b8a6; }
+    .site-nav a.cta { color: #14b8a6; font-weight: 600; }
+    .main-content {
+      flex: 1;
+      display: flex;
       align-items: center;
       justify-content: center;
-      color: #f1f5f9;
+      width: 100%;
     }
     .container {
       width: 100%;
@@ -177,6 +198,18 @@
 <base target="_blank">
 </head>
 <body>
+  <header class="site-header">
+    <a href="index.html" class="site-logo"><img src="images/logo-full-white.png" alt="Biomexa Pharmaceuticals"></a>
+    <nav class="site-nav">
+      <a href="index.html">Home</a>
+      <a href="products/index.html">Products</a>
+      <a href="ai-assistant.html">AI Assistant</a>
+      <a href="doctor.html">Doctor Portal</a>
+      <a href="admin.html">Admin</a>
+      <a href="signup.html" class="cta">Sign Up</a>
+    </nav>
+  </header>
+  <div class="main-content">
   <div class="container">
     <div class="logo">
       <h1><img src="images/logo-full-white.png" alt="Biomexa Pharmaceuticals" style="height:38px;width:auto;"></h1>
@@ -233,6 +266,7 @@
     <p class="disclaimer">
       By signing in, you agree to receive medication reminders via WhatsApp
     </p>
+  </div>
   </div>
 
   <script>
