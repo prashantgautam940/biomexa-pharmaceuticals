@@ -757,26 +757,37 @@ app.post('/api/webhooks/msg91-whatsapp', async (req, res) => {
     const body = req.body || {};
     const payload = body.payload || body; // some MSG91 webhook configs nest under "payload"
 
-    // Only handle genuinely inbound messages (direction 0), ignore delivery/status callbacks
+    // Only handle genuinely inbound messages when a "direction" field is present — the
+    // "On Inbound Request Received" event (what this endpoint is meant for) doesn't send one
+    // at all since the event itself only fires for inbound messages, so this is just a safety
+    // check in case a different/broader event ever gets pointed at this same URL by mistake.
     if (payload.direction !== undefined && String(payload.direction) !== '0') return;
 
-    const rawPhone = payload.mobile || payload.customerNumber || payload.msisdn
+    // Confirmed field name from MSG91's "On Inbound Request Received" payload picker: customerNumber.
+    // Older guesses kept as fallback in case this ever changes or a different event type is used.
+    const rawPhone = payload.customerNumber || payload.mobile || payload.msisdn
       || (payload.user && payload.user.msisdn) || payload.from;
     if (!rawPhone) { console.log('⚠️ Could not find sender phone in MSG91 webhook payload'); return; }
     const phone = '+' + rawPhone.replace(/\D/g, '');
 
-    // Button reply comes as payload.button = {"payload":"Taken","text":"Taken"} (JSON string or object)
+    // Button reply — confirmed as a flat top-level "button" field, not nested. Its own value can
+    // still be a JSON string like {"payload":"Taken","text":"Taken"} depending on message type,
+    // so this handles both a plain string and that JSON-string shape.
     let buttonText = null;
     if (payload.button) {
       try {
-        const btn = typeof payload.button === 'string' ? JSON.parse(payload.button) : payload.button;
-        buttonText = (btn.text || btn.payload || '').toLowerCase();
+        const btn = typeof payload.button === 'string' && payload.button.trim().startsWith('{')
+          ? JSON.parse(payload.button) : payload.button;
+        buttonText = typeof btn === 'string' ? btn.toLowerCase() : (btn.text || btn.payload || '').toLowerCase();
       } catch { buttonText = String(payload.button).toLowerCase(); }
     }
 
-    // Free text comes as payload.content = {"text":"..."} (JSON string) or payload.content.text
+    // Free text — confirmed as a flat top-level "text" field (not nested under "content" as
+    // originally assumed). Kept payload.content as a fallback in case that ever appears instead.
     let freeText = '';
-    if (payload.content) {
+    if (payload.text) {
+      freeText = String(payload.text).trim();
+    } else if (payload.content) {
       try {
         const c = typeof payload.content === 'string' ? JSON.parse(payload.content) : payload.content;
         freeText = (c.text || '').trim();
