@@ -1418,12 +1418,21 @@ app.get('/api/patient/latest-alert', auth, async (req, res) => {
   }
 });
 
-app.get('/api/doctor/queue', async (req, res) => {
-  res.json([]);
-});
-
 app.get('/api/export/patients', async (req, res) => {
-  res.json({ message: 'Export feature coming soon' });
+  try {
+    const patients = await Patient.find();
+    let csv = 'Name,Phone,Medicines,AdherenceBaselineBP,RegisteredAt\n';
+    patients.forEach(p => {
+      const meds = (p.medicines || []).map(m => m.name).join('; ');
+      const bp = p.baselineVitals?.bpSystolic ? `${p.baselineVitals.bpSystolic}/${p.baselineVitals.bpDiastolic || ''}` : '';
+      csv += `"${p.name}","${p.phone}","${meds}","${bp}","${p.createdAt || ''}"\n`;
+    });
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename="biomexa-patients.csv"');
+    res.send(csv);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
 });
 
 // ========== ADMIN AUTH + AI ENGINE ==========

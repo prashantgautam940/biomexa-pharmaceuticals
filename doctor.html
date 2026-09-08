@@ -254,28 +254,6 @@ tr:hover { background: rgba(13,115,119,0.05); }
       <button class="filter-btn export-btn" onclick="exportCSV()"><i class="fas fa-download"></i> Export CSV</button>
     </div>
 
-    <div class="queue-wrap">
-      <div class="queue-header">
-        <h3><i class="fas fa-clipboard-list"></i> Consultation Queue</h3>
-        <span id="queueStatusText">Loading consults...</span>
-      </div>
-      <table class="queue-table">
-        <thead>
-          <tr>
-            <th>Patient</th>
-            <th>Risk</th>
-            <th>Type</th>
-            <th>Amount</th>
-            <th>Status</th>
-            <th>Action</th>
-          </tr>
-        </thead>
-        <tbody id="consultationQueueBody">
-          <tr><td colspan="6" class="loading"><i class="fas fa-spinner fa-spin"></i> Loading consultation queue...</td></tr>
-        </tbody>
-      </table>
-    </div>
-
     <div class="table-wrap">
       <table>
         <thead>
@@ -327,68 +305,14 @@ tr:hover { background: rgba(13,115,119,0.05); }
     </div>
   </div>
 
-  <div id="patientModal" class="modal hidden" aria-modal="true" role="dialog">
-    <div class="modal-backdrop" onclick="closePatientModal()"></div>
-    <div class="modal-card">
-      <div class="modal-header">
-        <h3 id="modalPatientName">Patient Details</h3>
-        <button class="close-btn" onclick="closePatientModal()">×</button>
-      </div>
-      <div class="modal-body">
-        <div class="modal-grid">
-          <div class="info-box"><small>Phone</small><strong id="modalPatientPhone">-</strong></div>
-          <div class="info-box"><small>Risk</small><strong id="modalPatientRisk">-</strong></div>
-          <div class="info-box"><small>Consultation</small><strong id="modalPatientType">-</strong></div>
-          <div class="info-box"><small>Amount</small><strong id="modalPatientAmount">-</strong></div>
-          <div class="info-box"><small>Status</small><strong id="modalPatientStatus">-</strong></div>
-          <div class="info-box"><small>Follow-up</small><strong id="modalPatientFollowUp">-</strong></div>
-        </div>
-
-        <div style="display:flex; gap:0.75rem; flex-wrap:wrap;">
-          <button id="modalStartBtn" class="primary-btn" type="button" onclick="startConsultationFromModal()">Start Consultation</button>
-          <button id="modalCompleteBtn" class="secondary-btn" type="button" onclick="completeConsultationFromModal()">Complete Consultation</button>
-        </div>
-
-        <form id="monitoringNoteForm" class="note-form">
-          <input type="hidden" id="modalConsultationId">
-          <input type="hidden" id="modalPatientId">
-
-          <div class="form-row">
-            <div class="form-group">
-              <label for="modalRiskLevel">Risk Level</label>
-              <select id="modalRiskLevel">
-                <option value="LOW">Low</option>
-                <option value="MODERATE">Moderate</option>
-                <option value="HIGH">High</option>
-                <option value="CRITICAL">Critical</option>
-              </select>
-            </div>
-            <div class="form-group">
-              <label for="modalFollowUpDate">Follow-up Date</label>
-              <input type="date" id="modalFollowUpDate">
-            </div>
-          </div>
-
-          <div class="form-group">
-            <label for="modalNoteText">Monitoring Note</label>
-            <textarea id="modalNoteText" placeholder="Add clinical observations, recommendation, and monitoring notes..."></textarea>
-          </div>
-
-          <button class="primary-btn" type="submit">Save Monitoring Note</button>
-        </form>
-      </div>
-    </div>
-  </div>
-
 </div>
 
 <script>
 const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
   ? 'http://localhost:3000'
-  : 'https://biomexa-api.onrender.com';
+  : 'https://biomexa-api-f9f6.onrender.com';
 let authHeader = '';
 let allPatients = [];
-let selectedConsultation = null;
 
 function login() {
   const u = document.getElementById('username').value;
@@ -434,7 +358,6 @@ function enterDashboard() {
   document.getElementById('dashboardSection').classList.remove('hidden');
   document.getElementById('logoutBtn').style.display = 'inline-block';
   loadPatients();
-  loadDoctorQueue();
   initAvailabilityWidget();
   loadRiskAlerts();
   setInterval(loadRiskAlerts, 60000); // refresh every minute so new alerts show up without a manual reload
@@ -490,183 +413,6 @@ function timeAgo(dateStr) {
   return Math.floor(hrs / 24) + 'd ago';
 }
 
-function loadDoctorQueue() {
-  fetch(API_BASE + '/api/doctor/queue', { headers: { 'Authorization': authHeader } })
-    .then(r => r.json())
-    .then(data => {
-      const queueBody = document.getElementById('consultationQueueBody');
-      if (!data || data.length === 0) {
-        queueBody.innerHTML = '<tr><td colspan="6" class="loading">No consultation requests yet.</td></tr>';
-        document.getElementById('queueStatusText').textContent = 'No active requests';
-        return;
-      }
-
-      document.getElementById('queueStatusText').textContent = data.length + ' request(s) waiting';
-      queueBody.innerHTML = data.map(item => {
-        const patient = item.patient || {};
-        const statusClass = (item.status || 'requested').toLowerCase();
-        const viewButton = `<button class="queue-btn ghost" onclick="openPatientModal('${item._id}')">View</button>`;
-        let actionButton = viewButton;
-
-        if (item.status === 'requested') {
-          actionButton = viewButton + ' <button class="queue-btn secondary" disabled>Awaiting Payment</button>';
-        } else if (item.status === 'paid') {
-          actionButton = viewButton + ` <button class="queue-btn" onclick="acceptConsultation('${item._id}')">Accept</button>`;
-        } else if (item.status === 'accepted') {
-          actionButton = viewButton + ` <button class="queue-btn" onclick="startConsultation('${item._id}')">Start</button>`;
-        } else if (item.status === 'in_progress') {
-          actionButton = viewButton + ` <button class="queue-btn secondary" onclick="completeConsultation('${item._id}')">Complete</button>`;
-        } else {
-          actionButton = viewButton;
-        }
-
-        return `
-          <tr>
-            <td>
-              <div class="patient-name">${patient.name || 'Unknown Patient'}</div>
-              <div class="patient-phone">${patient.phone || 'No phone'}</div>
-            </td>
-            <td><span class="risk-badge ${item.riskLevel === 'CRITICAL' ? 'risk-critical' : item.riskLevel === 'HIGH' ? 'risk-high' : 'risk-low'}">${item.riskLevel || 'HIGH'}</span></td>
-            <td>${item.consultationType || 'urgent'}</td>
-            <td>₹${item.amount || 200}</td>
-            <td><span class="queue-pill ${statusClass}">${(item.status || 'requested').toUpperCase()}</span></td>
-            <td style="display:flex; gap:0.5rem; flex-wrap:wrap;">${actionButton}</td>
-          </tr>
-        `;
-      }).join('');
-    })
-    .catch(() => {
-      document.getElementById('consultationQueueBody').innerHTML = '<tr><td colspan="6" class="loading"><i class="fas fa-exclamation-circle"></i> Failed to load queue.</td></tr>';
-      document.getElementById('queueStatusText').textContent = 'Queue unavailable';
-    });
-}
-
-function openPatientModal(consultationId) {
-  const item = (doctorQueueList || []).find(c => c._id === consultationId);
-  if (!item) return;
-
-  selectedConsultation = item;
-  const patient = item.patient || {};
-
-  document.getElementById('modalPatientName').textContent = patient.name || 'Patient';
-  document.getElementById('modalPatientPhone').textContent = patient.phone || '-';
-  document.getElementById('modalPatientRisk').textContent = item.riskLevel || 'HIGH';
-  document.getElementById('modalPatientType').textContent = item.consultationType || 'urgent';
-  document.getElementById('modalPatientAmount').textContent = `₹${item.amount || 200}`;
-  document.getElementById('modalPatientStatus').textContent = item.status || 'requested';
-  document.getElementById('modalPatientFollowUp').textContent = item.followUpDate ? new Date(item.followUpDate).toLocaleDateString('en-IN') : 'Not scheduled';
-  document.getElementById('modalConsultationId').value = item._id || '';
-  document.getElementById('modalPatientId').value = item.patientId || patient._id || '';
-  document.getElementById('modalRiskLevel').value = item.riskLevel || 'HIGH';
-  document.getElementById('modalFollowUpDate').value = item.followUpDate ? new Date(item.followUpDate).toISOString().slice(0, 10) : '';
-  document.getElementById('modalNoteText').value = item.doctorNotes || '';
-
-  const modalStart = document.getElementById('modalStartBtn');
-  const modalComplete = document.getElementById('modalCompleteBtn');
-  modalStart.disabled = !(item.status === 'accepted' || item.status === 'paid');
-  modalComplete.disabled = item.status !== 'in_progress';
-
-  document.getElementById('patientModal').classList.remove('hidden');
-}
-
-function closePatientModal() {
-  document.getElementById('patientModal').classList.add('hidden');
-  selectedConsultation = null;
-}
-
-function acceptConsultation(consultationId) {
-  fetch(API_BASE + '/api/consultations/' + consultationId + '/accept', {
-    method: 'POST',
-    headers: { 'Authorization': authHeader, 'Content-Type': 'application/json' }
-  })
-    .then(r => { if (!r.ok) throw new Error('Accept failed'); return r.json(); })
-    .then(() => {
-      loadDoctorQueue();
-      loadPatients();
-    })
-    .catch(() => {
-      alert('Unable to accept consultation right now.');
-    });
-}
-
-function startConsultation(consultationId) {
-  fetch(API_BASE + '/api/consultations/' + consultationId + '/start', {
-    method: 'POST',
-    headers: { 'Authorization': authHeader, 'Content-Type': 'application/json' }
-  })
-    .then(r => { if (!r.ok) throw new Error('Start failed'); return r.json(); })
-    .then(() => {
-      loadDoctorQueue();
-      if (selectedConsultation && selectedConsultation._id === consultationId) {
-        openPatientModal(consultationId);
-      }
-    })
-    .catch(() => {
-      alert('Unable to start consultation.');
-    });
-}
-
-function completeConsultation(consultationId) {
-  fetch(API_BASE + '/api/consultations/' + consultationId + '/complete', {
-    method: 'POST',
-    headers: { 'Authorization': authHeader, 'Content-Type': 'application/json' }
-  })
-    .then(r => { if (!r.ok) throw new Error('Complete failed'); return r.json(); })
-    .then(() => {
-      loadDoctorQueue();
-      if (selectedConsultation && selectedConsultation._id === consultationId) {
-        closePatientModal();
-      }
-    })
-    .catch(() => {
-      alert('Unable to complete consultation.');
-    });
-}
-
-function startConsultationFromModal() {
-  if (!selectedConsultation) return;
-  startConsultation(selectedConsultation._id);
-}
-
-function completeConsultationFromModal() {
-  if (!selectedConsultation) return;
-  completeConsultation(selectedConsultation._id);
-}
-
-document.getElementById('monitoringNoteForm').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const consultationId = document.getElementById('modalConsultationId').value;
-  const patientId = document.getElementById('modalPatientId').value;
-  const payload = {
-    consultationId,
-    patientId,
-    vitalsSummary: {
-      riskLevel: document.getElementById('modalRiskLevel').value,
-      followUpDate: document.getElementById('modalFollowUpDate').value
-    },
-    riskLevel: document.getElementById('modalRiskLevel').value,
-    noteText: document.getElementById('modalNoteText').value,
-    followUpDate: document.getElementById('modalFollowUpDate').value || null
-  };
-
-  try {
-    const res = await fetch(API_BASE + '/api/doctor/monitoring-note', {
-      method: 'POST',
-      headers: { 'Authorization': authHeader, 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-
-    if (!res.ok) throw new Error('Save failed');
-    alert('Monitoring note saved.');
-    loadDoctorQueue();
-    closePatientModal();
-  } catch (err) {
-    alert('Unable to save monitoring note.');
-  }
-});
-
-let doctorQueueList = [];
-
 function loadPatients() {
   fetch(API_BASE + '/api/patients', { headers: { 'Authorization': authHeader } })
     .then(r => r.json())
@@ -679,15 +425,6 @@ function loadPatients() {
       document.getElementById('patientTable').innerHTML = '<tr><td colspan="10" class="loading"><i class="fas fa-exclamation-circle"></i> Failed to load data. Please login again.</td></tr>';
     });
 }
-
-fetch(API_BASE + '/api/doctor/queue', { headers: { 'Authorization': authHeader } })
-  .then(r => r.json())
-  .then(data => {
-    doctorQueueList = Array.isArray(data) ? data : [];
-  })
-  .catch(() => {
-    doctorQueueList = [];
-  });
 
 function updateStats(patients) {
   document.getElementById('statTotal').textContent = patients.length;
