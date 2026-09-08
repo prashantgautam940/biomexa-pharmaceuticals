@@ -124,6 +124,25 @@ tr:hover { background: rgba(13,115,119,0.05); }
     <p>Clinical Intelligence Command Center — real-time oversight of all patients and the adherence-risk AI model</p>
   </div>
 
+  <div class="ai-panel" id="waSystemPanel" style="border-color: var(--border);">
+    <div class="ai-panel-head">
+      <div>
+        <h2><i class="fab fa-whatsapp"></i> WhatsApp System Status</h2>
+        <p>Whether reminders and risk alerts are actively going out to patients and doctors platform-wide.</p>
+      </div>
+    </div>
+    <div class="ai-status-row">
+      <div class="ai-status-item">
+        <div class="label">Reminder Engine</div>
+        <div class="value" id="waSystemStatus">Checking...</div>
+      </div>
+      <div class="ai-status-item">
+        <div class="label">Unacknowledged Risk Alerts</div>
+        <div class="value" id="waActiveAlerts" style="color: var(--danger);">—</div>
+      </div>
+    </div>
+  </div>
+
   <div class="ai-panel">
     <div class="ai-panel-head">
       <div>
@@ -247,6 +266,28 @@ function enterDashboard() {
   document.getElementById('logoutBtn').style.display = 'inline-flex';
   loadModelStatus();
   loadData();
+  loadWaSystemStatus();
+}
+
+function loadWaSystemStatus() {
+  fetch(API_BASE + '/api/whatsapp-status')
+    .then(r => r.json())
+    .then(s => {
+      const el = document.getElementById('waSystemStatus');
+      if (s.msg91Configured) {
+        el.textContent = '✅ Active (MSG91)';
+        el.style.color = 'var(--success)';
+      } else {
+        el.textContent = '⚠ Not configured';
+        el.style.color = 'var(--accent)';
+      }
+    })
+    .catch(() => {});
+
+  fetch(API_BASE + '/api/doctor/alerts')
+    .then(r => r.json())
+    .then(alerts => { document.getElementById('waActiveAlerts').textContent = (alerts || []).length; })
+    .catch(() => {});
 }
 
 function authFetch(path, opts) {

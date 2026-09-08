@@ -253,6 +253,26 @@
                         <p>Activate your personal AI voice guide & adherence plan</p>
                     </div>
                 </a>
+
+                <div id="reminderWidget" style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px; padding: 1.5rem; margin-top: 1.5rem; text-align: left;">
+                    <h3 style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; font-size: 1.05rem;"><i class="fab fa-whatsapp" style="color: var(--success);"></i> Set a WhatsApp Reminder</h3>
+                    <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 1rem;">Get a WhatsApp message when it's time to take Telmexa AM — free, takes 15 seconds.</p>
+                    <div id="reminderMsg91Note" style="display:none;font-size:0.78rem;color:#34d399;margin-bottom:10px;">✅ Powered by Biomexa's official WhatsApp number — no app or setup needed.</div>
+                    <form id="reminderForm">
+                        <div style="margin-bottom: 0.75rem;">
+                            <input type="text" id="remName" placeholder="Your name" required style="width:100%;padding:10px 12px;background:var(--bg-light);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:0.88rem;">
+                        </div>
+                        <div style="margin-bottom: 0.75rem;">
+                            <input type="tel" id="remPhone" placeholder="WhatsApp number, e.g. +919876543210" required style="width:100%;padding:10px 12px;background:var(--bg-light);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:0.88rem;">
+                        </div>
+                        <div style="margin-bottom: 1rem;">
+                            <label style="display:block;font-size:0.78rem;color:var(--text-muted);margin-bottom:4px;">Preferred time</label>
+                            <input type="time" id="remTime" value="08:00" required style="width:100%;padding:10px 12px;background:var(--bg-light);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:0.88rem;">
+                        </div>
+                        <button type="submit" id="remSubmitBtn" style="width:100%;padding:12px;border:none;border-radius:8px;background:linear-gradient(135deg,var(--primary),var(--primary-light));color:white;font-weight:600;font-size:0.9rem;cursor:pointer;">Set My Reminder</button>
+                        <div id="remResultMsg" style="font-size:0.8rem;margin-top:10px;"></div>
+                    </form>
+                </div>
             </div>
 
             <div>
@@ -386,5 +406,57 @@
         <p> Biomexa Pharmaceuticals. Adaptive Adherence Intelligence Engine.</p>
         <p style="margin-top: 0.5rem; font-size: 0.75rem;">This information is for educational purposes. Always consult your physician.</p>
     </footer>
+
+    <script>
+        const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+            ? 'http://localhost:3000'
+            : 'https://biomexa-api-f9f6.onrender.com';
+
+        fetch(`${API_URL}/api/whatsapp-status`)
+            .then(r => r.json())
+            .then(status => { if (status.msg91Configured) document.getElementById('reminderMsg91Note').style.display = 'block'; })
+            .catch(() => {});
+
+        document.getElementById('reminderForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const btn = document.getElementById('remSubmitBtn');
+            const msg = document.getElementById('remResultMsg');
+            btn.disabled = true;
+            btn.textContent = 'Setting reminder...';
+            msg.textContent = '';
+
+            const payload = {
+                name: document.getElementById('remName').value.trim(),
+                phone: document.getElementById('remPhone').value.trim(),
+                medicineName: 'Telmexa AM',
+                dosage: 'Telmisartan 40mg / Amlodipine 5mg',
+                time: document.getElementById('remTime').value,
+                foodNote: 'Take in the morning, with or without food'
+            };
+
+            try {
+                const res = await fetch(`${API_URL}/api/quick-reminder`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.message || 'Something went wrong');
+
+                msg.style.color = 'var(--success)';
+                msg.textContent = data.whatsappSent
+                    ? '✅ Reminder set! Check your WhatsApp for confirmation.'
+                    : '✅ Reminder set! (WhatsApp confirmation may take a moment.)';
+                document.getElementById('reminderForm').reset();
+                document.getElementById('remTime').value = '08:00';
+            } catch (err) {
+                msg.style.color = 'var(--danger)';
+                msg.textContent = err.message;
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Set My Reminder';
+            }
+        });
+    </script>
 </body>
 </html>

@@ -6,6 +6,7 @@ const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const https = require('https');
+const crypto = require('crypto');
 
 const app = express();
 app.use(cors());
@@ -489,6 +490,61 @@ app.post('/api/auth/register', async (req, res) => {
     const waResult = await sendWhatsAppFree(phone, welcomeMsg, whatsappApiKey);
 
     res.json({ message: 'Registered successfully', token, patient: { name, phone }, whatsappConnected: waResult.success });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Quick reminder setup — the low-friction path used on product pages (Telmexa AM, Diabmexa M).
+// A visitor just browsing a product page can set a reminder for THAT medicine in one step, no
+// password to type. If MSG91 is active, this works immediately with zero WhatsApp setup on their
+// end. Under the hood this still creates a real Patient account (random password) so the same
+// person can later log in properly via "Forgot password" if they want the full dashboard.
+app.post('/api/quick-reminder', async (req, res) => {
+  try {
+    const { name, phone, medicineName, dosage, time, foodNote } = req.body;
+    if (!name || !phone || !medicineName || !time) {
+      return res.status(400).json({ message: 'Name, phone, medicine, and time are required.' });
+    }
+    const timeRegex = /^([01]\d|2[0-3]):([0-5]\d)$/;
+    if (!timeRegex.test(time)) {
+      return res.status(400).json({ message: 'Time must be in 24-hour format (HH:MM), e.g. 09:00' });
+    }
+
+    let patient = await Patient.findOne({ phone });
+    let isNewAccount = false;
+
+    if (!patient) {
+      isNewAccount = true;
+      const randomPassword = crypto.randomBytes(12).toString('hex');
+      const hashed = await bcrypt.hash(randomPassword, 10);
+      patient = await Patient.create({ name, phone, password: hashed, medicines: [] });
+    }
+
+    patient.medicines.push({ name: medicineName, dosage: dosage || '', time, frequency: 'daily', foodNote: foodNote || '', active: true });
+    await patient.save();
+
+    const today = new Date().toISOString().split('T')[0];
+    await Dose.create({
+      patientPhone: phone,
+      medicineName,
+      dosage: dosage || '',
+      scheduledTime: time,
+      scheduledDate: today,
+      foodNote: foodNote || '',
+      status: 'pending'
+    });
+
+    const msg = isNewAccount
+      ? `🎉 Hi ${name}! Your reminder for *${medicineName}* is set for ${time} daily.\n\nWe've also created your Biomexa account with this number — use "Forgot password" on the login page anytime if you want full dashboard access.\n\n- Biomexa Team`
+      : `✅ Added a new reminder for *${medicineName}* at ${time} daily to your existing Biomexa account.\n\n- Biomexa Team`;
+    const waResult = await sendWhatsAppFree(phone, msg, patient.whatsappApiKey);
+
+    res.json({
+      message: isNewAccount ? 'Reminder set and account created!' : 'Reminder added to your existing account!',
+      isNewAccount,
+      whatsappSent: waResult.success
+    });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
