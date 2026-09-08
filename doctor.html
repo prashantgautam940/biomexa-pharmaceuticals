@@ -198,15 +198,20 @@ tr:hover { background: rgba(13,115,119,0.05); }
       <span style="font-weight:700;font-size:0.9rem;">💬 WhatsApp Alerts</span>
       <span id="docWaStatusBadge" style="font-size:0.8rem;">Checking...</span>
     </div>
-    <div id="docWaSteps" style="font-size:0.78rem;color:var(--text-muted);line-height:1.6;margin-bottom:10px;display:none;">
-      1. Save <strong>+34 644 95 42 75</strong> to your contacts.<br>
-      2. WhatsApp them: <strong>"I allow callmebot to send me messages"</strong><br>
-      3. Paste the API key they send back below.
+    <div id="docWaMsg91Active" style="display:none;background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.3);border-radius:8px;padding:10px 12px;font-size:0.78rem;color:var(--success);line-height:1.6;">
+      ✅ Patient connect requests and risk alerts reach you automatically via Biomexa's official WhatsApp number — no setup needed.
     </div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;">
-      <input type="text" id="docWaKeyInput" placeholder="Paste your CallMeBot API key" style="flex:1;min-width:180px;padding:9px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:0.82rem;">
-      <button class="trend-btn" onclick="saveDocWhatsappKey()">Save</button>
-      <button class="trend-btn" id="docWaTestBtn" onclick="testDocWhatsapp()" disabled>Send Test</button>
+    <div id="docWaFallbackSection">
+      <div id="docWaSteps" style="font-size:0.78rem;color:var(--text-muted);line-height:1.6;margin-bottom:10px;display:none;">
+        1. Save <strong>+34 644 95 42 75</strong> to your contacts.<br>
+        2. WhatsApp them: <strong>"I allow callmebot to send me messages"</strong><br>
+        3. Paste the API key they send back below.
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <input type="text" id="docWaKeyInput" placeholder="Paste your CallMeBot API key" style="flex:1;min-width:180px;padding:9px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:0.82rem;">
+        <button class="trend-btn" onclick="saveDocWhatsappKey()">Save</button>
+        <button class="trend-btn" id="docWaTestBtn" onclick="testDocWhatsapp()" disabled>Send Test</button>
+      </div>
     </div>
     <div id="docWaMsg" style="font-size:0.78rem;margin-top:8px;"></div>
   </div>
@@ -843,10 +848,27 @@ initAvailabilityWidget();
 
 function initDoctorWaCard() {
   document.getElementById('doctorWaCard').classList.remove('hidden');
-  fetch(API_BASE + '/api/doctors/me', { headers: { 'Authorization': 'Bearer ' + doctorToken } })
+  fetch(API_BASE + '/api/whatsapp-status')
     .then(r => r.json())
-    .then(d => renderDocWaStatus(!!d.whatsappApiKey))
-    .catch(() => {});
+    .then(status => {
+      if (status.msg91Configured) {
+        document.getElementById('docWaStatusBadge').textContent = '✅ Active';
+        document.getElementById('docWaStatusBadge').style.color = 'var(--success)';
+        document.getElementById('docWaMsg91Active').style.display = 'block';
+        document.getElementById('docWaFallbackSection').style.display = 'none';
+      } else {
+        fetch(API_BASE + '/api/doctors/me', { headers: { 'Authorization': 'Bearer ' + doctorToken } })
+          .then(r => r.json())
+          .then(d => renderDocWaStatus(!!d.whatsappApiKey))
+          .catch(() => {});
+      }
+    })
+    .catch(() => {
+      fetch(API_BASE + '/api/doctors/me', { headers: { 'Authorization': 'Bearer ' + doctorToken } })
+        .then(r => r.json())
+        .then(d => renderDocWaStatus(!!d.whatsappApiKey))
+        .catch(() => {});
+    });
 }
 
 function renderDocWaStatus(connected) {

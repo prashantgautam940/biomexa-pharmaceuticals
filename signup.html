@@ -98,18 +98,23 @@
         <input type="password" id="password" placeholder="Create a password" required minlength="6">
       </div>
 
-      <div class="wa-panel">
+      <div class="wa-panel" id="waPanel">
         <div class="wa-panel-head">
           <span>💬 Connect WhatsApp reminders</span>
         </div>
-        <div class="wa-steps">
-          1. Save <b>+34 644 95 42 75</b> to your phone's contacts.<br>
-          2. WhatsApp that number the text: <b>"I allow callmebot to send me messages"</b><br>
-          3. They'll reply with your personal API key — paste it below.
-          (<a href="https://www.callmebot.com/blog/free-api-whatsapp-messages/" target="_blank">more info</a>)
+        <div id="waPanelMsg91" style="display:none;font-size:12.5px;color:#a7f3d0;line-height:1.6;">
+          ✅ Dose reminders already work automatically via Biomexa's official WhatsApp number — nothing to set up here.
         </div>
-        <input type="text" id="whatsappApiKey" placeholder="Paste your CallMeBot API key here">
-        <div class="skip-note">Optional — you can skip this and add it later from your dashboard, but reminders won't reach you on WhatsApp until it's set.</div>
+        <div id="waPanelFallback">
+          <div class="wa-steps">
+            1. Save <b>+34 644 95 42 75</b> to your phone's contacts.<br>
+            2. WhatsApp that number the text: <b>"I allow callmebot to send me messages"</b><br>
+            3. They'll reply with your personal API key — paste it below.
+            (<a href="https://www.callmebot.com/blog/free-api-whatsapp-messages/" target="_blank">more info</a>)
+          </div>
+          <input type="text" id="whatsappApiKey" placeholder="Paste your CallMeBot API key here">
+          <div class="skip-note">Optional — you can skip this and add it later from your dashboard, but reminders won't reach you on WhatsApp until it's set.</div>
+        </div>
       </div>
 
       <button type="submit" id="submitBtn">Create Account</button>
@@ -127,6 +132,18 @@
     if (localStorage.getItem('token')) {
       window.location.href = 'patient.html';
     }
+
+    // If MSG91 is already active server-side, the CallMeBot fallback panel isn't needed at
+    // signup — new patients don't have to do anything for reminders to work.
+    fetch(`${API_URL}/api/whatsapp-status`)
+      .then(r => r.json())
+      .then(status => {
+        if (status.msg91Configured) {
+          document.getElementById('waPanelMsg91').style.display = 'block';
+          document.getElementById('waPanelFallback').style.display = 'none';
+        }
+      })
+      .catch(() => {});
 
     document.getElementById('signupForm').addEventListener('submit', async (e) => {
       e.preventDefault();

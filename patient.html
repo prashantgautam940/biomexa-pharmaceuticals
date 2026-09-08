@@ -267,15 +267,24 @@ input[type="time"] { color-scheme: dark; }
         <span class="card-title">💬 WhatsApp Reminders</span>
         <span id="waStatusBadge" style="font-size:12px;color:#64748b;">Checking...</span>
       </div>
-      <div id="waSteps" style="font-size:13px;color:#94a3b8;line-height:1.7;margin-bottom:10px;display:none;">
-        1. Save <strong style="color:#e2e8f0;">+34 644 95 42 75</strong> to your contacts.<br>
-        2. WhatsApp them: <strong style="color:#e2e8f0;">"I allow callmebot to send me messages"</strong><br>
-        3. Paste the API key they send back below.
+
+      <!-- Shown when MSG91 (the official business number) is active — no patient setup needed -->
+      <div id="waMsg91Active" style="display:none;background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.3);border-radius:8px;padding:12px 14px;font-size:13px;color:#a7f3d0;line-height:1.6;">
+        ✅ You're already set up. Dose reminders come from Biomexa's official WhatsApp number — just reply to confirm doses or share your vitals when asked. No setup needed on your end.
       </div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;">
-        <input type="text" id="waKeyInput" placeholder="Paste your CallMeBot API key" style="flex:1;min-width:200px;padding:10px 14px;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#f1f5f9;font-size:13px;">
-        <button class="btn" id="waSaveBtn" onclick="saveWhatsappKey()" style="width:auto;padding:10px 16px;">Save</button>
-        <button class="btn" id="waTestBtn" onclick="testWhatsapp()" style="width:auto;padding:10px 16px;background:#334155;" disabled>Send Test</button>
+
+      <!-- Fallback / optional advanced section — CallMeBot personal key, only relevant when MSG91 isn't configured -->
+      <div id="waFallbackSection">
+        <div id="waSteps" style="font-size:13px;color:#94a3b8;line-height:1.7;margin-bottom:10px;display:none;">
+          1. Save <strong style="color:#e2e8f0;">+34 644 95 42 75</strong> to your contacts.<br>
+          2. WhatsApp them: <strong style="color:#e2e8f0;">"I allow callmebot to send me messages"</strong><br>
+          3. Paste the API key they send back below.
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <input type="text" id="waKeyInput" placeholder="Paste your CallMeBot API key" style="flex:1;min-width:200px;padding:10px 14px;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#f1f5f9;font-size:13px;">
+          <button class="btn" id="waSaveBtn" onclick="saveWhatsappKey()" style="width:auto;padding:10px 16px;">Save</button>
+          <button class="btn" id="waTestBtn" onclick="testWhatsapp()" style="width:auto;padding:10px 16px;background:#334155;" disabled>Send Test</button>
+        </div>
       </div>
       <div id="waMsg" style="font-size:12.5px;margin-top:8px;"></div>
     </div>
@@ -540,10 +549,32 @@ input[type="time"] { color-scheme: dark; }
       }
     }
 
-    fetch(`${API_URL}/api/patient/profile`, { headers: { 'Authorization': `Bearer ${token}` } })
+    // Check whether MSG91 (the official business number) is active server-side. If it is,
+    // patients don't need to do anything — reminders and vitals prompts come automatically.
+    // The CallMeBot personal-key flow only matters as a fallback when MSG91 isn't configured.
+    fetch(`${API_URL}/api/whatsapp-status`)
       .then(r => r.json())
-      .then(p => renderWaStatus(!!p.whatsappApiKey))
-      .catch(() => {});
+      .then(status => {
+        if (status.msg91Configured) {
+          document.getElementById('waStatusBadge').textContent = '✅ Active';
+          document.getElementById('waStatusBadge').style.color = '#34d399';
+          document.getElementById('waMsg91Active').style.display = 'block';
+          document.getElementById('waFallbackSection').style.display = 'none';
+        } else {
+          fetch(`${API_URL}/api/patient/profile`, { headers: { 'Authorization': `Bearer ${token}` } })
+            .then(r => r.json())
+            .then(p => renderWaStatus(!!p.whatsappApiKey))
+            .catch(() => {});
+        }
+      })
+      .catch(() => {
+        // If the status check itself fails, fall back to the old per-key flow rather than
+        // showing nothing.
+        fetch(`${API_URL}/api/patient/profile`, { headers: { 'Authorization': `Bearer ${token}` } })
+          .then(r => r.json())
+          .then(p => renderWaStatus(!!p.whatsappApiKey))
+          .catch(() => {});
+      });
 
     function saveWhatsappKey() {
       const key = document.getElementById('waKeyInput').value.trim();

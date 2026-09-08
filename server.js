@@ -1514,6 +1514,14 @@ app.get('/stats', async (req, res) => {
   });
 });
 
+// Public status check — lets the frontend know whether reminders go out automatically via
+// MSG91 (business number, no patient setup needed) or whether the platform is still relying
+// on each patient/doctor connecting their own CallMeBot key. No auth needed — this is not
+// sensitive, just a feature-availability flag.
+app.get('/api/whatsapp-status', (req, res) => {
+  res.json({ msg91Configured: MSG91_CONFIGURED });
+});
+
 // ========== START SERVER ==========
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
