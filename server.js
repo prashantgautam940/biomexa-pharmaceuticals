@@ -200,10 +200,54 @@ async function sendResetEmail(toEmail, otp, name) {
 // always prefers that per-user key. CALLMEBOT_API_KEY (env var) is kept only as a fallback for
 // a single admin/testing number, and Twilio (if configured) as a paid fallback that can message
 // any number once it has opted into your Twilio sandbox/business number.
+// Sends a plain free-text message via MSG91 (no template/approval needed) — but WhatsApp's own
+// rules mean this only delivers if the recipient has messaged your business number within the
+// last 24 hours (an open "session"). For someone who has never messaged you, use
+// sendDoseReminderTemplate instead (the approved template works regardless of session state).
+async function sendMsg91Text(phone, message) {
+  if (!MSG91_CONFIGURED) return { success: false, provider: 'msg91_not_configured' };
+  try {
+    const res = await fetch('https://api.msg91.com/api/v5/whatsapp/whatsapp-outbound-message/bulk/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'authkey': MSG91_AUTH_KEY },
+      body: JSON.stringify({
+        integrated_number: MSG91_INTEGRATED_NUMBER,
+        content_type: 'text',
+        payload: {
+          messaging_product: 'whatsapp',
+          type: 'text',
+          text: { body: message },
+          to: phone.replace(/\D/g, '')
+        }
+      }),
+      signal: AbortSignal.timeout(10000)
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      console.log('⚠️ MSG91 text send failed:', JSON.stringify(data).substring(0, 200));
+      return { success: false, provider: 'msg91', detail: data };
+    }
+    console.log('✅ MSG91 WhatsApp text sent to', phone);
+    return { success: true, provider: 'msg91' };
+  } catch (err) {
+    console.log('⚠️ MSG91 text send error:', err.message);
+    return { success: false, provider: 'msg91', detail: err.message };
+  }
+}
+
 const CALLMEBOT_API_KEY = process.env.CALLMEBOT_API_KEY || null;
 
 async function sendWhatsAppFree(phone, message, userApiKey) {
   const cleanPhone = phone.replace(/\D/g, '');
+
+  // Try MSG91 first — it's the real business-number channel and needs no per-patient setup.
+  // Only actually delivers if the recipient has an open 24h session (messaged your number
+  // recently) — for a guaranteed-delivery first contact, use sendDoseReminderTemplate instead.
+  if (MSG91_CONFIGURED) {
+    const msg91Result = await sendMsg91Text(phone, message);
+    if (msg91Result.success) return msg91Result;
+  }
+
   const keyToUse = userApiKey || CALLMEBOT_API_KEY;
 
   if (keyToUse) {
@@ -230,7 +274,7 @@ async function sendWhatsAppFree(phone, message, userApiKey) {
         console.log('   (No personal WhatsApp key on file for this number — this is expected unless it matches CALLMEBOT_API_KEY\'s own number.)');
       }
     }
-  } else {
+  } else if (!MSG91_CONFIGURED) {
     console.log('⚠️ No CallMeBot key available for', phone, '— they have not connected their own WhatsApp key yet.');
   }
 
@@ -485,7 +529,11 @@ app.post('/api/auth/register', async (req, res) => {
 
     const token = jwt.sign({ id: patient._id, phone }, JWT_SECRET);
 
-    // Send welcome WhatsApp (only actually arrives if whatsappApiKey was provided — see sendWhatsAppFree)
+    // Welcome message — tries MSG91 first (works if a session happens to be open), then
+    // CallMeBot (if whatsappApiKey given) or Twilio. Note: a brand-new contact who has never
+    // messaged your business number won't receive free-text via MSG91 until they message you
+    // first (WhatsApp's 24h session rule) — this is a platform limitation, not a bug. Once they
+    // add a medicine, that reminder still fires correctly via the approved template regardless.
     const welcomeMsg = `🎉 Welcome to Biomexa, ${name}!\n\nYour WhatsApp dose reminders are now active. We'll notify you when it's time to take your medicine.\n\nReply CONFIRM after each dose to track your adherence.\n\n- Biomexa Team`;
     const waResult = await sendWhatsAppFree(phone, welcomeMsg, whatsappApiKey);
 
@@ -538,7 +586,18 @@ app.post('/api/quick-reminder', async (req, res) => {
     const msg = isNewAccount
       ? `🎉 Hi ${name}! Your reminder for *${medicineName}* is set for ${time} daily.\n\nWe've also created your Biomexa account with this number — use "Forgot password" on the login page anytime if you want full dashboard access.\n\n- Biomexa Team`
       : `✅ Added a new reminder for *${medicineName}* at ${time} daily to your existing Biomexa account.\n\n- Biomexa Team`;
-    const waResult = await sendWhatsAppFree(phone, msg, patient.whatsappApiKey);
+
+    // A brand-new contact hasn't messaged your business number yet, so MSG91 free-text delivery
+    // isn't guaranteed (WhatsApp only allows that within an open 24h session). The approved
+    // template works regardless of session state, so try that first for new accounts — existing
+    // patients have likely already messaged in before, so plain text is fine for them.
+    let waResult;
+    if (isNewAccount && MSG91_CONFIGURED) {
+      waResult = await sendDoseReminderTemplate(phone, medicineName, dosage || '');
+      if (!waResult.success) waResult = await sendWhatsAppFree(phone, msg, patient.whatsappApiKey);
+    } else {
+      waResult = await sendWhatsAppFree(phone, msg, patient.whatsappApiKey);
+    }
 
     res.json({
       message: isNewAccount ? 'Reminder set and account created!' : 'Reminder added to your existing account!',
