@@ -450,7 +450,7 @@ function renderPatients(list) {
       <td><div class="patient-name">${p.name}</div><div class="patient-phone">${p.phone}</div></td>
       <td>${medCell}</td>
       <td class="${adhClass}">${p.adherence_score}%</td>
-      <td><span class="bp-reading ${bpClass}">${p.bpSystolic}/${p.bpDiastolic}</span><span class="bp-sub">${p.bpStatus}</span></td>
+      <td><span class="bp-reading ${bpClass}">${p.bpSystolic}/${p.bpDiastolic}</span><span class="bp-sub">${p.bpStatus}${p.vitalsAreReal ? ' · logged' : ' · est.'}</span></td>
       <td>${(p.risk_score * 100).toFixed(0)}%</td>
       <td class="ai-pred">${(p.ai_prediction * 100).toFixed(0)}% miss chance</td>
       <td><span class="risk-badge ${riskClass}">${p.ai_risk_label}</span></td>

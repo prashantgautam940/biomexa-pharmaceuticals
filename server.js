@@ -1299,12 +1299,10 @@ app.get('/api/patients', async (req, res) => {
       const p = patients[i];
       const medName = p.medicines[0]?.name || CATALOG_NAMES[i % CATALOG_NAMES.length];
       const catalogEntry = MEDICINE_CATALOG[medName] || null;
-      const bpBaseSys = p.baselineVitals?.bpSystolic || (115 + Math.floor(Math.random() * 30));
-      const bpBaseDia = p.baselineVitals?.bpDiastolic || (75 + Math.floor(Math.random() * 15));
 
-      const { features, adherence, missed } = await computePatientFeatures(p);
+      const { features, adherence, missed, vitals, hasRealVitals } = await computePatientFeatures(p);
       let riskProb;
-      if (model) {
+      if (model && model.weights.length === features.length) {
         const norm = features.map((v, j) => (v - model.featureMeans[j]) / model.featureStds[j]);
         const z = norm.reduce((s, v, j) => s + v * model.weights[j], 0) + model.bias;
         riskProb = sigmoid(z);
@@ -1320,9 +1318,10 @@ app.get('/api/patients', async (req, res) => {
         medicine: medName,
         medicineInfo: catalogEntry,
         adherence_score: Math.round(adherence * 100),
-        bpSystolic: bpBaseSys,
-        bpDiastolic: bpBaseDia,
-        bpStatus: bpBaseSys >= 140 || bpBaseDia >= 90 ? 'high' : bpBaseSys < 100 ? 'low' : 'normal',
+        bpSystolic: vitals.bpSystolic,
+        bpDiastolic: vitals.bpDiastolic,
+        bpStatus: vitals.bpSystolic >= 140 || vitals.bpDiastolic >= 90 ? 'high' : vitals.bpSystolic < 100 ? 'low' : 'normal',
+        vitalsAreReal: hasRealVitals,
         risk_score: riskProb,
         ai_risk_label: label,
         ai_prediction: riskProb,
@@ -1560,6 +1559,10 @@ function sigmoid(z) { return 1 / (1 + Math.exp(-z)); }
 // Features deliberately exclude adherence itself (that's the training label) to avoid circularity —
 // they capture regimen complexity and history instead: how many medicines, how many missed doses
 // logged, how long they've been on the platform, and how often doses are scheduled per day.
+// Turns one patient's real Dose + Vitals history into a feature vector for the risk model.
+// Combines adherence/regimen-complexity signals with their most recent real vitals reading —
+// this is what makes the model genuinely predict from "vitals AND adherence score" together,
+// rather than adherence alone. Falls back sensibly when a patient has no vitals logged yet.
 async function computePatientFeatures(patient) {
   const doses = await Dose.find({ patientPhone: patient.phone });
   const total = doses.length;
@@ -1569,7 +1572,22 @@ async function computePatientFeatures(patient) {
   const daysSince = patient.createdAt ? Math.max(1, Math.floor((Date.now() - new Date(patient.createdAt)) / 86400000)) : 1;
   const numMedicines = (patient.medicines || []).length || 1;
   const doseFreq = total / daysSince;
-  return { features: [numMedicines, missed, daysSince, doseFreq], adherence, missed, total };
+
+  // Real vitals — prefer the most recent WhatsApp-logged reading (see VitalsLog), fall back to
+  // the baseline snapshot taken at signup, then to population-normal defaults if the patient
+  // has never had any vitals recorded at all.
+  const latestVitals = await VitalsLog.findOne({ patientPhone: patient.phone }).sort({ recordedAt: -1 });
+  const bpSystolic = latestVitals?.bpSystolic || patient.baselineVitals?.bpSystolic || 120;
+  const bpDiastolic = latestVitals?.bpDiastolic || patient.baselineVitals?.bpDiastolic || 80;
+  const temperature = latestVitals?.temperature || patient.baselineVitals?.temperature || 98.6;
+  const heartRate = latestVitals?.heartRate || 72;
+  const hasRealVitals = !!latestVitals;
+
+  const features = [numMedicines, missed, daysSince, doseFreq, bpSystolic, bpDiastolic, temperature, heartRate];
+  return {
+    features, adherence, missed, total, hasRealVitals,
+    vitals: { bpSystolic, bpDiastolic, temperature, heartRate }
+  };
 }
 
 // Trains a logistic-regression risk model from whatever real patient + dose data exists right now.
@@ -1629,7 +1647,7 @@ app.post('/api/admin/train-ai', adminAuth, async (req, res) => {
     const model = await TrainedModel.create({ weights: w, bias: b, featureMeans: means, featureStds: stds, accuracy, sampleSize: rows.length });
 
     res.json({
-      message: 'Model trained successfully on real patient data',
+      message: 'Model trained successfully on real patient adherence AND vitals data',
       accuracy: (accuracy * 100).toFixed(1) + '%',
       sampleSize: rows.length,
       trainedAt: model.trainedAt
@@ -1654,9 +1672,9 @@ app.get('/api/admin/patients', adminAuth, async (req, res) => {
     const data = [];
     for (let i = 0; i < patients.length; i++) {
       const p = patients[i];
-      const { features, adherence, missed, total } = await computePatientFeatures(p);
+      const { features, adherence, missed, total, vitals, hasRealVitals } = await computePatientFeatures(p);
       let riskProb;
-      if (model) {
+      if (model && model.weights.length === features.length) {
         const norm = features.map((v, j) => (v - model.featureMeans[j]) / model.featureStds[j]);
         const z = norm.reduce((s, v, j) => s + v * model.weights[j], 0) + model.bias;
         riskProb = sigmoid(z);
@@ -1670,6 +1688,9 @@ app.get('/api/admin/patients', adminAuth, async (req, res) => {
         phone: p.phone,
         medicine: p.medicines[0]?.name || 'None',
         adherence_score: Math.round(adherence * 100),
+        bpSystolic: vitals.bpSystolic,
+        bpDiastolic: vitals.bpDiastolic,
+        vitalsAreReal: hasRealVitals,
         risk_score: riskProb,
         ai_risk_label: label,
         ai_prediction: riskProb,
