@@ -125,6 +125,23 @@ tr:hover { background: rgba(13,115,119,0.05); }
     <p>Clinical Intelligence Command Center — real-time oversight of all patients and the adherence-risk AI model</p>
   </div>
 
+  <div class="ai-panel" id="changePasswordPanel" style="border-color: var(--border);">
+    <div class="ai-panel-head">
+      <div>
+        <h2><i class="fas fa-key"></i> Change Password</h2>
+        <p>Updates your admin account directly — works immediately, no email setup required.</p>
+      </div>
+    </div>
+    <form id="changePasswordForm" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
+      <div style="flex:1;min-width:200px;">
+        <label style="display:block;font-size:0.78rem;color:var(--text-muted);margin-bottom:4px;">New Password</label>
+        <input type="password" id="newAdminPassword" required minlength="6" placeholder="At least 6 characters" style="width:100%;padding:10px 12px;background:var(--bg-light);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:0.88rem;">
+      </div>
+      <button type="submit" class="btn" style="width:auto;">Update Password</button>
+    </form>
+    <div id="changePasswordMsg" style="font-size:0.82rem;margin-top:8px;"></div>
+  </div>
+
   <div class="ai-panel" id="waSystemPanel" style="border-color: var(--border);">
     <div class="ai-panel-head">
       <div>
@@ -299,6 +316,38 @@ function authFetch(path, opts) {
     return r;
   });
 }
+
+document.getElementById('changePasswordForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const input = document.getElementById('newAdminPassword');
+  const msg = document.getElementById('changePasswordMsg');
+  const btn = e.target.querySelector('button[type="submit"]');
+  const newPassword = input.value;
+
+  btn.disabled = true;
+  btn.textContent = 'Updating...';
+  msg.textContent = '';
+
+  try {
+    const res = await authFetch('/api/admin/change-password', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ newPassword })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to update password');
+
+    msg.style.color = 'var(--success)';
+    msg.textContent = '✅ Password updated. Use it next time you log in — your current session stays active.';
+    input.value = '';
+  } catch (err) {
+    msg.style.color = 'var(--danger)';
+    msg.textContent = err.message;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Update Password';
+  }
+});
 
 function loadModelStatus() {
   authFetch('/api/admin/model')
