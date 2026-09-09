@@ -300,8 +300,30 @@ async function sendWhatsAppFree(phone, message, userApiKey) {
 
 // ========== MONGODB SETUP ==========
 mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/biomexa')
-  .then(() => console.log('✅ MongoDB connected'))
+  .then(async () => {
+    console.log('✅ MongoDB connected');
+    await bootstrapAdmin();
+  })
   .catch(err => console.log('❌ MongoDB connection error:', err.message));
+
+// Creates the one admin account from ADMIN_USERNAME/ADMIN_PASSWORD/ADMIN_EMAIL env vars if no
+// admin account exists yet in the database. Runs once per deploy — if an admin already exists,
+// this does nothing, so it's always safe to leave in place.
+async function bootstrapAdmin() {
+  try {
+    const existing = await Admin.findOne();
+    if (existing) return;
+
+    const username = process.env.ADMIN_USERNAME || 'biomexadmin';
+    const password = process.env.ADMIN_PASSWORD || 'BiomexaAdmin@2026';
+    const email = process.env.ADMIN_EMAIL || 'biomexapharmaceuticals@gmail.com';
+    const hashed = await bcrypt.hash(password, 10);
+    await Admin.create({ username, password: hashed, email });
+    console.log(`✅ Bootstrapped admin account "${username}" — set ADMIN_USERNAME/ADMIN_PASSWORD env vars to change the starting credentials before this runs.`);
+  } catch (err) {
+    console.log('⚠️ Admin bootstrap failed:', err.message);
+  }
+}
 
 // ========== SCHEMAS ==========
 const patientSchema = new mongoose.Schema({
@@ -421,6 +443,16 @@ const riskAlertSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now }
 });
 
+// Real admin account — replaces the old single hardcoded env-var credential. Bootstrapped
+// automatically on server startup from ADMIN_USERNAME/ADMIN_PASSWORD/ADMIN_EMAIL if no admin
+// account exists yet in the database, so no manual database access is ever needed to set one up.
+const adminSchema = new mongoose.Schema({
+  username: { type: String, unique: true },
+  email: String,
+  password: String,
+  createdAt: { type: Date, default: Date.now }
+});
+
 const Patient = mongoose.model('Patient', patientSchema);
 const Dose = mongoose.model('Dose', doseSchema);
 const Otp = mongoose.model('Otp', otpSchema);
@@ -429,6 +461,7 @@ const ConnectRequest = mongoose.model('ConnectRequest', connectRequestSchema);
 const VitalsLog = mongoose.model('VitalsLog', vitalsLogSchema);
 const ConversationState = mongoose.model('ConversationState', conversationStateSchema);
 const RiskAlert = mongoose.model('RiskAlert', riskAlertSchema);
+const Admin = mongoose.model('Admin', adminSchema);
 
 // Clinical thresholds for auto-flagging a logged vital reading as dangerous. These are
 // deliberately conservative (err toward flagging) since a false alarm costs a doctor a glance,
@@ -663,25 +696,38 @@ app.post('/api/auth/forgot-password', async (req, res) => {
   try {
     const { phone, role } = req.body;
     const isDoctor = role === 'doctor';
-    const account = isDoctor ? await Doctor.findOne({ phone }) : await Patient.findOne({ phone });
-    if (!account) return res.status(400).json({ message: `No ${isDoctor ? 'doctor' : 'patient'} account found with this phone number` });
+    const isAdmin = role === 'admin';
+
+    // Admin has no phone number — the frontend sends the admin's username in the same field.
+    // The Otp collection's "phone" field doubles as that identifier for the admin role.
+    const account = isAdmin
+      ? await Admin.findOne({ username: phone })
+      : isDoctor ? await Doctor.findOne({ phone }) : await Patient.findOne({ phone });
+    if (!account) return res.status(400).json({ message: `No ${isAdmin ? 'admin' : isDoctor ? 'doctor' : 'patient'} account found${isAdmin ? ' with this username' : ' with this phone number'}` });
+
+    const roleKey = isAdmin ? 'admin' : isDoctor ? 'doctor' : 'patient';
+    const identifier = isAdmin ? account.username : phone;
 
     const otp = generateOTP();
     const resetToken = generateResetToken();
     const expiresAt = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
 
-    await Otp.updateMany({ phone, role: isDoctor ? 'doctor' : 'patient', used: false }, { used: true });
-    await Otp.create({ phone, role: isDoctor ? 'doctor' : 'patient', otp, resetToken, expiresAt });
+    await Otp.updateMany({ phone: identifier, role: roleKey, used: false }, { used: true });
+    await Otp.create({ phone: identifier, role: roleKey, otp, resetToken, expiresAt });
 
     const otpMsg = `🔐 *Biomexa Password Reset*\n\nYour OTP code is: *${otp}*\n\nThis code will expire in ${OTP_EXPIRY_MINUTES} minutes.\n\nIf you didn't request this, please ignore this message.\n\n- Biomexa Team`;
-    const waResult = await sendWhatsAppFree(phone, otpMsg, account.whatsappApiKey);
-    const emailResult = await sendResetEmail(account.email, otp, account.name);
+
+    // Admin has no WhatsApp number tied to the account — email only.
+    const waResult = isAdmin ? { success: false } : await sendWhatsAppFree(phone, otpMsg, account.whatsappApiKey);
+    const emailResult = await sendResetEmail(account.email, otp, account.name || account.username);
 
     if (!waResult.success && !emailResult.success) {
       return res.status(500).json({
-        message: account.whatsappApiKey || account.email
-          ? 'Could not deliver the code over WhatsApp or email. Please try again in a moment.'
-          : 'This account has no WhatsApp key or email on file to send a reset code to. Please contact support.'
+        message: isAdmin
+          ? 'Could not deliver the code by email. Make sure EMAIL_USER/EMAIL_APP_PASSWORD are configured on the server.'
+          : account.whatsappApiKey || account.email
+            ? 'Could not deliver the code over WhatsApp or email. Please try again in a moment.'
+            : 'This account has no WhatsApp key or email on file to send a reset code to. Please contact support.'
       });
     }
 
@@ -696,11 +742,12 @@ app.post('/api/auth/forgot-password', async (req, res) => {
 app.post('/api/auth/verify-otp', async (req, res) => {
   try {
     const { phone, otp, role } = req.body;
+    const roleKey = role === 'admin' ? 'admin' : role === 'doctor' ? 'doctor' : 'patient';
 
     const otpRecord = await Otp.findOne({
       phone,
       otp,
-      role: role === 'doctor' ? 'doctor' : 'patient',
+      role: roleKey,
       used: false,
       expiresAt: { $gt: new Date() }
     });
@@ -720,11 +767,13 @@ app.post('/api/auth/reset-password', async (req, res) => {
   try {
     const { phone, resetToken, newPassword, role } = req.body;
     const isDoctor = role === 'doctor';
+    const isAdmin = role === 'admin';
+    const roleKey = isAdmin ? 'admin' : isDoctor ? 'doctor' : 'patient';
 
     const otpRecord = await Otp.findOne({
       phone,
       resetToken,
-      role: isDoctor ? 'doctor' : 'patient',
+      role: roleKey,
       used: false,
       expiresAt: { $gt: new Date() }
     });
@@ -735,7 +784,9 @@ app.post('/api/auth/reset-password', async (req, res) => {
 
     const hashed = await bcrypt.hash(newPassword, 10);
 
-    if (isDoctor) {
+    if (isAdmin) {
+      await Admin.findOneAndUpdate({ username: phone }, { password: hashed });
+    } else if (isDoctor) {
       await Doctor.findOneAndUpdate({ phone }, { password: hashed });
     } else {
       await Patient.findOneAndUpdate({ phone }, { password: hashed });
@@ -744,9 +795,11 @@ app.post('/api/auth/reset-password', async (req, res) => {
     otpRecord.used = true;
     await otpRecord.save();
 
-    const confirmMsg = `✅ *Password Reset Successful*\n\nYour Biomexa password has been reset successfully.\n\nIf you didn't do this, please contact support immediately.\n\n- Biomexa Team`;
-    const account = isDoctor ? await Doctor.findOne({ phone }) : await Patient.findOne({ phone });
-    sendWhatsAppFree(phone, confirmMsg, account?.whatsappApiKey);
+    if (!isAdmin) {
+      const confirmMsg = `✅ *Password Reset Successful*\n\nYour Biomexa password has been reset successfully.\n\nIf you didn't do this, please contact support immediately.\n\n- Biomexa Team`;
+      const account = isDoctor ? await Doctor.findOne({ phone }) : await Patient.findOne({ phone });
+      sendWhatsAppFree(phone, confirmMsg, account?.whatsappApiKey);
+    }
 
     res.json({ message: 'Password reset successful. Please login with your new password.' });
   } catch (err) {
@@ -1436,21 +1489,43 @@ app.get('/api/export/patients', async (req, res) => {
 });
 
 // ========== ADMIN AUTH + AI ENGINE ==========
-const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'biomexadmin';
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'BiomexaAdmin@2026';
-
-function adminAuth(req, res, next) {
-  const auth = req.headers.authorization;
-  if (!auth || !auth.startsWith('Basic ')) {
-    return res.status(401).json({ message: 'Admin login required' });
+// Checks the real Admin database record (bcrypt-hashed), not a static env-var string —
+// this is what makes a real forgot-password flow possible below.
+async function adminAuth(req, res, next) {
+  try {
+    const auth = req.headers.authorization;
+    if (!auth || !auth.startsWith('Basic ')) {
+      return res.status(401).json({ message: 'Admin login required' });
+    }
+    const [u, p] = Buffer.from(auth.split(' ')[1], 'base64').toString().split(':');
+    const admin = await Admin.findOne({ username: u });
+    if (!admin) return res.status(401).json({ message: 'Invalid admin username or password' });
+    const match = await bcrypt.compare(p, admin.password);
+    if (!match) return res.status(401).json({ message: 'Invalid admin username or password' });
+    req.admin = admin;
+    next();
+  } catch (err) {
+    res.status(500).json({ message: err.message });
   }
-  const [u, p] = Buffer.from(auth.split(' ')[1], 'base64').toString().split(':');
-  if (u === ADMIN_USERNAME && p === ADMIN_PASSWORD) return next();
-  res.status(401).json({ message: 'Invalid admin username or password' });
 }
 
 app.get('/api/admin/login', adminAuth, (req, res) => {
   res.json({ message: 'Admin authenticated' });
+});
+
+// Admin's own password reset — updates the real database record. Reuses the same OTP flow
+// as patients/doctors (see /api/auth/forgot-password below with role: 'admin'), delivered to
+// the admin account's stored email since there's no WhatsApp number tied to a shared admin login.
+app.patch('/api/admin/change-password', adminAuth, async (req, res) => {
+  try {
+    const { newPassword } = req.body;
+    if (!newPassword || newPassword.length < 6) return res.status(400).json({ message: 'New password must be at least 6 characters.' });
+    const hashed = await bcrypt.hash(newPassword, 10);
+    await Admin.findByIdAndUpdate(req.admin._id, { password: hashed });
+    res.json({ message: 'Password changed successfully' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
 });
 
 // A trained risk model — retrained from real patient/dose data via the Admin AI Engine panel
