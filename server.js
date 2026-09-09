@@ -42,19 +42,25 @@ try {
 // and say so explicitly — they do not silently fall back to fake data.
 const AI_ENGINE_URL = process.env.AI_ENGINE_URL || null;
 
-async function callAiEngine(path, payload) {
+// Render's free tier puts the AI engine to sleep after inactivity — the first request after
+// that can take 30-60s to wake it back up, which is what "not working" often actually is
+// (a timeout, not a real failure). This gives it real room, and retries once on a timeout
+// specifically (not on a genuine error response) since a cold-start request sometimes drops
+// before the engine finishes booting but succeeds cleanly on the very next try.
+async function callAiEngine(path, payload, isRetry = false) {
   if (!AI_ENGINE_URL) return { ok: false, reason: 'not_configured' };
   try {
     const res = await fetch(`${AI_ENGINE_URL}${path}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(15000)
+      signal: AbortSignal.timeout(50000)
     });
     const data = await res.json();
     if (!res.ok || !data.success) return { ok: false, reason: 'engine_error', detail: data.error || `HTTP ${res.status}` };
     return { ok: true, data };
   } catch (err) {
+    if (!isRetry) return callAiEngine(path, payload, true);
     return { ok: false, reason: 'unreachable', detail: err.message };
   }
 }

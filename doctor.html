@@ -482,7 +482,7 @@ function runEffectivenessAnalysis() {
   const btn = document.getElementById('aiAnalysisBtn');
   const box = document.getElementById('aiAnalysisResult');
   btn.disabled = true;
-  box.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Analyzing...';
+  box.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Analyzing... (the AI engine may be waking up from sleep — this can take up to a minute on the first request)';
 
   fetch(API_BASE + '/api/doctor/patient/' + encodeURIComponent(currentTrendsPhone) + '/effectiveness', { headers: { 'Authorization': authHeader } })
     .then(r => r.json().then(data => ({ ok: r.ok, data })))
