@@ -1727,6 +1727,12 @@ app.listen(PORT, () => {
   console.log(`🚀 Biomexa Server running on port ${PORT}`);
   console.log(`📱 WhatsApp reminders active (checking every minute)`);
   console.log(`🔐 Password reset via WhatsApp OTP enabled`);
+  if (MSG91_CONFIGURED) {
+    console.log(`✅ MSG91 configured — integrated number ${MSG91_INTEGRATED_NUMBER}, template "${MSG91_DOSE_TEMPLATE_NAME}"`);
+  } else {
+    console.log(`\n⚠️  WARNING: MSG91 not configured (MSG91_AUTH_KEY / MSG91_INTEGRATED_NUMBER missing)!`);
+    console.log(`   Every WhatsApp send will skip straight to CallMeBot/Twilio fallback.`);
+  }
   if (!CALLMEBOT_API_KEY) {
     console.log(`\n⚠️  WARNING: CALLMEBOT_API_KEY not set!`);
     console.log(`   WhatsApp messages will NOT be sent.`);
