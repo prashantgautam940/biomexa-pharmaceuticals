@@ -66,9 +66,10 @@ async function callAiEngine(path, payload) {
 //
 // Setup required on your end before this does anything (see .env.example for full steps):
 // 1. Get WhatsApp Business API access in your MSG91 dashboard (control.msg91.com).
-// 2. Create + get Meta approval for a template with two quick-reply buttons, e.g.:
-//      Body: "Time for your {{1}} dose ({{2}}). Did you take it?"
-//      Buttons: "Taken" / "Not Taken"
+// 2. Create + get Meta approval for a template with quick-reply buttons — the real one in use:
+//      Name: dose_reminder
+//      Body: "Time for your {{medicine_name}} dose ({{dosage}}). Did you take it?"
+//      Buttons: "Taken" / "Not Taken" / "Remind Me Later"
 // 3. Set MSG91_AUTH_KEY, MSG91_INTEGRATED_NUMBER, MSG91_DOSE_TEMPLATE_NAME,
 //    MSG91_TEMPLATE_NAMESPACE below.
 // 4. In MSG91 dashboard → Settings → Webhooks, point the inbound WhatsApp webhook at:
@@ -83,11 +84,11 @@ const MSG91_TEMPLATE_NAMESPACE = process.env.MSG91_TEMPLATE_NAMESPACE || '';
 const MSG91_TEMPLATE_LANG = process.env.MSG91_TEMPLATE_LANG || 'en';
 const MSG91_CONFIGURED = !!(MSG91_AUTH_KEY && MSG91_INTEGRATED_NUMBER);
 
-// Sends the dose reminder as a real WhatsApp template message with Taken/Not Taken quick-reply
-// buttons. Returns { success, provider } same shape as sendWhatsAppFree, so callers can fall
-// back the same way. NOTE: exact button component naming (button_1 vs quick_reply_1 etc.) can
-// vary by how you defined the template in MSG91's dashboard — check the request MSG91 shows you
-// there and adjust the `components` object below if delivery fails with a template-mismatch error.
+// Sends the dose reminder as a real WhatsApp template message with Taken/Not Taken/Remind Me
+// Later quick-reply buttons. Returns { success, provider } same shape as sendWhatsAppFree, so
+// callers can fall back the same way. Component keys below (medicine_name, dosage) match the
+// named variables used in the real approved template — if you ever recreate the template with
+// different variable names, update these keys to match or sends will fail with a mismatch error.
 async function sendDoseReminderTemplate(phone, medicineName, dosage) {
   if (!MSG91_CONFIGURED) {
     return { success: false, provider: 'msg91_not_configured' };
@@ -109,8 +110,8 @@ async function sendDoseReminderTemplate(phone, medicineName, dosage) {
             to_and_components: [{
               to: [phone.replace(/\D/g, '')],
               components: {
-                body_1: { type: 'text', value: medicineName },
-                body_2: { type: 'text', value: dosage }
+                medicine_name: { type: 'text', value: medicineName },
+                dosage: { type: 'text', value: dosage }
               }
             }]
           }
@@ -1051,7 +1052,20 @@ app.post('/api/webhooks/msg91-whatsapp', async (req, res) => {
     if (convo && convo.state === 'awaiting_dose_confirm') {
       const reply = buttonText || freeText.toLowerCase();
       const took = /taken|yes|confirm/.test(reply) && !/not\s*taken|no\b/.test(reply);
-      const explicitlyMissed = /not\s*taken|missed|no\b/.test(reply);
+      const explicitlyMissed = /not\s*taken|missed|no\b(?!.*later)/.test(reply);
+      const wantsLater = /remind.*later|later|snooze/.test(reply);
+
+      if (wantsLater) {
+        // Push the dose's scheduled time forward 20 minutes and clear sentReminder so the
+        // existing cron job picks it up again naturally, same as a normal first reminder.
+        const snoozeTime = new Date(Date.now() + 20 * 60 * 1000);
+        const hh = String(snoozeTime.getHours()).padStart(2, '0');
+        const mm = String(snoozeTime.getMinutes()).padStart(2, '0');
+        await Dose.findByIdAndUpdate(convo.doseId, { scheduledTime: `${hh}:${mm}`, sentReminder: false });
+        await sendWhatsAppFree(phone, `⏰ No problem — we'll remind you again in about 20 minutes.`, patient?.whatsappApiKey);
+        await ConversationState.findOneAndUpdate({ patientPhone: phone }, { state: null, doseId: null, updatedAt: new Date() });
+        return;
+      }
 
       if (took || explicitlyMissed) {
         await Dose.findByIdAndUpdate(convo.doseId, { status: took ? 'taken' : 'missed' });
