@@ -207,18 +207,17 @@ async function sendResetEmail(toEmail, otp, name) {
 // always prefers that per-user key. CALLMEBOT_API_KEY (env var) is kept only as a fallback for
 // a single admin/testing number, and Twilio (if configured) as a paid fallback that can message
 // any number once it has opted into your Twilio sandbox/business number.
-// Sends a plain free-text message via MSG91 — CURRENTLY NON-FUNCTIONAL on this account.
-// Confirmed via live logs on 2026-09-10: this endpoint returned
-//   {"errors":"for now, only template is supported for bulk"}
-// MSG91 does document a separate "Send message (once session started)" operation for free text,
-// but its exact endpoint/payload isn't in their public docs and I haven't been able to verify it
-// safely — so rather than keep silently failing on every single message, this function is
-// disabled (see sendWhatsAppFree below) until that endpoint is confirmed working. The dose
-// reminder itself is unaffected — it uses the separate, working sendDoseReminderTemplate.
+// Sends a plain free-text message via MSG91. The "bulk" endpoint (used elsewhere for the
+// approved template) explicitly rejected free text with "only template is supported for bulk" —
+// confirmed via live logs on 2026-09-10. This tries the non-bulk singular endpoint instead
+// (same API family, minus "/bulk/"), which matches MSG91's documented "Send message (once
+// session started)" operation for free text. Unverified against a real account yet — if this
+// still fails, the error will show up clearly in your Render logs after this deploys, and we'll
+// know for certain rather than guessing further.
 async function sendMsg91Text(phone, message) {
   if (!MSG91_CONFIGURED) return { success: false, provider: 'msg91_not_configured' };
   try {
-    const res = await fetch('https://api.msg91.com/api/v5/whatsapp/whatsapp-outbound-message/bulk/', {
+    const res = await fetch('https://api.msg91.com/api/v5/whatsapp/whatsapp-outbound-message/', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'authkey': MSG91_AUTH_KEY },
       body: JSON.stringify({
@@ -235,7 +234,7 @@ async function sendMsg91Text(phone, message) {
     });
     const data = await res.json();
     if (!res.ok) {
-      console.log('⚠️ MSG91 text send failed:', JSON.stringify(data).substring(0, 200));
+      console.log('⚠️ MSG91 text send failed:', JSON.stringify(data).substring(0, 300));
       return { success: false, provider: 'msg91', detail: data };
     }
     console.log('✅ MSG91 WhatsApp text sent to', phone);
@@ -245,7 +244,7 @@ async function sendMsg91Text(phone, message) {
     return { success: false, provider: 'msg91', detail: err.message };
   }
 }
-const MSG91_TEXT_SEND_WORKING = false; // flip to true once the real free-text endpoint is confirmed
+const MSG91_TEXT_SEND_WORKING = true; // trying the non-bulk endpoint — check Render logs after deploy to confirm
 
 const CALLMEBOT_API_KEY = process.env.CALLMEBOT_API_KEY || null;
 
