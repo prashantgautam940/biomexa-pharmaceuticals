@@ -207,10 +207,14 @@ async function sendResetEmail(toEmail, otp, name) {
 // always prefers that per-user key. CALLMEBOT_API_KEY (env var) is kept only as a fallback for
 // a single admin/testing number, and Twilio (if configured) as a paid fallback that can message
 // any number once it has opted into your Twilio sandbox/business number.
-// Sends a plain free-text message via MSG91 (no template/approval needed) — but WhatsApp's own
-// rules mean this only delivers if the recipient has messaged your business number within the
-// last 24 hours (an open "session"). For someone who has never messaged you, use
-// sendDoseReminderTemplate instead (the approved template works regardless of session state).
+// Sends a plain free-text message via MSG91 — CURRENTLY NON-FUNCTIONAL on this account.
+// Confirmed via live logs on 2026-09-10: this endpoint returned
+//   {"errors":"for now, only template is supported for bulk"}
+// MSG91 does document a separate "Send message (once session started)" operation for free text,
+// but its exact endpoint/payload isn't in their public docs and I haven't been able to verify it
+// safely — so rather than keep silently failing on every single message, this function is
+// disabled (see sendWhatsAppFree below) until that endpoint is confirmed working. The dose
+// reminder itself is unaffected — it uses the separate, working sendDoseReminderTemplate.
 async function sendMsg91Text(phone, message) {
   if (!MSG91_CONFIGURED) return { success: false, provider: 'msg91_not_configured' };
   try {
@@ -241,16 +245,16 @@ async function sendMsg91Text(phone, message) {
     return { success: false, provider: 'msg91', detail: err.message };
   }
 }
+const MSG91_TEXT_SEND_WORKING = false; // flip to true once the real free-text endpoint is confirmed
 
 const CALLMEBOT_API_KEY = process.env.CALLMEBOT_API_KEY || null;
 
 async function sendWhatsAppFree(phone, message, userApiKey) {
   const cleanPhone = phone.replace(/\D/g, '');
 
-  // Try MSG91 first — it's the real business-number channel and needs no per-patient setup.
-  // Only actually delivers if the recipient has an open 24h session (messaged your number
-  // recently) — for a guaranteed-delivery first contact, use sendDoseReminderTemplate instead.
-  if (MSG91_CONFIGURED) {
+  // MSG91 free-text is currently disabled (see MSG91_TEXT_SEND_WORKING above) — skip straight
+  // to CallMeBot/Twilio rather than waste a request on a call known to fail right now.
+  if (MSG91_CONFIGURED && MSG91_TEXT_SEND_WORKING) {
     const msg91Result = await sendMsg91Text(phone, message);
     if (msg91Result.success) return msg91Result;
   }
