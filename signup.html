@@ -101,6 +101,15 @@
     <div class="error-box" id="errorBox"><span>⚠️</span> <span id="errorText"></span></div>
     <div class="success-box" id="successBox"><span>✅</span> <span id="successText"></span></div>
 
+    <div id="waActivateBox" style="display:none;background:#0d3b36;border:1px solid #14b8a6;border-radius:10px;padding:16px;margin-bottom:20px;text-align:center;">
+      <p style="font-size:14px;color:#a7f3d0;margin-bottom:12px;line-height:1.5;">⚡ <strong>One last step</strong> — WhatsApp requires you to message us first before we can message you. Tap below (opens WhatsApp with a message pre-filled, just hit send):</p>
+      <a id="waActivateLink" href="#" target="_blank" style="display:inline-flex;align-items:center;gap:8px;background:#25d366;color:#fff;padding:12px 20px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.75.46 3.45 1.32 4.95L2.05 22l5.25-1.38a9.9 9.9 0 0 0 4.74 1.21h.01c5.46 0 9.91-4.45 9.91-9.91C21.96 6.45 17.5 2 12.04 2zm5.8 14.08c-.24.68-1.4 1.3-1.93 1.38-.5.08-1.13.11-1.82-.11-.42-.13-.96-.31-1.65-.6-2.9-1.25-4.79-4.17-4.94-4.37-.14-.19-1.18-1.57-1.18-3 0-1.42.75-2.13 1.01-2.42.27-.29.58-.36.78-.36l.55.01c.18.01.42-.07.65.5.24.58.81 2 .88 2.15.07.14.11.31.02.5-.09.19-.14.31-.28.48-.14.16-.29.36-.42.48-.14.14-.28.29-.12.56.16.28.71 1.17 1.53 1.9 1.05.94 1.94 1.23 2.21 1.37.28.14.44.12.6-.07.16-.19.68-.8.87-1.07.18-.28.36-.23.6-.14.24.09 1.55.73 1.82.86.27.14.44.2.5.32.07.11.07.66-.17 1.34z"/></svg>
+        Open WhatsApp & Activate
+      </a>
+      <p style="font-size:12px;color:#6b7280;margin-top:10px;">You'll get real dose reminders — with tap-to-confirm buttons — automatically from that point on.</p>
+    </div>
+
     <form id="signupForm">
       <div class="form-group">
         <label>Full Name <span class="required">*</span></label>
@@ -127,20 +136,10 @@
 
       <div class="wa-panel" id="waPanel">
         <div class="wa-panel-head">
-          <span>💬 Connect WhatsApp reminders</span>
+          <span>💬 WhatsApp Reminders</span>
         </div>
-        <div id="waPanelMsg91" style="display:none;font-size:12.5px;color:#a7f3d0;line-height:1.6;">
-          ✅ Dose reminders already work automatically via Biomexa's official WhatsApp number — nothing to set up here.
-        </div>
-        <div id="waPanelFallback">
-          <div class="wa-steps">
-            1. Save <b>+34 644 95 42 75</b> to your phone's contacts.<br>
-            2. WhatsApp that number the text: <b>"I allow callmebot to send me messages"</b><br>
-            3. They'll reply with your personal API key — paste it below.
-            (<a href="https://www.callmebot.com/blog/free-api-whatsapp-messages/" target="_blank">more info</a>)
-          </div>
-          <input type="text" id="whatsappApiKey" placeholder="Paste your CallMeBot API key here">
-          <div class="skip-note">Optional — you can skip this and add it later from your dashboard, but reminders won't reach you on WhatsApp until it's set.</div>
+        <div style="font-size:12.5px;color:#a7f3d0;line-height:1.6;">
+          ✅ Once you sign up, dose reminders come automatically from Biomexa's official WhatsApp number — nothing to set up on your end.
         </div>
       </div>
 
@@ -161,18 +160,6 @@
       window.location.href = 'patient.html';
     }
 
-    // If MSG91 is already active server-side, the CallMeBot fallback panel isn't needed at
-    // signup — new patients don't have to do anything for reminders to work.
-    fetch(`${API_URL}/api/whatsapp-status`)
-      .then(r => r.json())
-      .then(status => {
-        if (status.msg91Configured) {
-          document.getElementById('waPanelMsg91').style.display = 'block';
-          document.getElementById('waPanelFallback').style.display = 'none';
-        }
-      })
-      .catch(() => {});
-
     document.getElementById('signupForm').addEventListener('submit', async (e) => {
       e.preventDefault();
       const btn = document.getElementById('submitBtn');
@@ -190,13 +177,12 @@
       const phone = phoneRaw.startsWith('+') ? phoneRaw : '+91' + phoneRaw;
       const email = document.getElementById('email').value.trim();
       const password = document.getElementById('password').value;
-      const whatsappApiKey = document.getElementById('whatsappApiKey').value.trim();
 
       try {
         const res = await fetch(`${API_URL}/api/auth/register`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name, phone, email, password, whatsappApiKey })
+          body: JSON.stringify({ name, phone, email, password })
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.message || 'Registration failed');
@@ -205,11 +191,20 @@
         localStorage.setItem('user', JSON.stringify(data.patient));
 
         successBox.classList.add('show');
-        document.getElementById('successText').textContent = whatsappApiKey
-          ? 'Account created! Check your WhatsApp for a welcome message. Redirecting...'
-          : 'Account created! Redirecting to your dashboard...';
+        document.getElementById('successText').textContent = 'Account created!';
+        document.getElementById('signupForm').style.display = 'none';
 
-        setTimeout(() => { window.location.href = 'patient.html'; }, 1400);
+        // MSG91's business number can't message this patient until they message it first
+        // (WhatsApp's rule for any brand-new contact) — this one tap opens that door.
+        const waLink = document.getElementById('waActivateLink');
+        const waText = encodeURIComponent(`Hi Biomexa! This is ${name}, I just signed up for dose reminders.`);
+        waLink.href = `https://wa.me/919625339181?text=${waText}`;
+        document.getElementById('waActivateBox').style.display = 'block';
+
+        const continueLink = document.createElement('p');
+        continueLink.style.cssText = 'text-align:center;margin-top:16px;';
+        continueLink.innerHTML = '<a href="patient.html" style="color:#14b8a6;font-size:14px;">Continue to dashboard →</a>';
+        document.getElementById('waActivateBox').after(continueLink);
       } catch (err) {
         errorText.textContent = err.message;
         errorBox.classList.add('show');

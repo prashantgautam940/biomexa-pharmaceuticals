@@ -199,19 +199,18 @@ tr:hover { background: rgba(13,115,119,0.05); }
       <span id="docWaStatusBadge" style="font-size:0.8rem;">Checking...</span>
     </div>
     <div id="docWaMsg91Active" style="display:none;background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.3);border-radius:8px;padding:10px 12px;font-size:0.78rem;color:var(--success);line-height:1.6;">
-      ✅ Patient connect requests and risk alerts reach you automatically via Biomexa's official WhatsApp number — no setup needed.
+      ✅ Patient connect requests and risk alerts reach you automatically. If you haven't messaged Biomexa on WhatsApp yet, tap below once — WhatsApp requires that before we can message you.
+      <div style="margin-top:8px;">
+        <a id="docWaActivateLink" href="#" target="_blank" style="display:inline-flex;align-items:center;gap:6px;background:#25d366;color:#fff;padding:8px 14px;border-radius:8px;text-decoration:none;font-weight:600;font-size:0.78rem;">
+          💬 Open WhatsApp & Message Us
+        </a>
+      </div>
     </div>
-    <div id="docWaFallbackSection">
-      <div id="docWaSteps" style="font-size:0.78rem;color:var(--text-muted);line-height:1.6;margin-bottom:10px;display:none;">
-        1. Save <strong>+34 644 95 42 75</strong> to your contacts.<br>
-        2. WhatsApp them: <strong>"I allow callmebot to send me messages"</strong><br>
-        3. Paste the API key they send back below.
-      </div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;">
-        <input type="text" id="docWaKeyInput" placeholder="Paste your CallMeBot API key" style="flex:1;min-width:180px;padding:9px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:0.82rem;">
-        <button class="trend-btn" onclick="saveDocWhatsappKey()">Save</button>
-        <button class="trend-btn" id="docWaTestBtn" onclick="testDocWhatsapp()" disabled>Send Test</button>
-      </div>
+    <div id="docWaNotConfigured" style="display:none;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);border-radius:8px;padding:10px 12px;font-size:0.78rem;color:var(--danger);line-height:1.6;">
+      ⚠️ WhatsApp alerts aren't active yet — this is being set up on Biomexa's end.
+    </div>
+    <div style="margin-top:10px;">
+      <button class="trend-btn" id="docWaTestBtn" onclick="testDocWhatsapp()">Send Test Message</button>
     </div>
     <div id="docWaMsg" style="font-size:0.78rem;margin-top:8px;"></div>
   </div>
@@ -588,61 +587,20 @@ function initDoctorWaCard() {
   fetch(API_BASE + '/api/whatsapp-status')
     .then(r => r.json())
     .then(status => {
+      const badge = document.getElementById('docWaStatusBadge');
       if (status.msg91Configured) {
-        document.getElementById('docWaStatusBadge').textContent = '✅ Active';
-        document.getElementById('docWaStatusBadge').style.color = 'var(--success)';
+        badge.textContent = '✅ Active';
+        badge.style.color = 'var(--success)';
         document.getElementById('docWaMsg91Active').style.display = 'block';
-        document.getElementById('docWaFallbackSection').style.display = 'none';
+        const waText = encodeURIComponent(`Hi Biomexa! This is Dr. ${(doctorProfile && doctorProfile.name) || ''}, checking in on WhatsApp.`);
+        document.getElementById('docWaActivateLink').href = `https://wa.me/919625339181?text=${waText}`;
       } else {
-        fetch(API_BASE + '/api/doctors/me', { headers: { 'Authorization': 'Bearer ' + doctorToken } })
-          .then(r => r.json())
-          .then(d => renderDocWaStatus(!!d.whatsappApiKey))
-          .catch(() => {});
+        badge.textContent = 'Not active yet';
+        badge.style.color = 'var(--danger)';
+        document.getElementById('docWaNotConfigured').style.display = 'block';
       }
     })
-    .catch(() => {
-      fetch(API_BASE + '/api/doctors/me', { headers: { 'Authorization': 'Bearer ' + doctorToken } })
-        .then(r => r.json())
-        .then(d => renderDocWaStatus(!!d.whatsappApiKey))
-        .catch(() => {});
-    });
-}
-
-function renderDocWaStatus(connected) {
-  const badge = document.getElementById('docWaStatusBadge');
-  const steps = document.getElementById('docWaSteps');
-  const testBtn = document.getElementById('docWaTestBtn');
-  if (connected) {
-    badge.textContent = '✅ Connected';
-    badge.style.color = 'var(--success)';
-    steps.style.display = 'none';
-    testBtn.disabled = false;
-  } else {
-    badge.textContent = 'Not connected';
-    badge.style.color = 'var(--danger)';
-    steps.style.display = 'block';
-    testBtn.disabled = true;
-  }
-}
-
-function saveDocWhatsappKey() {
-  const key = document.getElementById('docWaKeyInput').value.trim();
-  const msg = document.getElementById('docWaMsg');
-  if (!key) { msg.style.color = 'var(--danger)'; msg.textContent = 'Paste your CallMeBot key first.'; return; }
-  fetch(API_BASE + '/api/doctors/whatsapp-key', {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + doctorToken },
-    body: JSON.stringify({ whatsappApiKey: key })
-  })
-    .then(r => r.json())
-    .then(() => {
-      msg.style.color = 'var(--success)';
-      msg.textContent = 'Saved! Click "Send Test" to confirm it works.';
-      doctorProfile.whatsappApiKey = key;
-      localStorage.setItem('doctorProfile', JSON.stringify(doctorProfile));
-      renderDocWaStatus(true);
-    })
-    .catch(() => { msg.style.color = 'var(--danger)'; msg.textContent = 'Could not save — try again.'; });
+    .catch(() => {});
 }
 
 function testDocWhatsapp() {

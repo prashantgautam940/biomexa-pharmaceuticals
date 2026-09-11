@@ -272,21 +272,21 @@ input[type="time"] { color-scheme: dark; }
 
       <!-- Shown when MSG91 (the official business number) is active — no patient setup needed -->
       <div id="waMsg91Active" style="display:none;background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.3);border-radius:8px;padding:12px 14px;font-size:13px;color:#a7f3d0;line-height:1.6;">
-        ✅ You're already set up. Dose reminders come from Biomexa's official WhatsApp number — just reply to confirm doses or share your vitals when asked. No setup needed on your end.
+        ✅ Dose reminders come from Biomexa's official WhatsApp number automatically. If you haven't messaged us on WhatsApp yet, tap below once — WhatsApp requires that before we can message you back with confirmations, OTPs, or alerts.
+        <div style="margin-top:10px;">
+          <a id="waActivateLink" href="#" target="_blank" style="display:inline-flex;align-items:center;gap:6px;background:#25d366;color:#fff;padding:9px 16px;border-radius:8px;text-decoration:none;font-weight:600;font-size:13px;">
+            💬 Open WhatsApp & Message Us
+          </a>
+        </div>
       </div>
 
-      <!-- Fallback / optional advanced section — CallMeBot personal key, only relevant when MSG91 isn't configured -->
-      <div id="waFallbackSection">
-        <div id="waSteps" style="font-size:13px;color:#94a3b8;line-height:1.7;margin-bottom:10px;display:none;">
-          1. Save <strong style="color:#e2e8f0;">+34 644 95 42 75</strong> to your contacts.<br>
-          2. WhatsApp them: <strong style="color:#e2e8f0;">"I allow callmebot to send me messages"</strong><br>
-          3. Paste the API key they send back below.
-        </div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;">
-          <input type="text" id="waKeyInput" placeholder="Paste your CallMeBot API key" style="flex:1;min-width:200px;padding:10px 14px;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#f1f5f9;font-size:13px;">
-          <button class="btn" id="waSaveBtn" onclick="saveWhatsappKey()" style="width:auto;padding:10px 16px;">Save</button>
-          <button class="btn" id="waTestBtn" onclick="testWhatsapp()" style="width:auto;padding:10px 16px;background:#334155;" disabled>Send Test</button>
-        </div>
+      <!-- Shown when MSG91 isn't configured server-side yet — nothing a patient can do about this -->
+      <div id="waNotConfigured" style="display:none;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);border-radius:8px;padding:12px 14px;font-size:13px;color:#fca5a5;line-height:1.6;">
+        ⚠️ WhatsApp reminders aren't active yet — this is being set up on Biomexa's end, not something you need to configure.
+      </div>
+
+      <div style="margin-top:10px;">
+        <button class="btn" id="waTestBtn" onclick="testWhatsapp()" style="width:auto;padding:10px 16px;">Send Test Message</button>
       </div>
       <div id="waMsg" style="font-size:12.5px;margin-top:8px;"></div>
     </div>
@@ -532,69 +532,25 @@ input[type="time"] { color-scheme: dark; }
     setInterval(checkVitalsAlert, 60000); // catches a new WhatsApp-logged alert without a manual refresh
 
     // ========== WHATSAPP CONNECTION ==========
-    function renderWaStatus(connected) {
-      const badge = document.getElementById('waStatusBadge');
-      const steps = document.getElementById('waSteps');
-      const testBtn = document.getElementById('waTestBtn');
-      if (connected) {
-        badge.textContent = '✅ Connected';
-        badge.style.color = '#34d399';
-        steps.style.display = 'none';
-        testBtn.disabled = false;
-        testBtn.style.background = 'linear-gradient(135deg, #0d9488, #14b8a6)';
-      } else {
-        badge.textContent = 'Not connected';
-        badge.style.color = '#f87171';
-        steps.style.display = 'block';
-        testBtn.disabled = true;
-        testBtn.style.background = '#334155';
-      }
-    }
-
-    // Check whether MSG91 (the official business number) is active server-side. If it is,
-    // patients don't need to do anything — reminders and vitals prompts come automatically.
-    // The CallMeBot personal-key flow only matters as a fallback when MSG91 isn't configured.
+    // Checks whether MSG91 (Biomexa's sole WhatsApp provider) is active server-side.
+    // Nothing for a patient to configure themselves anymore — this is purely a status display.
     fetch(`${API_URL}/api/whatsapp-status`)
       .then(r => r.json())
       .then(status => {
+        const badge = document.getElementById('waStatusBadge');
         if (status.msg91Configured) {
-          document.getElementById('waStatusBadge').textContent = '✅ Active';
-          document.getElementById('waStatusBadge').style.color = '#34d399';
+          badge.textContent = '✅ Active';
+          badge.style.color = '#34d399';
           document.getElementById('waMsg91Active').style.display = 'block';
-          document.getElementById('waFallbackSection').style.display = 'none';
+          const waText = encodeURIComponent(`Hi Biomexa! This is ${user.name || 'a patient'}, checking in on WhatsApp.`);
+          document.getElementById('waActivateLink').href = `https://wa.me/919625339181?text=${waText}`;
         } else {
-          fetch(`${API_URL}/api/patient/profile`, { headers: { 'Authorization': `Bearer ${token}` } })
-            .then(r => r.json())
-            .then(p => renderWaStatus(!!p.whatsappApiKey))
-            .catch(() => {});
+          badge.textContent = 'Not active yet';
+          badge.style.color = '#f87171';
+          document.getElementById('waNotConfigured').style.display = 'block';
         }
       })
-      .catch(() => {
-        // If the status check itself fails, fall back to the old per-key flow rather than
-        // showing nothing.
-        fetch(`${API_URL}/api/patient/profile`, { headers: { 'Authorization': `Bearer ${token}` } })
-          .then(r => r.json())
-          .then(p => renderWaStatus(!!p.whatsappApiKey))
-          .catch(() => {});
-      });
-
-    function saveWhatsappKey() {
-      const key = document.getElementById('waKeyInput').value.trim();
-      const msg = document.getElementById('waMsg');
-      if (!key) { msg.style.color = '#f87171'; msg.textContent = 'Paste your CallMeBot key first.'; return; }
-      fetch(`${API_URL}/api/patient/whatsapp-key`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({ whatsappApiKey: key })
-      })
-        .then(r => r.json())
-        .then(() => {
-          msg.style.color = '#34d399';
-          msg.textContent = 'Saved! Click "Send Test" to confirm it works.';
-          renderWaStatus(true);
-        })
-        .catch(() => { msg.style.color = '#f87171'; msg.textContent = 'Could not save — try again.'; });
-    }
+      .catch(() => {});
 
     function testWhatsapp() {
       const msg = document.getElementById('waMsg');

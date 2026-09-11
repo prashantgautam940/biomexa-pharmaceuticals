@@ -139,18 +139,9 @@ h1 { text-align: center; font-family: 'Playfair Display', serif; font-size: 2.1r
         <input type="password" id="docPassword" placeholder="Create a password" required minlength="6">
       </div>
       <div class="field" id="docWaField" style="background:var(--bg-light);border-radius:12px;padding:14px 16px;border:1px solid var(--border);">
-        <label style="margin-bottom:8px;">💬 Connect WhatsApp (for patient connect alerts)</label>
-        <div id="docWaPanelMsg91" style="display:none;font-size:0.8rem;color:var(--success);line-height:1.6;">
-          ✅ Patient connect alerts already reach you automatically via Biomexa's official WhatsApp number — nothing to set up here.
-        </div>
-        <div id="docWaPanelFallback">
-          <small style="display:block;margin-bottom:10px;line-height:1.6;">
-            1. Save <strong>+34 644 95 42 75</strong> to your contacts.<br>
-            2. WhatsApp them: <strong>"I allow callmebot to send me messages"</strong><br>
-            3. Paste the API key they send back below.
-          </small>
-          <input type="text" id="docWhatsappKey" placeholder="Paste your CallMeBot API key here">
-          <small style="display:block;margin-top:8px;">Optional — you can add this later, but you won't receive patient connect alerts on WhatsApp until it's set.</small>
+        <label style="margin-bottom:8px;">💬 WhatsApp Alerts</label>
+        <div style="font-size:0.8rem;color:var(--success);line-height:1.6;">
+          ✅ Once you sign up, patient connect alerts reach you automatically via Biomexa's official WhatsApp number — nothing to set up on your end.
         </div>
       </div>
       <button type="submit" class="submit-btn" id="signupBtn"><i class="fas fa-user-md"></i> Create Doctor Account</button>
@@ -165,17 +156,6 @@ h1 { text-align: center; font-family: 'Playfair Display', serif; font-size: 2.1r
 const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
   ? 'http://localhost:3000'
   : 'https://biomexa-api-f9f6.onrender.com';
-
-// If MSG91 is already active server-side, doctors don't need a personal CallMeBot key either.
-fetch(`${API_URL}/api/whatsapp-status`)
-  .then(r => r.json())
-  .then(status => {
-    if (status.msg91Configured) {
-      document.getElementById('docWaPanelMsg91').style.display = 'block';
-      document.getElementById('docWaPanelFallback').style.display = 'none';
-    }
-  })
-  .catch(() => {});
 
 // Subtle 3D tilt on the signup panel — mouse-driven, futuristic feel
 const panel = document.getElementById('tiltPanel');
@@ -202,8 +182,7 @@ document.getElementById('doctorSignupForm').addEventListener('submit', async (e)
     licenseNumber: document.getElementById('docLicense').value,
     experienceYears: Number(document.getElementById('docExperience').value) || 0,
     bio: document.getElementById('docBio').value,
-    password: document.getElementById('docPassword').value,
-    whatsappApiKey: document.getElementById('docWhatsappKey').value.trim()
+    password: document.getElementById('docPassword').value
   };
 
   try {

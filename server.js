@@ -5,7 +5,6 @@ const cron = require('node-cron');
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const https = require('https');
 const crypto = require('crypto');
 
 const app = express();
@@ -52,9 +51,9 @@ async function callAiEngine(path, payload, isRetry = false) {
 }
 
 // ========== MSG91 WHATSAPP — TWO-WAY DOSE CONFIRMATION & VITALS CAPTURE ==========
-// Unlike CallMeBot (send-only, one key per recipient), MSG91 is a real WhatsApp Business
-// Solution Provider: one business number, real webhooks for inbound replies, and quick-reply
-// buttons — which is what makes "patient taps Taken/Not Taken, then texts their BP" possible.
+// MSG91 is Biomexa's sole WhatsApp provider: one real business number, real webhooks for
+// inbound replies, and quick-reply buttons — which is what makes "patient taps Taken/Not Taken,
+// then texts their BP" possible.
 //
 // Setup required on your end before this does anything (see .env.example for full steps):
 // 1. Get WhatsApp Business API access in your MSG91 dashboard (control.msg91.com).
@@ -67,8 +66,8 @@ async function callAiEngine(path, payload, isRetry = false) {
 // 4. In MSG91 dashboard → Settings → Webhooks, point the inbound WhatsApp webhook at:
 //      https://<your-render-url>/api/webhooks/msg91-whatsapp
 //
-// Until these are set, sendDoseReminderTemplate() logs a clear "not configured" message and
-// falls back to the existing plain-text WhatsApp reminder (CallMeBot) — nothing breaks.
+// Until these are set, sendDoseReminderTemplate() logs a clear "not configured" message —
+// no WhatsApp messages of any kind go out without this configured.
 const MSG91_AUTH_KEY = process.env.MSG91_AUTH_KEY || null;
 const MSG91_INTEGRATED_NUMBER = process.env.MSG91_INTEGRATED_NUMBER || null;
 const MSG91_DOSE_TEMPLATE_NAME = process.env.MSG91_DOSE_TEMPLATE_NAME || 'dose_reminder';
@@ -143,8 +142,8 @@ function parseVitalsFromText(text) {
 // ========== EMAIL SETUP (fallback for password reset — doesn't depend on WhatsApp opt-in) ==========
 // Uses Gmail SMTP with an App Password (not your normal Gmail password — generate one free at
 // https://myaccount.google.com/apppasswords). This exists because WhatsApp reset OTPs only reach
-// patients/doctors who've connected their own CallMeBot key; email works for everyone with an
-// email on file, so it's the dependable path when WhatsApp isn't set up yet.
+// patients/doctors who've messaged Biomexa's WhatsApp number recently (MSG91's session rule);
+// email works for everyone with an email on file, so it's the dependable path.
 const nodemailer = require('nodemailer');
 let emailTransport = null;
 if (process.env.EMAIL_USER && process.env.EMAIL_APP_PASSWORD) {
@@ -181,24 +180,12 @@ async function sendResetEmail(toEmail, otp, name) {
   }
 }
 
-// ========== CALLMEBOT FREE WHATSAPP API ==========
-// IMPORTANT — how CallMeBot actually works (this is the #1 reason WhatsApp messages silently
-// don't arrive): a CallMeBot API key is tied to ONE phone number — the number that messaged
-// CallMeBot and got the key back. That key can only be used to send messages TO that same
-// number. A single global CALLMEBOT_API_KEY can therefore only ever message one phone — it
-// CANNOT be used to message arbitrary patients or doctors.
-//
-// The fix: every patient and doctor who wants WhatsApp messages gets their OWN key (free, one
-// minute to set up — see the signup forms) and stores it on their account. sendWhatsAppFree
-// always prefers that per-user key. CALLMEBOT_API_KEY (env var) is kept only as a fallback for
-// a single admin/testing number.
+// ========== WHATSAPP SENDING (MSG91 only) ==========
 // Sends a plain free-text message via MSG91. The "bulk" endpoint (used elsewhere for the
 // approved template) explicitly rejected free text with "only template is supported for bulk" —
-// confirmed via live logs on 2026-09-10. This tries the non-bulk singular endpoint instead
+// confirmed via live logs on 2026-09-10. This uses the non-bulk singular endpoint instead
 // (same API family, minus "/bulk/"), which matches MSG91's documented "Send message (once
-// session started)" operation for free text. Unverified against a real account yet — if this
-// still fails, the error will show up clearly in your Render logs after this deploys, and we'll
-// know for certain rather than guessing further.
+// session started)" operation for free text.
 async function sendMsg91Text(phone, message) {
   if (!MSG91_CONFIGURED) return { success: false, provider: 'msg91_not_configured' };
   try {
@@ -229,51 +216,18 @@ async function sendMsg91Text(phone, message) {
     return { success: false, provider: 'msg91', detail: err.message };
   }
 }
-const MSG91_TEXT_SEND_WORKING = true; // trying the non-bulk endpoint — check Render logs after deploy to confirm
 
-const CALLMEBOT_API_KEY = process.env.CALLMEBOT_API_KEY || null;
-
+// MSG91 is Biomexa's sole WhatsApp provider — CallMeBot and Twilio have both been removed.
+// userApiKey is accepted for backward compatibility with old call sites but is no longer used.
 async function sendWhatsAppFree(phone, message, userApiKey) {
-  const cleanPhone = phone.replace(/\D/g, '');
-
-  // MSG91 free-text is currently disabled (see MSG91_TEXT_SEND_WORKING above) — skip straight
-  // to CallMeBot rather than waste a request on a call known to fail right now.
-  if (MSG91_CONFIGURED && MSG91_TEXT_SEND_WORKING) {
+  if (MSG91_CONFIGURED) {
     const msg91Result = await sendMsg91Text(phone, message);
     if (msg91Result.success) return msg91Result;
+  } else {
+    console.log('⚠️ MSG91 not configured — cannot deliver to', phone);
   }
 
-  const keyToUse = userApiKey || CALLMEBOT_API_KEY;
-
-  if (keyToUse) {
-    try {
-      const url = `https://api.callmebot.com/whatsapp.php?phone=${cleanPhone}&text=${encodeURIComponent(message)}&apikey=${keyToUse}`;
-      await new Promise((resolve, reject) => {
-        https.get(url, (res) => {
-          let data = '';
-          res.on('data', chunk => data += chunk);
-          res.on('end', () => {
-            if (res.statusCode === 200) {
-              console.log('✅ CallMeBot WhatsApp sent to', phone);
-              resolve(data);
-            } else {
-              reject(new Error(`CallMeBot status ${res.statusCode}: ${data}`));
-            }
-          });
-        }).on('error', reject);
-      });
-      return { success: true, provider: 'callmebot' };
-    } catch (err) {
-      console.log('⚠️ CallMeBot failed for', phone, ':', err.message);
-      if (!userApiKey) {
-        console.log('   (No personal WhatsApp key on file for this number — this is expected unless it matches CALLMEBOT_API_KEY\'s own number.)');
-      }
-    }
-  } else if (!MSG91_CONFIGURED) {
-    console.log('⚠️ No CallMeBot key available for', phone, '— they have not connected their own WhatsApp key yet.');
-  }
-
-  console.log('❌ No WhatsApp provider could deliver to', phone);
+  console.log('❌ WhatsApp message could not be delivered to', phone);
   console.log('   Message was:', message.substring(0, 80) + '...');
   return { success: false, provider: 'none' };
 }
@@ -311,7 +265,6 @@ const patientSchema = new mongoose.Schema({
   phone: { type: String, unique: true },
   email: String,
   password: String,
-  whatsappApiKey: String, // patient's own CallMeBot key — required for THEM to receive WhatsApp messages, see note below
   baselineVitals: {
     bpSystolic: Number,
     bpDiastolic: Number,
@@ -358,7 +311,6 @@ const doctorSchema = new mongoose.Schema({
   email: { type: String, unique: true, sparse: true },
   phone: { type: String, unique: true }, // WhatsApp number, used for connect alerts
   password: String,
-  whatsappApiKey: String, // doctor's own CallMeBot key — required for THEM to receive WhatsApp messages
   specialty: { type: String, default: 'General Physician' },
   licenseNumber: String,
   experienceYears: { type: Number, default: 0 },
@@ -493,13 +445,12 @@ async function triggerRiskAlert(patient, vitals) {
 
   if (availableDoctor) {
     const doctorMsg = `🚨 *RISK ALERT — ${danger.severity.toUpperCase()}*\n\nPatient: ${patient.name}\nPhone: ${patient.phone}\nIssue: ${danger.reason}\n\nLogged via Biomexa WhatsApp vitals capture. Please reach out as soon as possible.\n\n- Biomexa Team`;
-    sendWhatsAppFree(availableDoctor.phone, doctorMsg, availableDoctor.whatsappApiKey);
+    sendWhatsAppFree(availableDoctor.phone, doctorMsg);
   }
 
   sendWhatsAppFree(
     patient.phone,
-    `⚠️ Your recent reading (${danger.reason}) is outside the normal range. A doctor has been notified and may reach out. If you feel unwell, please seek medical attention now.`,
-    patient.whatsappApiKey
+    `⚠️ Your recent reading (${danger.reason}) is outside the normal range. A doctor has been notified and may reach out. If you feel unwell, please seek medical attention now.`
   );
 
   return alert;
@@ -532,23 +483,22 @@ function generateResetToken() {
 // Register
 app.post('/api/auth/register', async (req, res) => {
   try {
-    const { name, phone, email, password, whatsappApiKey } = req.body;
+    const { name, phone, email, password } = req.body;
     const existing = await Patient.findOne({ phone });
     if (existing) return res.status(400).json({ message: 'Phone number already registered. Please login.' });
 
     const hashed = await bcrypt.hash(password, 10);
-    const patient = new Patient({ name, phone, email, password: hashed, whatsappApiKey });
+    const patient = new Patient({ name, phone, email, password: hashed });
     await patient.save();
 
     const token = jwt.sign({ id: patient._id, phone }, JWT_SECRET);
 
-    // Welcome message — tries MSG91 first (works if a session happens to be open), then
-    // CallMeBot (if whatsappApiKey given). Note: a brand-new contact who has never
-    // messaged your business number won't receive free-text via MSG91 until they message you
-    // first (WhatsApp's 24h session rule) — this is a platform limitation, not a bug. Once they
-    // add a medicine, that reminder still fires correctly via the approved template regardless.
+    // Welcome message via MSG91 — note: a brand-new contact who has never messaged your business
+    // number won't receive free-text via MSG91 until they message you first (WhatsApp's 24h
+    // session rule) — this is a platform limitation, not a bug. Once they add a medicine, that
+    // reminder still fires correctly via the approved template regardless.
     const welcomeMsg = `🎉 Welcome to Biomexa, ${name}!\n\nYour WhatsApp dose reminders are now active. We'll notify you when it's time to take your medicine.\n\nReply CONFIRM after each dose to track your adherence.\n\n- Biomexa Team`;
-    const waResult = await sendWhatsAppFree(phone, welcomeMsg, whatsappApiKey);
+    const waResult = await sendWhatsAppFree(phone, welcomeMsg);
 
     res.json({ message: 'Registered successfully', token, patient: { name, phone }, whatsappConnected: waResult.success });
   } catch (err) {
@@ -607,9 +557,9 @@ app.post('/api/quick-reminder', async (req, res) => {
     let waResult;
     if (isNewAccount && MSG91_CONFIGURED) {
       waResult = await sendDoseReminderTemplate(phone, medicineName, dosage || '');
-      if (!waResult.success) waResult = await sendWhatsAppFree(phone, msg, patient.whatsappApiKey);
+      if (!waResult.success) waResult = await sendWhatsAppFree(phone, msg);
     } else {
-      waResult = await sendWhatsAppFree(phone, msg, patient.whatsappApiKey);
+      waResult = await sendWhatsAppFree(phone, msg);
     }
 
     res.json({
@@ -652,7 +602,7 @@ app.post('/api/auth/login', async (req, res) => {
     }
     loginMsg += `\n\n- Biomexa Team`;
 
-    sendWhatsAppFree(phone, loginMsg, patient.whatsappApiKey);
+    sendWhatsAppFree(phone, loginMsg);
 
     res.json({
       token,
@@ -669,9 +619,9 @@ app.post('/api/auth/login', async (req, res) => {
 });
 
 // ========== FORGOT PASSWORD (patients & doctors, WhatsApp + email) ==========
-// Tries WhatsApp first (only works if the account has a personal CallMeBot key on file),
-// then email (works for anyone with an email on file, once EMAIL_USER/EMAIL_APP_PASSWORD are set).
-// Succeeds if EITHER channel delivers — the response tells the frontend which ones worked.
+// Tries WhatsApp first (only works if the account has messaged Biomexa's WhatsApp number
+// recently — MSG91's session rule), then email (works for anyone with an email on file, once
+// EMAIL_USER/EMAIL_APP_PASSWORD are set). Succeeds if EITHER channel delivers.
 app.post('/api/auth/forgot-password', async (req, res) => {
   try {
     const { phone, role } = req.body;
@@ -698,16 +648,16 @@ app.post('/api/auth/forgot-password', async (req, res) => {
     const otpMsg = `🔐 *Biomexa Password Reset*\n\nYour OTP code is: *${otp}*\n\nThis code will expire in ${OTP_EXPIRY_MINUTES} minutes.\n\nIf you didn't request this, please ignore this message.\n\n- Biomexa Team`;
 
     // Admin has no WhatsApp number tied to the account — email only.
-    const waResult = isAdmin ? { success: false } : await sendWhatsAppFree(phone, otpMsg, account.whatsappApiKey);
+    const waResult = isAdmin ? { success: false } : await sendWhatsAppFree(phone, otpMsg);
     const emailResult = await sendResetEmail(account.email, otp, account.name || account.username);
 
     if (!waResult.success && !emailResult.success) {
       return res.status(500).json({
         message: isAdmin
           ? 'Could not deliver the code by email. Make sure EMAIL_USER/EMAIL_APP_PASSWORD are configured on the server.'
-          : account.whatsappApiKey || account.email
+          : account.email
             ? 'Could not deliver the code over WhatsApp or email. Please try again in a moment.'
-            : 'This account has no WhatsApp key or email on file to send a reset code to. Please contact support.'
+            : 'This account has no email on file, and WhatsApp delivery only works if you\'ve messaged Biomexa on WhatsApp recently. Please contact support.'
       });
     }
 
@@ -778,7 +728,7 @@ app.post('/api/auth/reset-password', async (req, res) => {
     if (!isAdmin) {
       const confirmMsg = `✅ *Password Reset Successful*\n\nYour Biomexa password has been reset successfully.\n\nIf you didn't do this, please contact support immediately.\n\n- Biomexa Team`;
       const account = isDoctor ? await Doctor.findOne({ phone }) : await Patient.findOne({ phone });
-      sendWhatsAppFree(phone, confirmMsg, account?.whatsappApiKey);
+      sendWhatsAppFree(phone, confirmMsg);
     }
 
     res.json({ message: 'Password reset successful. Please login with your new password.' });
@@ -798,28 +748,15 @@ app.get('/api/patient/profile', auth, async (req, res) => {
   }
 });
 
-// Connect / update a patient's own CallMeBot key after signup — this is what actually turns
-// reminders on for accounts created before the key was collected, or after they lose/regenerate it.
-app.patch('/api/patient/whatsapp-key', auth, async (req, res) => {
-  try {
-    const { whatsappApiKey } = req.body;
-    await Patient.findOneAndUpdate({ phone: req.user.phone }, { whatsappApiKey });
-    res.json({ message: 'WhatsApp key saved' });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-});
-
-// Sends one real WhatsApp message right now, so a patient can immediately confirm their
-// key actually works instead of waiting for the next scheduled dose reminder.
+// Sends one real WhatsApp message right now, so a patient can immediately confirm they're
+// receiving messages from Biomexa's WhatsApp number.
 app.post('/api/patient/test-whatsapp', auth, async (req, res) => {
   try {
     const patient = await Patient.findOne({ phone: req.user.phone });
     if (!patient) return res.status(404).json({ message: 'Patient not found' });
-    if (!patient.whatsappApiKey) return res.status(400).json({ message: 'No WhatsApp key saved on your account yet.' });
 
-    const result = await sendWhatsAppFree(patient.phone, `🧪 *Test message from Biomexa*\n\nIf you're reading this on WhatsApp, your reminders are connected and working.\n\n- Biomexa Team`, patient.whatsappApiKey);
-    if (!result.success) return res.status(500).json({ message: 'Could not deliver a test message. Double check the key you pasted matches the one CallMeBot sent you.' });
+    const result = await sendWhatsAppFree(patient.phone, `🧪 *Test message from Biomexa*\n\nIf you're reading this on WhatsApp, your reminders are connected and working.\n\n- Biomexa Team`);
+    if (!result.success) return res.status(500).json({ message: 'Could not deliver a test message right now — please try again in a moment.' });
     res.json({ message: 'Test message sent — check your WhatsApp.' });
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -858,7 +795,7 @@ app.post('/api/medicines', auth, async (req, res) => {
 
     // Send confirmation WhatsApp
     const confirmMsg = `💊 *Medicine Added*\n\n${name} — ${dosage}\n⏰ ${time}\n${foodNote ? '🍽️ ' + foodNote + '\n' : ''}\nYou'll receive a WhatsApp reminder when it's time to take it.\n\n- Biomexa Team`;
-    sendWhatsAppFree(req.user.phone, confirmMsg, patient.whatsappApiKey);
+    sendWhatsAppFree(req.user.phone, confirmMsg);
 
     res.json({ message: 'Medicine added and dose scheduled for today', medicines: patient.medicines });
   } catch (err) {
@@ -905,7 +842,7 @@ app.post('/api/doses/:id/confirm', auth, async (req, res) => {
     // Send confirmation WhatsApp
     const patient = await Patient.findOne({ phone: req.user.phone });
     const confirmMsg = `✅ *Dose Confirmed*\n\n${dose.medicineName} — ${dose.dosage}\n⏰ Taken at ${new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}\n\nGreat job staying on track! 💪\n\n- Biomexa Team`;
-    sendWhatsAppFree(req.user.phone, confirmMsg, patient?.whatsappApiKey);
+    sendWhatsAppFree(req.user.phone, confirmMsg);
 
     res.json({ message: 'Dose confirmed', dose });
   } catch (err) {
@@ -940,7 +877,7 @@ cron.schedule('* * * * *', async () => {
 
       // Prefer MSG91's real two-way template (Taken/Not Taken buttons) when configured —
       // this is what lets the webhook below capture a structured reply instead of parsing
-      // free text like "CONFIRM". Falls back to the plain-text CallMeBot reminder.
+      // free text like "CONFIRM". Falls back to a plain-text WhatsApp reminder otherwise.
       let sentVia = null;
       if (MSG91_CONFIGURED) {
         const msg91Result = await sendDoseReminderTemplate(dose.patientPhone, dose.medicineName, dose.dosage);
@@ -956,7 +893,7 @@ cron.schedule('* * * * *', async () => {
 
       if (!sentVia) {
         const message = `⏰ *Dose Reminder*\n\nHello ${patient.name},\n\nIt's time to take your medicine:\n*${dose.medicineName}* — ${dose.dosage}\n\n${dose.foodNote ? '🍽️ ' + dose.foodNote + '\n\n' : ''}Reply CONFIRM once you've taken it.\n\n- Biomexa Team`;
-        const result = await sendWhatsAppFree(dose.patientPhone, message, patient.whatsappApiKey);
+        const result = await sendWhatsAppFree(dose.patientPhone, message);
         if (result.success) sentVia = 'fallback';
       }
 
@@ -1041,7 +978,7 @@ app.post('/api/webhooks/msg91-whatsapp', async (req, res) => {
         const hh = String(snoozeTime.getHours()).padStart(2, '0');
         const mm = String(snoozeTime.getMinutes()).padStart(2, '0');
         await Dose.findByIdAndUpdate(convo.doseId, { scheduledTime: `${hh}:${mm}`, sentReminder: false });
-        await sendWhatsAppFree(phone, `⏰ No problem — we'll remind you again in about 20 minutes.`, patient?.whatsappApiKey);
+        await sendWhatsAppFree(phone, `⏰ No problem — we'll remind you again in about 20 minutes.`);
         await ConversationState.findOneAndUpdate({ patientPhone: phone }, { state: null, doseId: null, updatedAt: new Date() });
         return;
       }
@@ -1050,10 +987,10 @@ app.post('/api/webhooks/msg91-whatsapp', async (req, res) => {
         await Dose.findByIdAndUpdate(convo.doseId, { status: took ? 'taken' : 'missed' });
 
         if (took) {
-          await sendWhatsAppFree(phone, `✅ Great, logged as taken! Quick check-in — reply with your BP, temperature and pulse if you have them handy (e.g. "BP 120/80, temp 98.6, pulse 72"). Or just reply "skip".`, patient?.whatsappApiKey);
+          await sendWhatsAppFree(phone, `✅ Great, logged as taken! Quick check-in — reply with your BP, temperature and pulse if you have them handy (e.g. "BP 120/80, temp 98.6, pulse 72"). Or just reply "skip".`);
           await ConversationState.findOneAndUpdate({ patientPhone: phone }, { state: 'awaiting_vitals', updatedAt: new Date() });
         } else {
-          await sendWhatsAppFree(phone, `Noted — marked as not taken. Please try to take it as soon as possible, or reach out to your doctor via the Biomexa app if you're having trouble with this medicine.`, patient?.whatsappApiKey);
+          await sendWhatsAppFree(phone, `Noted — marked as not taken. Please try to take it as soon as possible, or reach out to your doctor via the Biomexa app if you're having trouble with this medicine.`);
           await ConversationState.findOneAndUpdate({ patientPhone: phone }, { state: null, doseId: null, updatedAt: new Date() });
         }
       }
@@ -1062,14 +999,14 @@ app.post('/api/webhooks/msg91-whatsapp', async (req, res) => {
 
     if (convo && convo.state === 'awaiting_vitals') {
       if (/^skip$/i.test(freeText.trim())) {
-        await sendWhatsAppFree(phone, `No problem — see you at the next dose! 💪`, patient?.whatsappApiKey);
+        await sendWhatsAppFree(phone, `No problem — see you at the next dose! 💪`);
         await ConversationState.findOneAndUpdate({ patientPhone: phone }, { state: null, updatedAt: new Date() });
         return;
       }
 
       const vitals = parseVitalsFromText(freeText);
       if (Object.keys(vitals).length === 0) {
-        await sendWhatsAppFree(phone, `Sorry, I couldn't read any vitals from that. Try a format like "BP 120/80, temp 98.6, pulse 72" — or reply "skip".`, patient?.whatsappApiKey);
+        await sendWhatsAppFree(phone, `Sorry, I couldn't read any vitals from that. Try a format like "BP 120/80, temp 98.6, pulse 72" — or reply "skip".`);
         return;
       }
 
@@ -1093,7 +1030,7 @@ app.post('/api/webhooks/msg91-whatsapp', async (req, res) => {
       // patient and an available doctor. The "logged" confirmation still goes out either way.
       const alert = patient ? await triggerRiskAlert(patient, vitals) : null;
       if (!alert) {
-        await sendWhatsAppFree(phone, `📊 Logged: ${summary}. Thanks — this is saved to your Biomexa dashboard now.`, patient?.whatsappApiKey);
+        await sendWhatsAppFree(phone, `📊 Logged: ${summary}. Thanks — this is saved to your Biomexa dashboard now.`);
       }
       await ConversationState.findOneAndUpdate({ patientPhone: phone }, { state: null, doseId: null, updatedAt: new Date() });
       return;
@@ -1136,7 +1073,7 @@ const doctorAuth = (req, res, next) => {
 // Doctor signup — creates a real doctor account for the "Connect with a Doctor" portal
 app.post('/api/doctors/register', async (req, res) => {
   try {
-    const { name, email, phone, password, specialty, licenseNumber, experienceYears, bio, whatsappApiKey } = req.body;
+    const { name, email, phone, password, specialty, licenseNumber, experienceYears, bio } = req.body;
     if (!name || !phone || !password || !licenseNumber) {
       return res.status(400).json({ message: 'Name, WhatsApp number, password and license number are required' });
     }
@@ -1144,13 +1081,13 @@ app.post('/api/doctors/register', async (req, res) => {
     if (existing) return res.status(400).json({ message: 'A doctor account already exists with this phone number' });
 
     const hashed = await bcrypt.hash(password, 10);
-    const doctor = new Doctor({ name, email, phone, password: hashed, whatsappApiKey, specialty, licenseNumber, experienceYears, bio, available: true });
+    const doctor = new Doctor({ name, email, phone, password: hashed, specialty, licenseNumber, experienceYears, bio, available: true });
     await doctor.save();
 
     const token = jwt.sign({ id: doctor._id, phone, role: 'doctor' }, JWT_SECRET);
 
     const welcomeMsg = `👨‍⚕️ *Welcome to Biomexa, Dr. ${name}!*\n\nYour doctor profile is now live on the Biomexa Connect network. Patients with a high risk score can reach you instantly via WhatsApp.\n\nYou're marked *Available* by default — toggle this anytime from your dashboard.\n\n- Biomexa Team`;
-    sendWhatsAppFree(phone, welcomeMsg, whatsappApiKey);
+    sendWhatsAppFree(phone, welcomeMsg);
 
     res.json({ message: 'Doctor registered successfully', token, doctor: { id: doctor._id, name, phone, specialty: doctor.specialty, available: doctor.available } });
   } catch (err) {
@@ -1196,25 +1133,13 @@ app.get('/api/doctors/me', doctorAuth, async (req, res) => {
   }
 });
 
-// Connect / update a doctor's own CallMeBot key — needed to actually receive patient connect alerts.
-app.patch('/api/doctors/whatsapp-key', doctorAuth, async (req, res) => {
-  try {
-    const { whatsappApiKey } = req.body;
-    await Doctor.findByIdAndUpdate(req.doctor.id, { whatsappApiKey });
-    res.json({ message: 'WhatsApp key saved' });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-});
-
 app.post('/api/doctors/test-whatsapp', doctorAuth, async (req, res) => {
   try {
     const doctor = await Doctor.findById(req.doctor.id);
     if (!doctor) return res.status(404).json({ message: 'Doctor not found' });
-    if (!doctor.whatsappApiKey) return res.status(400).json({ message: 'No WhatsApp key saved on your account yet.' });
 
-    const result = await sendWhatsAppFree(doctor.phone, `🧪 *Test message from Biomexa*\n\nIf you're reading this on WhatsApp, patient connect alerts will reach you.\n\n- Biomexa Team`, doctor.whatsappApiKey);
-    if (!result.success) return res.status(500).json({ message: 'Could not deliver a test message. Double check the key you pasted matches the one CallMeBot sent you.' });
+    const result = await sendWhatsAppFree(doctor.phone, `🧪 *Test message from Biomexa*\n\nIf you're reading this on WhatsApp, patient connect alerts will reach you.\n\n- Biomexa Team`);
+    if (!result.success) return res.status(500).json({ message: 'Could not deliver a test message right now — please try again in a moment.' });
     res.json({ message: 'Test message sent — check your WhatsApp.' });
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -1242,7 +1167,7 @@ app.post('/api/doctors/:id/connect', async (req, res) => {
 
     const flag = urgency === 'high' ? '🚨 *HIGH RISK PATIENT — PLEASE RESPOND PROMPTLY*' : '📩 *New Patient Connect Request*';
     const doctorMsg = `${flag}\n\nPatient: ${patientName || 'Anonymous'}\nContact: ${patientPhone || 'Not shared'}\n${message ? 'Note: ' + message + '\n' : ''}\nvia Biomexa Connect\n- Biomexa Team`;
-    const result = await sendWhatsAppFree(doctor.phone, doctorMsg, doctor.whatsappApiKey);
+    const result = await sendWhatsAppFree(doctor.phone, doctorMsg);
 
     await ConnectRequest.create({
       doctorId: doctor._id, doctorName: doctor.name, patientName, patientPhone,
@@ -1727,10 +1652,9 @@ app.get('/stats', async (req, res) => {
   });
 });
 
-// Public status check — lets the frontend know whether reminders go out automatically via
-// MSG91 (business number, no patient setup needed) or whether the platform is still relying
-// on each patient/doctor connecting their own CallMeBot key. No auth needed — this is not
-// sensitive, just a feature-availability flag.
+// Public status check — lets the frontend know whether MSG91 (Biomexa's sole WhatsApp
+// provider) is configured server-side. No auth needed — this is not sensitive, just a
+// feature-availability flag.
 app.get('/api/whatsapp-status', (req, res) => {
   res.json({ msg91Configured: MSG91_CONFIGURED });
 });
@@ -1745,12 +1669,7 @@ app.listen(PORT, () => {
     console.log(`✅ MSG91 configured — integrated number ${MSG91_INTEGRATED_NUMBER}, template "${MSG91_DOSE_TEMPLATE_NAME}"`);
   } else {
     console.log(`\n⚠️  WARNING: MSG91 not configured (MSG91_AUTH_KEY / MSG91_INTEGRATED_NUMBER missing)!`);
-    console.log(`   Every WhatsApp send will skip straight to CallMeBot fallback.`);
-  }
-  if (!CALLMEBOT_API_KEY) {
-    console.log(`\n⚠️  WARNING: CALLMEBOT_API_KEY not set!`);
-    console.log(`   WhatsApp messages will NOT be sent.`);
-    console.log(`   Get your free API key at: https://www.callmebot.com/blog/free-api-whatsapp-messages/`);
-    console.log(`   Then set CALLMEBOT_API_KEY in your environment variables.\n`);
+    console.log(`   No WhatsApp messages will be sent — MSG91 is Biomexa's only WhatsApp provider.`);
+    console.log(`   See .env.example for setup steps.\n`);
   }
 });
