@@ -16,20 +16,6 @@ app.use(express.json());
 const JWT_SECRET = process.env.JWT_SECRET || 'biomexasecret';
 const OTP_EXPIRY_MINUTES = 15;
 
-// ========== TWILIO SETUP (Optional - paid fallback) ==========
-let twilioClient = null;
-let twilioPhone = null;
-try {
-  const twilio = require('twilio');
-  if (process.env.TWILIO_SID && process.env.TWILIO_TOKEN && process.env.TWILIO_PHONE) {
-    twilioClient = twilio(process.env.TWILIO_SID, process.env.TWILIO_TOKEN);
-    twilioPhone = process.env.TWILIO_PHONE;
-    console.log('✅ Twilio configured (paid fallback)');
-  }
-} catch (e) {
-  console.log('ℹ️ Twilio not configured - using free CallMeBot API');
-}
-
 // ========== PYTHON AI ENGINE (ai_engine.py — Flask microservice) ==========
 // This repo already contains a real drug-effectiveness AI engine (ai_engine.py) — vital-sign
 // trend analysis, symptom tracking, target-achievement scoring, clinical insights, and treatment
@@ -82,7 +68,7 @@ async function callAiEngine(path, payload, isRetry = false) {
 //      https://<your-render-url>/api/webhooks/msg91-whatsapp
 //
 // Until these are set, sendDoseReminderTemplate() logs a clear "not configured" message and
-// falls back to the existing plain-text WhatsApp reminder (CallMeBot/Twilio) — nothing breaks.
+// falls back to the existing plain-text WhatsApp reminder (CallMeBot) — nothing breaks.
 const MSG91_AUTH_KEY = process.env.MSG91_AUTH_KEY || null;
 const MSG91_INTEGRATED_NUMBER = process.env.MSG91_INTEGRATED_NUMBER || null;
 const MSG91_DOSE_TEMPLATE_NAME = process.env.MSG91_DOSE_TEMPLATE_NAME || 'dose_reminder';
@@ -205,8 +191,7 @@ async function sendResetEmail(toEmail, otp, name) {
 // The fix: every patient and doctor who wants WhatsApp messages gets their OWN key (free, one
 // minute to set up — see the signup forms) and stores it on their account. sendWhatsAppFree
 // always prefers that per-user key. CALLMEBOT_API_KEY (env var) is kept only as a fallback for
-// a single admin/testing number, and Twilio (if configured) as a paid fallback that can message
-// any number once it has opted into your Twilio sandbox/business number.
+// a single admin/testing number.
 // Sends a plain free-text message via MSG91. The "bulk" endpoint (used elsewhere for the
 // approved template) explicitly rejected free text with "only template is supported for bulk" —
 // confirmed via live logs on 2026-09-10. This tries the non-bulk singular endpoint instead
@@ -252,7 +237,7 @@ async function sendWhatsAppFree(phone, message, userApiKey) {
   const cleanPhone = phone.replace(/\D/g, '');
 
   // MSG91 free-text is currently disabled (see MSG91_TEXT_SEND_WORKING above) — skip straight
-  // to CallMeBot/Twilio rather than waste a request on a call known to fail right now.
+  // to CallMeBot rather than waste a request on a call known to fail right now.
   if (MSG91_CONFIGURED && MSG91_TEXT_SEND_WORKING) {
     const msg91Result = await sendMsg91Text(phone, message);
     if (msg91Result.success) return msg91Result;
@@ -286,21 +271,6 @@ async function sendWhatsAppFree(phone, message, userApiKey) {
     }
   } else if (!MSG91_CONFIGURED) {
     console.log('⚠️ No CallMeBot key available for', phone, '— they have not connected their own WhatsApp key yet.');
-  }
-
-  // Fallback to Twilio if configured
-  if (twilioClient && twilioPhone) {
-    try {
-      await twilioClient.messages.create({
-        from: `whatsapp:+${twilioPhone}`,
-        to: `whatsapp:${phone}`,
-        body: message
-      });
-      console.log('✅ Twilio WhatsApp sent to', phone);
-      return { success: true, provider: 'twilio' };
-    } catch (err) {
-      console.log('⚠️ Twilio failed:', err.message);
-    }
   }
 
   console.log('❌ No WhatsApp provider could deliver to', phone);
@@ -573,7 +543,7 @@ app.post('/api/auth/register', async (req, res) => {
     const token = jwt.sign({ id: patient._id, phone }, JWT_SECRET);
 
     // Welcome message — tries MSG91 first (works if a session happens to be open), then
-    // CallMeBot (if whatsappApiKey given) or Twilio. Note: a brand-new contact who has never
+    // CallMeBot (if whatsappApiKey given). Note: a brand-new contact who has never
     // messaged your business number won't receive free-text via MSG91 until they message you
     // first (WhatsApp's 24h session rule) — this is a platform limitation, not a bug. Once they
     // add a medicine, that reminder still fires correctly via the approved template regardless.
@@ -970,7 +940,7 @@ cron.schedule('* * * * *', async () => {
 
       // Prefer MSG91's real two-way template (Taken/Not Taken buttons) when configured —
       // this is what lets the webhook below capture a structured reply instead of parsing
-      // free text like "CONFIRM". Falls back to the plain-text CallMeBot/Twilio reminder.
+      // free text like "CONFIRM". Falls back to the plain-text CallMeBot reminder.
       let sentVia = null;
       if (MSG91_CONFIGURED) {
         const msg91Result = await sendDoseReminderTemplate(dose.patientPhone, dose.medicineName, dose.dosage);
@@ -1775,7 +1745,7 @@ app.listen(PORT, () => {
     console.log(`✅ MSG91 configured — integrated number ${MSG91_INTEGRATED_NUMBER}, template "${MSG91_DOSE_TEMPLATE_NAME}"`);
   } else {
     console.log(`\n⚠️  WARNING: MSG91 not configured (MSG91_AUTH_KEY / MSG91_INTEGRATED_NUMBER missing)!`);
-    console.log(`   Every WhatsApp send will skip straight to CallMeBot/Twilio fallback.`);
+    console.log(`   Every WhatsApp send will skip straight to CallMeBot fallback.`);
   }
   if (!CALLMEBOT_API_KEY) {
     console.log(`\n⚠️  WARNING: CALLMEBOT_API_KEY not set!`);
