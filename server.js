@@ -194,6 +194,7 @@ async function sendMsg91Text(phone, message) {
       headers: { 'Content-Type': 'application/json', 'authkey': MSG91_AUTH_KEY },
       body: JSON.stringify({
         integrated_number: MSG91_INTEGRATED_NUMBER,
+        recipient_number: phone.replace(/\D/g, ''),
         content_type: 'text',
         payload: {
           messaging_product: 'whatsapp',
