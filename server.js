@@ -196,12 +196,7 @@ async function sendMsg91Text(phone, message) {
         integrated_number: MSG91_INTEGRATED_NUMBER,
         recipient_number: phone.replace(/\D/g, ''),
         content_type: 'text',
-        payload: {
-          messaging_product: 'whatsapp',
-          type: 'text',
-          text: { body: message },
-          to: phone.replace(/\D/g, '')
-        }
+        text: message
       }),
       signal: AbortSignal.timeout(10000)
     });
