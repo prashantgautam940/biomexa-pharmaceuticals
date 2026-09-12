@@ -608,7 +608,7 @@ input[type="time"] { color-scheme: dark; }
 
     loadDoses();
     loadStats();
-    setInterval(loadDoses, 30000);
+    setInterval(() => { loadDoses(); loadStats(); }, 30000);
   </script>
 </body>
 </html>
