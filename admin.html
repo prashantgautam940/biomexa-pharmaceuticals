@@ -161,6 +161,25 @@ tr:hover { background: rgba(13,115,119,0.05); }
     </div>
   </div>
 
+  <div class="ai-panel" id="broadcastPanel" style="border-color: var(--danger);">
+    <div class="ai-panel-head">
+      <div>
+        <h2><i class="fas fa-bullhorn"></i> Broadcast Risk Alert</h2>
+        <p>Sends a real WhatsApp check-in message to every patient the AI model currently flags as High or Critical risk — based on the same risk score shown in the table below, so it's always consistent with what you see.</p>
+      </div>
+      <button class="train-btn" id="broadcastBtn" onclick="confirmBroadcast()" style="background: linear-gradient(135deg, var(--danger), #f87171);"><i class="fas fa-paper-plane"></i> Send to All High-Risk Patients</button>
+    </div>
+    <div id="broadcastMsg" style="font-size: 0.85rem; margin-top: 0.5rem;"></div>
+    <div id="broadcastResults" style="margin-top: 12px; display: none;">
+      <div style="max-height: 220px; overflow-y: auto; border: 1px solid var(--border); border-radius: 10px;">
+        <table style="width:100%; border-collapse: collapse;">
+          <thead><tr style="background: var(--bg-light);"><th style="padding:8px 12px; text-align:left; font-size:0.75rem; color:var(--text-muted);">Patient</th><th style="padding:8px 12px; text-align:left; font-size:0.75rem; color:var(--text-muted);">Risk</th><th style="padding:8px 12px; text-align:left; font-size:0.75rem; color:var(--text-muted);">Status</th></tr></thead>
+          <tbody id="broadcastResultsBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
   <div class="ai-panel">
     <div class="ai-panel-head">
       <div>
@@ -306,6 +325,56 @@ function loadWaSystemStatus() {
     .then(r => r.json())
     .then(alerts => { document.getElementById('waActiveAlerts').textContent = (alerts || []).length; })
     .catch(() => {});
+}
+
+function confirmBroadcast() {
+  const ok = confirm('This will send a real WhatsApp message to every patient currently flagged High or Critical risk. This cannot be undone. Continue?');
+  if (!ok) return;
+  sendBroadcast();
+}
+
+function sendBroadcast() {
+  const btn = document.getElementById('broadcastBtn');
+  const msg = document.getElementById('broadcastMsg');
+  const resultsBox = document.getElementById('broadcastResults');
+  const resultsBody = document.getElementById('broadcastResultsBody');
+
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending...';
+  msg.textContent = '';
+  resultsBox.style.display = 'none';
+
+  authFetch('/api/admin/send-risk-alerts', { method: 'POST' })
+    .then(r => r.json().then(data => ({ ok: r.ok, data })))
+    .then(({ ok, data }) => {
+      if (!ok) throw new Error(data.message || 'Broadcast failed');
+
+      msg.style.color = 'var(--success)';
+      msg.textContent = data.message;
+
+      const rows = [
+        ...data.sent.map(p => ({ ...p, status: '✅ Sent' })),
+        ...data.failed.map(p => ({ ...p, status: '❌ Failed' }))
+      ];
+      if (rows.length) {
+        resultsBody.innerHTML = rows.map(p => `
+          <tr>
+            <td style="padding:8px 12px; border-top:1px solid var(--border); font-size:0.82rem;">${p.name} <span style="color:var(--text-muted);">(${p.phone})</span></td>
+            <td style="padding:8px 12px; border-top:1px solid var(--border); font-size:0.82rem;">${p.risk_label}</td>
+            <td style="padding:8px 12px; border-top:1px solid var(--border); font-size:0.82rem;">${p.status}</td>
+          </tr>
+        `).join('');
+        resultsBox.style.display = 'block';
+      }
+    })
+    .catch(err => {
+      msg.style.color = 'var(--danger)';
+      msg.textContent = err.message;
+    })
+    .finally(() => {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-paper-plane"></i> Send to All High-Risk Patients';
+    });
 }
 
 function authFetch(path, opts) {

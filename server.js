@@ -1604,6 +1604,50 @@ app.get('/api/admin/patients', adminAuth, async (req, res) => {
   }
 });
 
+// Admin-triggered bulk risk alert — sends a real WhatsApp message to every patient currently
+// flagged High or Critical by the trained AI model (same risk calculation as the table above,
+// so "who counts as high-risk" is always consistent between what the admin sees and who gets
+// messaged). Distinct from the automatic per-reading RiskAlert system (which fires on a single
+// dangerous vitals reading) — this is a deliberate, admin-initiated check-in broadcast.
+app.post('/api/admin/send-risk-alerts', adminAuth, async (req, res) => {
+  try {
+    const model = await TrainedModel.findOne().sort({ trainedAt: -1 });
+    const patients = await Patient.find();
+    const results = { sent: [], failed: [], skipped_low_risk: 0 };
+
+    for (const p of patients) {
+      const { features, adherence } = await computePatientFeatures(p);
+      let riskProb;
+      if (model && model.weights.length === features.length) {
+        const norm = features.map((v, j) => (v - model.featureMeans[j]) / model.featureStds[j]);
+        const z = norm.reduce((s, v, j) => s + v * model.weights[j], 0) + model.bias;
+        riskProb = sigmoid(z);
+      } else {
+        riskProb = Math.max(0, Math.min(1, 1 - adherence));
+      }
+
+      if (riskProb <= 0.33) { results.skipped_low_risk++; continue; }
+
+      const label = riskProb > 0.66 ? 'Critical' : 'High';
+      const msg = `🚨 *Biomexa Health Check-In*\n\nHi ${p.name}, our system flagged your treatment adherence as *${label} risk* (${Math.round(riskProb * 100)}%).\n\nThis usually means some recent doses were missed, or your logged vitals are outside the normal range. Please try to stay on schedule with your medicine, and consider reaching out to a doctor on Biomexa Connect if you're having trouble.\n\n- Biomexa Team`;
+
+      const result = await sendWhatsAppFree(p.phone, msg);
+      if (result.success) {
+        results.sent.push({ name: p.name, phone: p.phone, risk_label: label, risk_score: riskProb });
+      } else {
+        results.failed.push({ name: p.name, phone: p.phone, risk_label: label });
+      }
+    }
+
+    res.json({
+      message: `Sent ${results.sent.length} risk alert(s), ${results.failed.length} failed to deliver, ${results.skipped_low_risk} patient(s) not high-risk.`,
+      ...results
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 app.get('/api/admin/stats', adminAuth, async (req, res) => {
   try {
     const patients = await Patient.find();
