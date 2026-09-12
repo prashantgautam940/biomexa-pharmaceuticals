@@ -487,7 +487,7 @@ app.post('/api/auth/register', async (req, res) => {
     const patient = new Patient({ name, phone, email, password: hashed });
     await patient.save();
 
-    const token = jwt.sign({ id: patient._id, phone }, JWT_SECRET);
+    const token = jwt.sign({ id: patient._id, phone }, JWT_SECRET, { expiresIn: '7d' });
 
     // Welcome message via MSG91 — note: a brand-new contact who has never messaged your business
     // number won't receive free-text via MSG91 until they message you first (WhatsApp's 24h
@@ -578,7 +578,7 @@ app.post('/api/auth/login', async (req, res) => {
     const match = await bcrypt.compare(password, patient.password);
     if (!match) return res.status(400).json({ message: 'Invalid password' });
 
-    const token = jwt.sign({ id: patient._id, phone }, JWT_SECRET);
+    const token = jwt.sign({ id: patient._id, phone }, JWT_SECRET, { expiresIn: '7d' });
 
     // Get today's doses for the welcome message
     const today = new Date().toISOString().split('T')[0];
@@ -1092,7 +1092,7 @@ app.post('/api/doctors/register', async (req, res) => {
     const doctor = new Doctor({ name, email, phone, password: hashed, specialty, licenseNumber, experienceYears, bio, available: true });
     await doctor.save();
 
-    const token = jwt.sign({ id: doctor._id, phone, role: 'doctor' }, JWT_SECRET);
+    const token = jwt.sign({ id: doctor._id, phone, role: 'doctor' }, JWT_SECRET, { expiresIn: '7d' });
 
     const welcomeMsg = `👨‍⚕️ *Welcome to Biomexa, Dr. ${name}!*\n\nYour doctor profile is now live on the Biomexa Connect network. Patients with a high risk score can reach you instantly via WhatsApp.\n\nYou're marked *Available* by default — toggle this anytime from your dashboard.\n\n- Biomexa Team`;
     sendWhatsAppFree(phone, welcomeMsg);
@@ -1113,7 +1113,7 @@ app.post('/api/doctors/login', async (req, res) => {
     const match = await bcrypt.compare(password, doctor.password);
     if (!match) return res.status(400).json({ message: 'Invalid password' });
 
-    const token = jwt.sign({ id: doctor._id, phone, role: 'doctor' }, JWT_SECRET);
+    const token = jwt.sign({ id: doctor._id, phone, role: 'doctor' }, JWT_SECRET, { expiresIn: '7d' });
     res.json({ token, doctor: { id: doctor._id, name: doctor.name, phone: doctor.phone, specialty: doctor.specialty, available: doctor.available, experienceYears: doctor.experienceYears } });
   } catch (err) {
     res.status(500).json({ message: err.message });

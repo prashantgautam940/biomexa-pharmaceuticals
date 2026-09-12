@@ -606,13 +606,25 @@ function initAvailabilityWidget() {
   doctorToken = localStorage.getItem('doctorToken');
   doctorProfile = JSON.parse(localStorage.getItem('doctorProfile') || 'null');
   if (doctorToken && doctorProfile) {
-    const widget = document.getElementById('connectAvailabilityWidget');
-    widget.classList.remove('hidden');
-    document.getElementById('connectDoctorName').textContent = 'Dr. ' + doctorProfile.name + ' — ' + (doctorProfile.specialty || 'General Physician');
-    const toggle = document.getElementById('availabilityToggle');
-    toggle.checked = !!doctorProfile.available;
-    paintToggle(toggle.checked);
-    initDoctorWaCard();
+    // Verify against the server before trusting cached data — an old/expired token from a
+    // previous session on this device now gets cleared instead of silently showing stale info.
+    fetch(API_BASE + '/api/doctors/me', { headers: { 'Authorization': 'Bearer ' + doctorToken } })
+      .then(r => {
+        if (!r.ok) { localStorage.removeItem('doctorToken'); localStorage.removeItem('doctorProfile'); throw new Error('invalid session'); }
+        return r.json();
+      })
+      .then(fresh => {
+        doctorProfile = fresh;
+        localStorage.setItem('doctorProfile', JSON.stringify(fresh));
+        const widget = document.getElementById('connectAvailabilityWidget');
+        widget.classList.remove('hidden');
+        document.getElementById('connectDoctorName').textContent = 'Dr. ' + doctorProfile.name + ' — ' + (doctorProfile.specialty || 'General Physician');
+        const toggle = document.getElementById('availabilityToggle');
+        toggle.checked = !!doctorProfile.available;
+        paintToggle(toggle.checked);
+        initDoctorWaCard();
+      })
+      .catch(() => {});
   }
 }
 initAvailabilityWidget();

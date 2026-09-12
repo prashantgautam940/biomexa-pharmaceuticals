@@ -350,8 +350,20 @@ input[type="time"] { color-scheme: dark; }
 
     if (!token) {
       window.location.href = 'login.html';
-    } else if (user.name) {
-      document.getElementById('welcomeName').textContent = `Welcome, ${user.name}!`;
+    } else {
+      // Verify the token against the server before trusting anything cached in localStorage —
+      // an old/expired/invalid token now gets kicked straight back to login instead of silently
+      // showing stale cached data from a previous session on this device.
+      fetch(`${API_URL}/api/patient/profile`, { headers: { 'Authorization': `Bearer ${token}` } })
+        .then(r => {
+          if (!r.ok) { localStorage.clear(); window.location.href = 'login.html'; throw new Error('invalid session'); }
+          return r.json();
+        })
+        .then(profile => {
+          localStorage.setItem('user', JSON.stringify({ name: profile.name, phone: profile.phone }));
+          document.getElementById('welcomeName').textContent = `Welcome, ${profile.name}!`;
+        })
+        .catch(() => {});
     }
 
     function logout() {
