@@ -1624,6 +1624,33 @@ app.get('/api/admin/patients', adminAuth, async (req, res) => {
   }
 });
 
+// Deletes one patient and every piece of data tied to their phone number — doses, vitals logs,
+// conversation state, and any risk alerts. This is for cleaning up test accounts before going
+// live with real patients; there's no undo, so the frontend requires a confirmation before
+// calling this.
+app.delete('/api/admin/patients/:phone', adminAuth, async (req, res) => {
+  try {
+    const phone = decodeURIComponent(req.params.phone);
+    const patient = await Patient.findOne({ phone });
+    if (!patient) return res.status(404).json({ message: 'Patient not found' });
+
+    const [doses, vitals, alerts] = await Promise.all([
+      Dose.deleteMany({ patientPhone: phone }),
+      VitalsLog.deleteMany({ patientPhone: phone }),
+      RiskAlert.deleteMany({ patientPhone: phone })
+    ]);
+    await ConversationState.deleteOne({ patientPhone: phone });
+    await Patient.deleteOne({ phone });
+
+    res.json({
+      message: `Deleted ${patient.name} (${phone}) and all associated data.`,
+      deleted: { doses: doses.deletedCount, vitals: vitals.deletedCount, alerts: alerts.deletedCount }
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 // Admin-triggered bulk risk alert — sends a real WhatsApp message to every patient currently
 // flagged High or Critical by the trained AI model (same risk calculation as the table above,
 // so "who counts as high-risk" is always consistent between what the admin sees and who gets

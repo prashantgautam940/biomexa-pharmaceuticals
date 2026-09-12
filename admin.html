@@ -250,10 +250,11 @@ tr:hover { background: rgba(13,115,119,0.05); }
           <th>AI Label</th>
           <th>Missed</th>
           <th>Sentiment</th>
+          <th>Action</th>
         </tr>
       </thead>
       <tbody id="patientTable">
-        <tr><td colspan="9" class="loading"><i class="fas fa-spinner fa-spin"></i> Loading patient data...</td></tr>
+        <tr><td colspan="10" class="loading"><i class="fas fa-spinner fa-spin"></i> Loading patient data...</td></tr>
       </tbody>
     </table>
   </div>
@@ -480,13 +481,13 @@ function loadData() {
     .then(r => r.json())
     .then(data => renderPatients(data))
     .catch(() => {
-      document.getElementById('patientTable').innerHTML = '<tr><td colspan="9" class="empty"><i class="fas fa-exclamation-circle"></i> Failed to load data. Make sure the backend is running.</td></tr>';
+      document.getElementById('patientTable').innerHTML = '<tr><td colspan="10" class="empty"><i class="fas fa-exclamation-circle"></i> Failed to load data. Make sure the backend is running.</td></tr>';
     });
 }
 
 function renderPatients(data) {
   const tb = document.getElementById('patientTable');
-  if (!data.length) { tb.innerHTML = '<tr><td colspan="9" class="empty">No patients in the system yet</td></tr>'; return; }
+  if (!data.length) { tb.innerHTML = '<tr><td colspan="10" class="empty">No patients in the system yet</td></tr>'; return; }
 
   tb.innerHTML = data.map(function(p) {
     const riskClass = p.ai_risk_label === 'Critical' ? 'risk-critical' : p.ai_risk_label === 'High' ? 'risk-high' : 'risk-low';
@@ -503,8 +504,22 @@ function renderPatients(data) {
       '<td><span class="risk-badge ' + riskClass + '">' + p.ai_risk_label + '</span></td>' +
       '<td>' + p.missed_doses + '</td>' +
       '<td>' + sentIcon + ' ' + sentiment + '</td>' +
+      '<td><button onclick="deletePatient(\'' + encodeURIComponent(p.phone) + '\', \'' + p.name.replace(/'/g, "\\'") + '\')" title="Delete this patient and all their data" style="padding:6px 10px;border:1px solid var(--danger);background:transparent;color:var(--danger);border-radius:6px;cursor:pointer;"><i class="fas fa-trash"></i></button></td>' +
     '</tr>';
   }).join('');
+}
+
+function deletePatient(encodedPhone, name) {
+  const ok = confirm('Permanently delete ' + name + ' and all their doses, vitals, and alert history? This cannot be undone.');
+  if (!ok) return;
+
+  authFetch('/api/admin/patients/' + encodedPhone, { method: 'DELETE' })
+    .then(r => r.json().then(data => ({ ok: r.ok, data })))
+    .then(({ ok, data }) => {
+      if (!ok) throw new Error(data.message || 'Delete failed');
+      loadData();
+    })
+    .catch(err => alert(err.message));
 }
 
 function exportCSV() {
@@ -517,7 +532,7 @@ function exportCSV() {
 }
 
 function refreshData() {
-  document.getElementById('patientTable').innerHTML = '<tr><td colspan="9" class="loading"><i class="fas fa-spinner fa-spin"></i> Refreshing...</td></tr>';
+  document.getElementById('patientTable').innerHTML = '<tr><td colspan="10" class="loading"><i class="fas fa-spinner fa-spin"></i> Refreshing...</td></tr>';
   loadModelStatus();
   loadData();
 }
