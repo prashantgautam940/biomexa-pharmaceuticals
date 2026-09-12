@@ -101,8 +101,8 @@ async function sendDoseReminderTemplate(phone, medicineName, dosage) {
             to_and_components: [{
               to: [phone.replace(/\D/g, '')],
               components: {
-                medicine_name: { type: 'text', value: medicineName },
-                dosage: { type: 'text', value: dosage }
+                body_1: { type: 'text', value: medicineName },
+                body_2: { type: 'text', value: dosage }
               }
             }]
           }
@@ -112,7 +112,7 @@ async function sendDoseReminderTemplate(phone, medicineName, dosage) {
     });
     const data = await res.json();
     if (!res.ok) {
-      console.log('⚠️ MSG91 template send failed:', JSON.stringify(data).substring(0, 200));
+      console.log('⚠️ MSG91 template send failed:', JSON.stringify(data).substring(0, 500));
       return { success: false, provider: 'msg91', detail: data };
     }
     console.log('✅ MSG91 WhatsApp template sent to', phone);
