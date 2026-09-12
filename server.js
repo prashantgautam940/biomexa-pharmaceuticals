@@ -101,8 +101,8 @@ async function sendDoseReminderTemplate(phone, medicineName, dosage) {
             to_and_components: [{
               to: [phone.replace(/\D/g, '')],
               components: {
-                body_1: { type: 'text', value: medicineName, name: 'medicine_name' },
-                body_2: { type: 'text', value: dosage, name: 'dosage' }
+                body_1: { type: 'text', value: medicineName, parameter_name: 'medicine_name' },
+                body_2: { type: 'text', value: dosage, parameter_name: 'dosage' }
               }
             }]
           }
