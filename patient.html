@@ -291,6 +291,17 @@ input[type="time"] { color-scheme: dark; }
       <div id="waMsg" style="font-size:12.5px;margin-top:8px;"></div>
     </div>
 
+    <!-- My Vitals — everything the patient has sent over WhatsApp after confirming a dose -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">🩺 My Vitals</span>
+        <span style="color:#64748b;font-size:12px;">Logged via WhatsApp</span>
+      </div>
+      <div id="vitalsHistoryList">
+        <div class="empty-state">Loading...</div>
+      </div>
+    </div>
+
     <!-- Add Medicine -->
     <div class="card">
       <div class="card-header">
@@ -606,9 +617,38 @@ input[type="time"] { color-scheme: dark; }
       }
     });
 
+    function loadVitalsHistory() {
+      fetch(`${API_URL}/api/patient/vitals-history`, { headers: { 'Authorization': `Bearer ${token}` } })
+        .then(r => r.json())
+        .then(logs => {
+          const el = document.getElementById('vitalsHistoryList');
+          if (!logs || !logs.length) {
+            el.innerHTML = '<div class="empty-state">No vitals logged yet — after you confirm a dose on WhatsApp, we\'ll ask for your BP, temperature and pulse. Reply with those and they\'ll show up here.</div>';
+            return;
+          }
+          el.innerHTML = logs.map(v => {
+            const parts = [];
+            if (v.bpSystolic) parts.push(`BP ${v.bpSystolic}/${v.bpDiastolic || '?'}`);
+            if (v.temperature) parts.push(`Temp ${v.temperature}°F`);
+            if (v.heartRate) parts.push(`Pulse ${v.heartRate} bpm`);
+            const date = new Date(v.recordedAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+            return `
+              <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #1f2937;">
+                <span style="font-size:13px;color:#e2e8f0;">${parts.join(' · ')}</span>
+                <span style="font-size:11px;color:#64748b;">${date}</span>
+              </div>
+            `;
+          }).join('');
+        })
+        .catch(() => {
+          document.getElementById('vitalsHistoryList').innerHTML = '<div class="empty-state">Could not load vitals right now.</div>';
+        });
+    }
+
     loadDoses();
     loadStats();
-    setInterval(() => { loadDoses(); loadStats(); }, 30000);
+    loadVitalsHistory();
+    setInterval(() => { loadDoses(); loadStats(); loadVitalsHistory(); }, 30000);
   </script>
 </body>
 </html>

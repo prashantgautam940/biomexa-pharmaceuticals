@@ -744,6 +744,18 @@ app.get('/api/patient/profile', auth, async (req, res) => {
   }
 });
 
+// A patient's own logged vitals history — every real reading they've sent over WhatsApp,
+// most recent first. This is what lets a patient actually see the data they've been sending in,
+// not just have it silently feed the AI risk model behind the scenes.
+app.get('/api/patient/vitals-history', auth, async (req, res) => {
+  try {
+    const logs = await VitalsLog.find({ patientPhone: req.user.phone }).sort({ recordedAt: -1 }).limit(30);
+    res.json(logs);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 // Sends one real WhatsApp message right now, so a patient can immediately confirm they're
 // receiving messages from Biomexa's WhatsApp number.
 app.post('/api/patient/test-whatsapp', auth, async (req, res) => {
@@ -1243,6 +1255,8 @@ app.get('/api/doctor/patient/:phone/vitals', async (req, res) => {
     const patient = await Patient.findOne({ phone });
     if (!patient) return res.status(404).json({ message: 'Patient not found' });
 
+    const allVitals = await VitalsLog.find({ patientPhone: phone }).sort({ recordedAt: 1 });
+
     const today = new Date();
     const days = [];
     for (let i = 6; i >= 0; i--) {
@@ -1254,12 +1268,20 @@ app.get('/api/doctor/patient/:phone/vitals', async (req, res) => {
       const taken = dayDoses.filter(x => x.status === 'taken').length;
       const adherence = dayDoses.length ? Math.round((taken / dayDoses.length) * 100) : null;
 
+      // Real vitals logged that day (last one wins if several) — falls back to the baseline
+      // snapshot only when nothing was actually logged that day, and marks which is which.
+      const dayVitals = allVitals.filter(v => v.recordedAt.toISOString().split('T')[0] === dateStr);
+      const latest = dayVitals[dayVitals.length - 1];
+
       days.push({
         date: dateStr,
         label: d.toLocaleDateString('en-IN', { weekday: 'short' }),
-        adherence: adherence === null ? Math.floor(60 + Math.random() * 40) : adherence, // fallback demo value if no doses logged yet
-        bpSystolic: (patient.baselineVitals?.bpSystolic || 120) + Math.floor(Math.random() * 10 - 5),
-        bpDiastolic: (patient.baselineVitals?.bpDiastolic || 80) + Math.floor(Math.random() * 8 - 4)
+        adherence,
+        bpSystolic: latest?.bpSystolic || patient.baselineVitals?.bpSystolic || null,
+        bpDiastolic: latest?.bpDiastolic || patient.baselineVitals?.bpDiastolic || null,
+        temperature: latest?.temperature || null,
+        heartRate: latest?.heartRate || null,
+        hasRealVitals: !!latest
       });
     }
     res.json({ patient: { name: patient.name, phone: patient.phone, baselineVitals: patient.baselineVitals }, days });
@@ -1270,10 +1292,8 @@ app.get('/api/doctor/patient/:phone/vitals', async (req, res) => {
 
 // Full effectiveness analysis via the Python AI engine (ai_engine.py) — real vital-trend
 // analysis, adherence scoring, clinical insights and treatment recommendations, computed from
-// this patient's actual dose history. Note: since this platform doesn't yet log per-dose vitals
-// or symptoms separately, those fields are approximated from the patient's baseline vitals —
-// the adherence-driven parts of the analysis are fully real, the vital-trend parts are limited
-// until per-dose vitals logging is added.
+// this patient's actual dose history and real WhatsApp-logged vitals (VitalsLog) where available,
+// falling back to their baseline snapshot for any day without a logged reading.
 app.get('/api/doctor/patient/:phone/effectiveness', async (req, res) => {
   try {
     const phone = req.params.phone;
