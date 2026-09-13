@@ -263,34 +263,6 @@ input[type="time"] { color-scheme: dark; }
       </div>
     </div>
 
-    <!-- WhatsApp Connection -->
-    <div class="card" id="whatsappCard">
-      <div class="card-header">
-        <span class="card-title">💬 WhatsApp Reminders</span>
-        <span id="waStatusBadge" style="font-size:12px;color:#64748b;">Checking...</span>
-      </div>
-
-      <!-- Shown when MSG91 (the official business number) is active — no patient setup needed -->
-      <div id="waMsg91Active" style="display:none;background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.3);border-radius:8px;padding:12px 14px;font-size:13px;color:#a7f3d0;line-height:1.6;">
-        ✅ Dose reminders come from Biomexa's official WhatsApp number automatically. If you haven't messaged us on WhatsApp yet, tap below once — WhatsApp requires that before we can message you back with confirmations, OTPs, or alerts.
-        <div style="margin-top:10px;">
-          <a id="waActivateLink" href="#" target="_blank" style="display:inline-flex;align-items:center;gap:6px;background:#25d366;color:#fff;padding:9px 16px;border-radius:8px;text-decoration:none;font-weight:600;font-size:13px;">
-            💬 Open WhatsApp & Message Us
-          </a>
-        </div>
-      </div>
-
-      <!-- Shown when MSG91 isn't configured server-side yet — nothing a patient can do about this -->
-      <div id="waNotConfigured" style="display:none;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);border-radius:8px;padding:12px 14px;font-size:13px;color:#fca5a5;line-height:1.6;">
-        ⚠️ WhatsApp reminders aren't active yet — this is being set up on Biomexa's end, not something you need to configure.
-      </div>
-
-      <div style="margin-top:10px;">
-        <button class="btn" id="waTestBtn" onclick="testWhatsapp()" style="width:auto;padding:10px 16px;">Send Test Message</button>
-      </div>
-      <div id="waMsg" style="font-size:12.5px;margin-top:8px;"></div>
-    </div>
-
     <!-- My Vitals — everything the patient has sent over WhatsApp after confirming a dose -->
     <div class="card">
       <div class="card-header">
@@ -330,6 +302,10 @@ input[type="time"] { color-scheme: dark; }
               <option value="weekly">Weekly</option>
             </select>
           </div>
+          <div class="form-group">
+            <label>Treatment Duration (days)</label>
+            <input type="number" id="medDuration" placeholder="e.g., 7 — leave blank for ongoing" min="1" max="365">
+          </div>
           <div class="form-group full">
             <label>Food Note</label>
             <input type="text" id="medFood" placeholder="e.g., Take after breakfast">
@@ -337,6 +313,38 @@ input[type="time"] { color-scheme: dark; }
         </div>
         <button type="submit" class="btn" id="addBtn" style="width:100%;margin-top:8px;">Add Medicine</button>
       </form>
+    </div>
+
+    <!-- WhatsApp Connection — moved after Add Medicine so it appears once there's actually a
+         reminder to activate for -->
+    <div class="card" id="whatsappCard">
+      <div class="card-header">
+        <span class="card-title">💬 WhatsApp Reminders</span>
+        <span id="waStatusBadge" style="font-size:12px;color:#64748b;">Checking...</span>
+      </div>
+
+      <!-- Shown when MSG91 (the official business number) is active — no patient setup needed -->
+      <div id="waMsg91Active" style="display:none;background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.3);border-radius:8px;padding:12px 14px;font-size:13px;color:#a7f3d0;line-height:1.6;">
+        ✅ Your dose reminders will arrive on WhatsApp automatically — this works even if you never message us first.
+        <br><br>
+        One optional step: if you want <em>replies</em> to work too (confirming a dose, sending your vitals, getting alerts), WhatsApp requires you to message us once. You can do that now, or just skip it — the moment you tap a button on your first reminder, that counts too and unlocks everything automatically.
+        <div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+          <a id="waActivateLink" href="#" target="_blank" style="display:inline-flex;align-items:center;gap:6px;background:#25d366;color:#fff;padding:9px 16px;border-radius:8px;text-decoration:none;font-weight:600;font-size:13px;">
+            💬 Open WhatsApp & Message Us
+          </a>
+          <span style="font-size:12px;color:#6b7280;">or just wait for your first reminder</span>
+        </div>
+      </div>
+
+      <!-- Shown when MSG91 isn't configured server-side yet — nothing a patient can do about this -->
+      <div id="waNotConfigured" style="display:none;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);border-radius:8px;padding:12px 14px;font-size:13px;color:#fca5a5;line-height:1.6;">
+        ⚠️ WhatsApp reminders aren't active yet — this is being set up on Biomexa's end, not something you need to configure.
+      </div>
+
+      <div style="margin-top:10px;">
+        <button class="btn" id="waTestBtn" onclick="testWhatsapp()" style="width:auto;padding:10px 16px;">Send Test Message</button>
+      </div>
+      <div id="waMsg" style="font-size:12.5px;margin-top:8px;"></div>
     </div>
   </div>
 
@@ -602,7 +610,8 @@ input[type="time"] { color-scheme: dark; }
         dosage: document.getElementById('medDosage').value,
         time: document.getElementById('medTime').value,
         frequency: document.getElementById('medFreq').value,
-        foodNote: document.getElementById('medFood').value
+        foodNote: document.getElementById('medFood').value,
+        durationDays: document.getElementById('medDuration').value || null
       };
 
       try {

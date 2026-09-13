@@ -274,7 +274,10 @@ const patientSchema = new mongoose.Schema({
     time: String,
     frequency: String,
     foodNote: String,
-    active: { type: Boolean, default: true }
+    active: { type: Boolean, default: true },
+    durationDays: Number, // optional — how many days this treatment runs for; null/undefined = ongoing indefinitely
+    startDate: { type: Date, default: Date.now },
+    endDate: Date // computed from startDate + durationDays when durationDays is set; reminders stop after this date
   }],
   createdAt: { type: Date, default: Date.now }
 });
@@ -777,16 +780,24 @@ app.post('/api/patient/test-whatsapp', auth, async (req, res) => {
 // Add Medicine
 app.post('/api/medicines', auth, async (req, res) => {
   try {
-    const { name, dosage, time, frequency, foodNote } = req.body;
+    const { name, dosage, time, frequency, foodNote, durationDays } = req.body;
 
     const timeRegex = /^([01]\d|2[0-3]):([0-5]\d)$/;
     if (!timeRegex.test(time)) {
       return res.status(400).json({ message: 'Time must be in 24-hour format (HH:MM), e.g. 14:30' });
     }
 
+    const days = durationDays ? parseInt(durationDays, 10) : null;
+    if (days !== null && (isNaN(days) || days < 1 || days > 365)) {
+      return res.status(400).json({ message: 'Treatment duration must be between 1 and 365 days, or left blank for ongoing.' });
+    }
+
+    const startDate = new Date();
+    const endDate = days ? new Date(startDate.getTime() + days * 86400000) : null;
+
     const patient = await Patient.findOneAndUpdate(
       { phone: req.user.phone },
-      { $push: { medicines: { name, dosage, time, frequency, foodNote, active: true } } },
+      { $push: { medicines: { name, dosage, time, frequency, foodNote, active: true, durationDays: days, startDate, endDate } } },
       { new: true }
     );
 
@@ -802,7 +813,8 @@ app.post('/api/medicines', auth, async (req, res) => {
     });
 
     // Send confirmation WhatsApp
-    const confirmMsg = `💊 *Medicine Added*\n\n${name} — ${dosage}\n⏰ ${time}\n${foodNote ? '🍽️ ' + foodNote + '\n' : ''}\nYou'll receive a WhatsApp reminder when it's time to take it.\n\n- Biomexa Team`;
+    const durationNote = days ? `\n📅 This reminder will run for ${days} day${days > 1 ? 's' : ''} and then stop automatically.` : '';
+    const confirmMsg = `💊 *Medicine Added*\n\n${name} — ${dosage}\n⏰ ${time}\n${foodNote ? '🍽️ ' + foodNote + '\n' : ''}${durationNote}\nYou'll receive a WhatsApp reminder when it's time to take it.\n\n- Biomexa Team`;
     sendWhatsAppFree(req.user.phone, confirmMsg);
 
     res.json({ message: 'Medicine added and dose scheduled for today', medicines: patient.medicines });
@@ -1748,6 +1760,53 @@ app.get('/api/whatsapp-status', (req, res) => {
 
 // ========== START SERVER ==========
 const PORT = process.env.PORT || 3000;
+// ========== DAILY DOSE GENERATION — respects treatment duration ==========
+// Runs once every day just after midnight. Creates today's Dose entry for every active
+// medicine, but stops automatically once a medicine's endDate (treatment duration) has passed —
+// this is what actually makes "remind me daily for 7 days, then stop" work. Without this job,
+// a medicine would only ever get the single dose created at the moment it was added.
+cron.schedule('1 0 * * *', async () => {
+  console.log('🌅 Generating today\'s doses for all active medicines...');
+  const today = new Date();
+  const todayStr = today.toISOString().split('T')[0];
+
+  try {
+    const patients = await Patient.find({ 'medicines.active': true });
+    let created = 0, expired = 0;
+
+    for (const patient of patients) {
+      for (const med of patient.medicines) {
+        if (!med.active) continue;
+
+        // Treatment duration expired — stop generating doses for this medicine from now on.
+        if (med.endDate && new Date(med.endDate) < today) {
+          med.active = false;
+          expired++;
+          continue;
+        }
+
+        const existing = await Dose.findOne({ patientPhone: patient.phone, medicineName: med.name, scheduledDate: todayStr });
+        if (existing) continue; // already created (e.g. medicine was added earlier today)
+
+        await Dose.create({
+          patientPhone: patient.phone,
+          medicineName: med.name,
+          dosage: med.dosage,
+          scheduledTime: med.time,
+          scheduledDate: todayStr,
+          foodNote: med.foodNote || '',
+          status: 'pending'
+        });
+        created++;
+      }
+      if (patient.isModified('medicines')) await patient.save();
+    }
+    console.log(`🌅 Daily dose generation done: ${created} created, ${expired} medicine(s) ended their course.`);
+  } catch (err) {
+    console.error('❌ Daily dose generation error:', err.message);
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`🚀 Biomexa Server running on port ${PORT}`);
   console.log(`📱 WhatsApp reminders active (checking every minute)`);
