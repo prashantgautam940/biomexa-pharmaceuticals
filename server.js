@@ -123,6 +123,71 @@ async function sendDoseReminderTemplate(phone, medicineName, dosage) {
   }
 }
 
+// ===== RISK ALERT TEMPLATE — bypasses the 24h free-text window that was silently failing
+// (Meta error 131047) for both automatic vitals-triggered alerts and the admin broadcast. =====
+// Setup needed: create + get Meta approval for a second template in MSG91 (same process as
+// dose_reminder), then set MSG91_RISK_TEMPLATE_NAME/MSG91_RISK_TEMPLATE_NAMESPACE below. Suggested
+// template body: "Biomexa Alert: {{patient_name}}, your recent check-in shows {{risk_level}} risk
+// ({{reason}}). Please stay on schedule with your medicine or reach out to a doctor on Biomexa
+// Connect." — no buttons needed, this is informational only. Until configured, callers fall back
+// to sendWhatsAppFree (free text), which still works for anyone within an active session.
+const MSG91_RISK_TEMPLATE_NAME = process.env.MSG91_RISK_TEMPLATE_NAME || null;
+const MSG91_RISK_TEMPLATE_NAMESPACE = process.env.MSG91_RISK_TEMPLATE_NAMESPACE || '';
+
+async function sendRiskAlertTemplate(phone, patientName, riskLevel, reason) {
+  if (!MSG91_CONFIGURED || !MSG91_RISK_TEMPLATE_NAME) {
+    return { success: false, provider: 'msg91_risk_template_not_configured' };
+  }
+  try {
+    const res = await fetch('https://api.msg91.com/api/v5/whatsapp/whatsapp-outbound-message/bulk/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'authkey': MSG91_AUTH_KEY },
+      body: JSON.stringify({
+        integrated_number: MSG91_INTEGRATED_NUMBER,
+        content_type: 'template',
+        payload: {
+          messaging_product: 'whatsapp',
+          type: 'template',
+          template: {
+            name: MSG91_RISK_TEMPLATE_NAME,
+            language: { code: MSG91_TEMPLATE_LANG, policy: 'deterministic' },
+            namespace: MSG91_RISK_TEMPLATE_NAMESPACE,
+            to_and_components: [{
+              to: [phone.replace(/\D/g, '')],
+              components: {
+                body_1: { type: 'text', value: patientName, parameter_name: 'patient_name' },
+                body_2: { type: 'text', value: riskLevel, parameter_name: 'risk_level' },
+                body_3: { type: 'text', value: reason, parameter_name: 'reason' }
+              }
+            }]
+          }
+        }
+      }),
+      signal: AbortSignal.timeout(10000)
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      console.log('⚠️ MSG91 risk alert template send failed:', JSON.stringify(data).substring(0, 500));
+      return { success: false, provider: 'msg91', detail: data };
+    }
+    console.log('✅ MSG91 risk alert template sent to', phone);
+    return { success: true, provider: 'msg91' };
+  } catch (err) {
+    console.log('⚠️ MSG91 risk alert template send error:', err.message);
+    return { success: false, provider: 'msg91', detail: err.message };
+  }
+}
+
+// Unified risk-alert sender — tries the template first (works regardless of session state),
+// falls back to free text only if the template isn't configured yet.
+async function sendRiskAlertMessage(phone, patientName, riskLevel, reason) {
+  const templateResult = await sendRiskAlertTemplate(phone, patientName, riskLevel, reason);
+  if (templateResult.success) return templateResult;
+
+  const fallbackMsg = `🚨 *Biomexa Health Check-In*\n\nHi ${patientName}, our system flagged your treatment adherence as *${riskLevel} risk* (${reason}).\n\nPlease try to stay on schedule with your medicine, and consider reaching out to a doctor on Biomexa Connect if you're having trouble.\n\n- Biomexa Team`;
+  return sendWhatsAppFree(phone, fallbackMsg);
+}
+
 // Parses free-text vitals like "BP 120/80, temp 98.6, pulse 72" — deliberately permissive since
 // real patients won't format this consistently. Returns only the fields it actually found.
 function parseVitalsFromText(text) {
@@ -447,10 +512,10 @@ async function triggerRiskAlert(patient, vitals) {
     sendWhatsAppFree(availableDoctor.phone, doctorMsg);
   }
 
-  sendWhatsAppFree(
-    patient.phone,
-    `⚠️ Your recent reading (${danger.reason}) is outside the normal range. A doctor has been notified and may reach out. If you feel unwell, please seek medical attention now.`
-  );
+  // Uses the risk alert template when configured (works regardless of session state) — this is
+  // what fixes the "Sent" but never-delivered issue confirmed via MSG91's own logs (Meta error
+  // 131047: the patient hadn't messaged within 24h, so free text was silently rejected).
+  sendRiskAlertMessage(patient.phone, patient.name, danger.severity === 'critical' ? 'Critical' : 'High', danger.reason);
 
   return alert;
 }
@@ -1688,9 +1753,13 @@ app.post('/api/admin/send-risk-alerts', adminAuth, async (req, res) => {
       if (riskProb <= 0.33) { results.skipped_low_risk++; continue; }
 
       const label = riskProb > 0.66 ? 'Critical' : 'High';
-      const msg = `🚨 *Biomexa Health Check-In*\n\nHi ${p.name}, our system flagged your treatment adherence as *${label} risk* (${Math.round(riskProb * 100)}%).\n\nThis usually means some recent doses were missed, or your logged vitals are outside the normal range. Please try to stay on schedule with your medicine, and consider reaching out to a doctor on Biomexa Connect if you're having trouble.\n\n- Biomexa Team`;
+      const reason = `adherence risk ${Math.round(riskProb * 100)}%`;
 
-      const result = await sendWhatsAppFree(p.phone, msg);
+      // Uses the risk alert template when configured — this is what actually reaches patients
+      // regardless of whether they've messaged recently. Free text (the old behavior) was
+      // showing "Sent" from MSG91's API but silently failing at Meta for anyone outside their
+      // 24h session window (confirmed via MSG91's own Logs — error 131047).
+      const result = await sendRiskAlertMessage(p.phone, p.name, label, reason);
       if (result.success) {
         results.sent.push({ name: p.name, phone: p.phone, risk_label: label, risk_score: riskProb });
       } else {
@@ -1755,7 +1824,7 @@ app.get('/stats', async (req, res) => {
 // provider) is configured server-side. No auth needed — this is not sensitive, just a
 // feature-availability flag.
 app.get('/api/whatsapp-status', (req, res) => {
-  res.json({ msg91Configured: MSG91_CONFIGURED });
+  res.json({ msg91Configured: MSG91_CONFIGURED, riskTemplateConfigured: !!MSG91_RISK_TEMPLATE_NAME });
 });
 
 // ========== START SERVER ==========

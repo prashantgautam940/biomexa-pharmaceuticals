@@ -166,6 +166,7 @@ tr:hover { background: rgba(13,115,119,0.05); }
       <div>
         <h2><i class="fas fa-bullhorn"></i> Broadcast Risk Alert</h2>
         <p>Sends a real WhatsApp check-in message to every patient the AI model currently flags as High or Critical risk — based on the same risk score shown in the table below, so it's always consistent with what you see.</p>
+        <p id="riskTemplateStatus" style="margin-top:6px;font-size:0.78rem;"></p>
       </div>
       <button class="train-btn" id="broadcastBtn" onclick="confirmBroadcast()" style="background: linear-gradient(135deg, var(--danger), #f87171);"><i class="fas fa-paper-plane"></i> Send to All High-Risk Patients</button>
     </div>
@@ -318,6 +319,13 @@ function loadWaSystemStatus() {
       } else {
         el.textContent = '⚠ Not configured';
         el.style.color = 'var(--accent)';
+      }
+
+      const riskEl = document.getElementById('riskTemplateStatus');
+      if (s.riskTemplateConfigured) {
+        riskEl.innerHTML = '✅ <span style="color:var(--success);">Risk alert template active — reaches patients regardless of session state.</span>';
+      } else {
+        riskEl.innerHTML = '⚠️ <span style="color:var(--accent);">No approved risk alert template set — broadcasts fall back to free text, which fails for anyone who hasn\'t messaged recently (Meta error 131047).</span>';
       }
     })
     .catch(() => {});
