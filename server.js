@@ -936,10 +936,62 @@ app.post('/api/doses/:id/confirm', auth, async (req, res) => {
 });
 
 // ========== WHATSAPP REMINDER CRON ==========
+// Tracks the last calendar date the daily dose-generation ran, so it only actually does the
+// work once per day even though it's checked on every minute tick — this replaces a separate
+// fixed-clock-time cron ('1 0 * * *') that never actually fired, because Render's free tier
+// puts the service to sleep when idle and only wakes it on incoming traffic; the odds of it
+// being awake at exactly 00:01 were effectively zero. Piggybacking on the reliable once-a-minute
+// job means this runs the moment the service is next awake, whatever time that happens to be.
+let lastDoseGenerationDate = null;
+
+async function generateTodaysDoses(todayStr) {
+  console.log('🌅 Generating today\'s doses for all active medicines...');
+  const today = new Date();
+  try {
+    const patients = await Patient.find({ 'medicines.active': true });
+    let created = 0, expired = 0;
+
+    for (const patient of patients) {
+      for (const med of patient.medicines) {
+        if (!med.active) continue;
+
+        if (med.endDate && new Date(med.endDate) < today) {
+          med.active = false;
+          expired++;
+          continue;
+        }
+
+        const existing = await Dose.findOne({ patientPhone: patient.phone, medicineName: med.name, scheduledDate: todayStr });
+        if (existing) continue;
+
+        await Dose.create({
+          patientPhone: patient.phone,
+          medicineName: med.name,
+          dosage: med.dosage,
+          scheduledTime: med.time,
+          scheduledDate: todayStr,
+          foodNote: med.foodNote || '',
+          status: 'pending'
+        });
+        created++;
+      }
+      if (patient.isModified('medicines')) await patient.save();
+    }
+    console.log(`🌅 Daily dose generation done: ${created} created, ${expired} medicine(s) ended their course.`);
+  } catch (err) {
+    console.error('❌ Daily dose generation error:', err.message);
+  }
+}
+
 cron.schedule('* * * * *', async () => {
   const now = new Date();
   const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
   const today = now.toISOString().split('T')[0];
+
+  if (lastDoseGenerationDate !== today) {
+    lastDoseGenerationDate = today;
+    await generateTodaysDoses(today);
+  }
 
   console.log(`⏰ [${currentTime}] Checking for pending doses...`);
 
@@ -1829,52 +1881,6 @@ app.get('/api/whatsapp-status', (req, res) => {
 
 // ========== START SERVER ==========
 const PORT = process.env.PORT || 3000;
-// ========== DAILY DOSE GENERATION — respects treatment duration ==========
-// Runs once every day just after midnight. Creates today's Dose entry for every active
-// medicine, but stops automatically once a medicine's endDate (treatment duration) has passed —
-// this is what actually makes "remind me daily for 7 days, then stop" work. Without this job,
-// a medicine would only ever get the single dose created at the moment it was added.
-cron.schedule('1 0 * * *', async () => {
-  console.log('🌅 Generating today\'s doses for all active medicines...');
-  const today = new Date();
-  const todayStr = today.toISOString().split('T')[0];
-
-  try {
-    const patients = await Patient.find({ 'medicines.active': true });
-    let created = 0, expired = 0;
-
-    for (const patient of patients) {
-      for (const med of patient.medicines) {
-        if (!med.active) continue;
-
-        // Treatment duration expired — stop generating doses for this medicine from now on.
-        if (med.endDate && new Date(med.endDate) < today) {
-          med.active = false;
-          expired++;
-          continue;
-        }
-
-        const existing = await Dose.findOne({ patientPhone: patient.phone, medicineName: med.name, scheduledDate: todayStr });
-        if (existing) continue; // already created (e.g. medicine was added earlier today)
-
-        await Dose.create({
-          patientPhone: patient.phone,
-          medicineName: med.name,
-          dosage: med.dosage,
-          scheduledTime: med.time,
-          scheduledDate: todayStr,
-          foodNote: med.foodNote || '',
-          status: 'pending'
-        });
-        created++;
-      }
-      if (patient.isModified('medicines')) await patient.save();
-    }
-    console.log(`🌅 Daily dose generation done: ${created} created, ${expired} medicine(s) ended their course.`);
-  } catch (err) {
-    console.error('❌ Daily dose generation error:', err.message);
-  }
-});
 
 app.listen(PORT, () => {
   console.log(`🚀 Biomexa Server running on port ${PORT}`);
