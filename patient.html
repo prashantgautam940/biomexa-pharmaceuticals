@@ -644,7 +644,7 @@ input[type="time"] { color-scheme: dark; }
         .then(logs => {
           const el = document.getElementById('vitalsHistoryList');
           if (!logs || !logs.length) {
-            el.innerHTML = '<div class="empty-state">No vitals logged yet — after you confirm a dose on WhatsApp, we\'ll ask for your BP, temperature and pulse. Reply with those and they\'ll show up here.</div>';
+            el.innerHTML = '<div class="empty-state">No vitals logged yet — after you confirm a dose on WhatsApp, we\'ll ask for your BP, temperature, pulse and sugar level. Reply with those and they\'ll show up here.</div>';
             return;
           }
           el.innerHTML = logs.map(v => {
@@ -652,6 +652,7 @@ input[type="time"] { color-scheme: dark; }
             if (v.bpSystolic) parts.push(`BP ${v.bpSystolic}/${v.bpDiastolic || '?'}`);
             if (v.temperature) parts.push(`Temp ${v.temperature}°F`);
             if (v.heartRate) parts.push(`Pulse ${v.heartRate} bpm`);
+            if (v.glucose) parts.push(`Sugar ${v.glucose} mg/dL`);
             const date = new Date(v.recordedAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
             return `
               <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #1f2937;">

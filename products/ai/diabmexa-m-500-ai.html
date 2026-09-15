@@ -720,6 +720,10 @@
                 <div class="card-header"><i class="fas fa-heartbeat"></i> Daily Vitals & Glucose Tracker</div>
                 <form class="vitals-form" onsubmit="saveVitals(event)">
                     <div class="form-group">
+                        <label>Your WhatsApp Number (with country code)</label>
+                        <input type="tel" id="vitalsPhone" placeholder="+91 98765 43210" required>
+                    </div>
+                    <div class="form-group">
                         <label>Date</label>
                         <input type="date" id="vitalDate" required>
                     </div>
@@ -1051,6 +1055,7 @@
 
         function saveVitals(e) {
             e.preventDefault();
+            const phone = document.getElementById('vitalsPhone').value.trim();
             const date = document.getElementById('vitalDate').value;
             const fasting = parseInt(document.getElementById('fastingGlucose').value);
             const pp = document.getElementById('ppGlucose').value;
@@ -1058,16 +1063,40 @@
             const hr = document.getElementById('heartRate').value;
             const mood = document.getElementById('mood').value;
 
+            if (!phone || phone.replace(/\D/g, '').length < 10) {
+                showToast('Please enter a valid WhatsApp number so this saves to your record');
+                return;
+            }
+
+            // Keep a local echo for this page's own history list (weight/mood aren't tracked
+            // server-side yet), but the real save — the one the AI engine and your doctor
+            // actually see — goes to the backend below.
             const vital = { date, fasting, pp, weight, hr, mood, timestamp: Date.now() };
             let vitals = JSON.parse(localStorage.getItem('diabmexa_vitals') || '[]');
             vitals.unshift(vital);
             if (vitals.length > 30) vitals = vitals.slice(0, 30);
             localStorage.setItem('diabmexa_vitals', JSON.stringify(vitals));
 
+            const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+                ? 'http://localhost:3000'
+                : 'https://biomexa-api-f9f6.onrender.com';
+
+            fetch(`${API_URL}/api/quick-vitals`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ phone, glucose: fasting, heartRate: hr || undefined })
+            })
+                .then(res => res.json().then(data => ({ ok: res.ok, data })))
+                .then(({ ok, data }) => {
+                    if (!ok) throw new Error(data.message || 'Could not save to your record');
+                    showToast(data.riskFlagged ? '⚠️ Vitals saved — reading flagged for review' : 'Vitals saved to your Biomexa record!');
+                })
+                .catch(err => showToast(err.message));
+
             renderVitals();
-            showToast('Vitals saved successfully!');
             e.target.reset();
             document.getElementById('vitalDate').valueAsDate = new Date();
+            document.getElementById('vitalsPhone').value = phone; // keep the number filled in for next time
         }
 
         function renderVitals() {

@@ -201,6 +201,8 @@ function parseVitalsFromText(text) {
   if (tempMatch) result.temperature = parseFloat(tempMatch[1]);
   const hrMatch = text.match(/(?:pulse|hr|heart\s*rate)[:\s]*(\d{2,3})/i);
   if (hrMatch) result.heartRate = parseInt(hrMatch[1], 10);
+  const glucoseMatch = text.match(/(?:sugar|glucose|blood\s*sugar|bs)[:\s]*(\d{2,3})/i);
+  if (glucoseMatch) result.glucose = parseInt(glucoseMatch[1], 10);
   return result;
 }
 
@@ -405,6 +407,7 @@ const vitalsLogSchema = new mongoose.Schema({
   bpDiastolic: Number,
   temperature: Number,
   heartRate: Number,
+  glucose: Number, // blood sugar, mg/dL — especially relevant for diabetes patients (Diabmexa)
   source: { type: String, default: 'whatsapp' }, // whatsapp | manual | doctor
   recordedAt: { type: Date, default: Date.now }
 });
@@ -430,7 +433,8 @@ const riskAlertSchema = new mongoose.Schema({
     bpSystolic: Number,
     bpDiastolic: Number,
     temperature: Number,
-    heartRate: Number
+    heartRate: Number,
+    glucose: Number
   },
   severity: { type: String, default: 'high' }, // high | critical
   notifiedDoctorPhone: String,
@@ -485,6 +489,16 @@ function checkVitalsDanger(vitals) {
   } else if (vitals.heartRate && vitals.heartRate <= 45) {
     reasons.push(`Low heart rate: ${vitals.heartRate} bpm`);
     severity = 'critical';
+  }
+
+  if (vitals.glucose >= 250) {
+    reasons.push(`Severe hyperglycemia: sugar ${vitals.glucose} mg/dL`);
+    severity = 'critical';
+  } else if (vitals.glucose && vitals.glucose <= 70) {
+    reasons.push(`Hypoglycemia: sugar ${vitals.glucose} mg/dL`);
+    severity = 'critical';
+  } else if (vitals.glucose >= 180) {
+    reasons.push(`High blood sugar: sugar ${vitals.glucose} mg/dL`);
   }
 
   return reasons.length ? { reason: reasons.join('; '), severity } : null;
@@ -631,6 +645,48 @@ app.post('/api/quick-reminder', async (req, res) => {
       isNewAccount,
       whatsappSent: waResult.success
     });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Quick vitals logging — same phone-identified pattern as /api/quick-reminder, for pages like
+// the Diabmexa AI guide's "Daily Vitals & Glucose Tracker" where a visitor isn't logged in.
+// Finds/creates the patient by phone, saves a real VitalsLog entry, updates their baseline, and
+// runs the same danger check the WhatsApp flow uses so risk alerts stay consistent everywhere.
+app.post('/api/quick-vitals', async (req, res) => {
+  try {
+    const { name, phone, glucose, bpSystolic, bpDiastolic, temperature, heartRate } = req.body;
+    if (!phone || (!glucose && !bpSystolic && !temperature && !heartRate)) {
+      return res.status(400).json({ message: 'Phone number and at least one vital reading are required.' });
+    }
+
+    let patient = await Patient.findOne({ phone });
+    if (!patient) {
+      const randomPassword = crypto.randomBytes(12).toString('hex');
+      const hashed = await bcrypt.hash(randomPassword, 10);
+      patient = await Patient.create({ name: name || 'Biomexa Patient', phone, password: hashed, medicines: [] });
+    }
+
+    const vitals = {};
+    if (glucose) vitals.glucose = parseInt(glucose, 10);
+    if (bpSystolic) vitals.bpSystolic = parseInt(bpSystolic, 10);
+    if (bpDiastolic) vitals.bpDiastolic = parseInt(bpDiastolic, 10);
+    if (temperature) vitals.temperature = parseFloat(temperature);
+    if (heartRate) vitals.heartRate = parseInt(heartRate, 10);
+
+    await VitalsLog.create({ patientPhone: phone, ...vitals, source: 'manual' });
+
+    const baselineUpdate = {};
+    if (vitals.glucose) baselineUpdate['baselineVitals.glucose'] = vitals.glucose;
+    if (vitals.bpSystolic) baselineUpdate['baselineVitals.bpSystolic'] = vitals.bpSystolic;
+    if (vitals.bpDiastolic) baselineUpdate['baselineVitals.bpDiastolic'] = vitals.bpDiastolic;
+    if (vitals.temperature) baselineUpdate['baselineVitals.temperature'] = vitals.temperature;
+    if (Object.keys(baselineUpdate).length) await Patient.findOneAndUpdate({ phone }, baselineUpdate);
+
+    const alert = await triggerRiskAlert(patient, vitals);
+
+    res.json({ message: 'Vitals saved to your Biomexa record.', riskFlagged: !!alert });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -1124,7 +1180,7 @@ app.post('/api/webhooks/msg91-whatsapp', async (req, res) => {
         await Dose.findByIdAndUpdate(convo.doseId, { status: took ? 'taken' : 'missed' });
 
         if (took) {
-          await sendWhatsAppFree(phone, `✅ Great, logged as taken! Quick check-in — reply with your BP, temperature and pulse if you have them handy (e.g. "BP 120/80, temp 98.6, pulse 72"). Or just reply "skip".`);
+          await sendWhatsAppFree(phone, `✅ Great, logged as taken! Quick check-in — reply with your BP, temperature, pulse, or sugar level if you have them handy (e.g. "BP 120/80, temp 98.6, pulse 72, sugar 110"). Or just reply "skip".`);
           await ConversationState.findOneAndUpdate({ patientPhone: phone }, { state: 'awaiting_vitals', updatedAt: new Date() });
         } else {
           await sendWhatsAppFree(phone, `Noted — marked as not taken. Please try to take it as soon as possible, or reach out to your doctor via the Biomexa app if you're having trouble with this medicine.`);
@@ -1143,7 +1199,7 @@ app.post('/api/webhooks/msg91-whatsapp', async (req, res) => {
 
       const vitals = parseVitalsFromText(freeText);
       if (Object.keys(vitals).length === 0) {
-        await sendWhatsAppFree(phone, `Sorry, I couldn't read any vitals from that. Try a format like "BP 120/80, temp 98.6, pulse 72" — or reply "skip".`);
+        await sendWhatsAppFree(phone, `Sorry, I couldn't read any vitals from that. Try a format like "BP 120/80, temp 98.6, pulse 72, sugar 110" — or reply "skip".`);
         return;
       }
 
@@ -1155,12 +1211,14 @@ app.post('/api/webhooks/msg91-whatsapp', async (req, res) => {
       if (vitals.bpSystolic) baselineUpdate['baselineVitals.bpSystolic'] = vitals.bpSystolic;
       if (vitals.bpDiastolic) baselineUpdate['baselineVitals.bpDiastolic'] = vitals.bpDiastolic;
       if (vitals.temperature) baselineUpdate['baselineVitals.temperature'] = vitals.temperature;
+      if (vitals.glucose) baselineUpdate['baselineVitals.glucose'] = vitals.glucose;
       if (Object.keys(baselineUpdate).length) await Patient.findOneAndUpdate({ phone }, baselineUpdate);
 
       const summary = [
         vitals.bpSystolic && `BP ${vitals.bpSystolic}/${vitals.bpDiastolic}`,
         vitals.temperature && `Temp ${vitals.temperature}°F`,
-        vitals.heartRate && `Pulse ${vitals.heartRate}`
+        vitals.heartRate && `Pulse ${vitals.heartRate}`,
+        vitals.glucose && `Sugar ${vitals.glucose} mg/dL`
       ].filter(Boolean).join(', ');
 
       // Risk check — if this reading is dangerous, triggerRiskAlert handles notifying both the
@@ -1410,6 +1468,7 @@ app.get('/api/doctor/patient/:phone/vitals', async (req, res) => {
         bpDiastolic: latest?.bpDiastolic || patient.baselineVitals?.bpDiastolic || null,
         temperature: latest?.temperature || null,
         heartRate: latest?.heartRate || null,
+        glucose: latest?.glucose || patient.baselineVitals?.glucose || null,
         hasRealVitals: !!latest
       });
     }
@@ -1630,12 +1689,13 @@ async function computePatientFeatures(patient) {
   const bpDiastolic = latestVitals?.bpDiastolic || patient.baselineVitals?.bpDiastolic || 80;
   const temperature = latestVitals?.temperature || patient.baselineVitals?.temperature || 98.6;
   const heartRate = latestVitals?.heartRate || 72;
+  const glucose = latestVitals?.glucose || patient.baselineVitals?.glucose || 100;
   const hasRealVitals = !!latestVitals;
 
-  const features = [numMedicines, missed, daysSince, doseFreq, bpSystolic, bpDiastolic, temperature, heartRate];
+  const features = [numMedicines, missed, daysSince, doseFreq, bpSystolic, bpDiastolic, temperature, heartRate, glucose];
   return {
     features, adherence, missed, total, hasRealVitals,
-    vitals: { bpSystolic, bpDiastolic, temperature, heartRate }
+    vitals: { bpSystolic, bpDiastolic, temperature, heartRate, glucose }
   };
 }
 
