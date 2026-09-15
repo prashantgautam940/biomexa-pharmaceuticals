@@ -1128,9 +1128,10 @@ let lastDoseGenerationDate = null;
 async function generateTodaysDoses(todayStr) {
   console.log('🌅 Generating today\'s doses for all active medicines...');
   const today = new Date();
+  const currentTime = `${String(today.getHours()).padStart(2, '0')}:${String(today.getMinutes()).padStart(2, '0')}`;
   try {
     const patients = await Patient.find({ 'medicines.active': true });
-    let created = 0, expired = 0;
+    let created = 0, expired = 0, skippedPassed = 0;
 
     for (const patient of patients) {
       for (const med of patient.medicines) {
@@ -1145,6 +1146,16 @@ async function generateTodaysDoses(todayStr) {
         const existing = await Dose.findOne({ patientPhone: patient.phone, medicineName: med.name, scheduledTime: med.time, scheduledDate: todayStr });
         if (existing) continue;
 
+        // Same protection as /api/medicines: if this is the first regeneration run of the day
+        // and it happens to occur after this medicine's time has already passed (Render's free
+        // tier can wake up late after sleeping), creating a "today" dose here would leave it
+        // permanently stuck as Pending — the exact-time-match reminder cron can never catch up
+        // on a minute that's already gone by. Skip it; tomorrow's regeneration creates a real one.
+        if (med.time <= currentTime) {
+          skippedPassed++;
+          continue;
+        }
+
         await Dose.create({
           patientPhone: patient.phone,
           medicineName: med.name,
@@ -1158,7 +1169,7 @@ async function generateTodaysDoses(todayStr) {
       }
       if (patient.isModified('medicines')) await patient.save();
     }
-    console.log(`🌅 Daily dose generation done: ${created} created, ${expired} medicine(s) ended their course.`);
+    console.log(`🌅 Daily dose generation done: ${created} created, ${expired} medicine(s) ended their course, ${skippedPassed} skipped (time already passed today).`);
   } catch (err) {
     console.error('❌ Daily dose generation error:', err.message);
   }
