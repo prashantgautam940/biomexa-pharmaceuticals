@@ -188,6 +188,66 @@ async function sendRiskAlertMessage(phone, patientName, riskLevel, reason) {
   return sendWhatsAppFree(phone, fallbackMsg);
 }
 
+// ===== WELCOME TEMPLATE — same fix as risk_alert, applied to the one message every single new
+// signup needs and, until now, could never actually receive: brand-new contacts have no open
+// WhatsApp session, so the free-text welcome message was silently blocked (Meta error 131047)
+// on every register/quick-reminder signup. =====
+// Setup: create + get Meta approval for a third template in MSG91 (identical process to
+// dose_reminder and risk_alert). Suggested body: "Welcome to Biomexa, {{patient_name}}! Your
+// account is set up and dose reminders are now active." — no buttons needed.
+const MSG91_WELCOME_TEMPLATE_NAME = process.env.MSG91_WELCOME_TEMPLATE_NAME || null;
+const MSG91_WELCOME_TEMPLATE_NAMESPACE = process.env.MSG91_WELCOME_TEMPLATE_NAMESPACE || '';
+
+async function sendWelcomeTemplate(phone, patientName) {
+  if (!MSG91_CONFIGURED || !MSG91_WELCOME_TEMPLATE_NAME) {
+    return { success: false, provider: 'msg91_welcome_template_not_configured' };
+  }
+  try {
+    const res = await fetch('https://api.msg91.com/api/v5/whatsapp/whatsapp-outbound-message/bulk/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'authkey': MSG91_AUTH_KEY },
+      body: JSON.stringify({
+        integrated_number: MSG91_INTEGRATED_NUMBER,
+        content_type: 'template',
+        payload: {
+          messaging_product: 'whatsapp',
+          type: 'template',
+          template: {
+            name: MSG91_WELCOME_TEMPLATE_NAME,
+            language: { code: MSG91_TEMPLATE_LANG, policy: 'deterministic' },
+            namespace: MSG91_WELCOME_TEMPLATE_NAMESPACE,
+            to_and_components: [{
+              to: [phone.replace(/\D/g, '')],
+              components: {
+                body_1: { type: 'text', value: patientName, parameter_name: 'patient_name' }
+              }
+            }]
+          }
+        }
+      }),
+      signal: AbortSignal.timeout(10000)
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      console.log('⚠️ MSG91 welcome template send failed:', JSON.stringify(data).substring(0, 500));
+      return { success: false, provider: 'msg91', detail: data };
+    }
+    console.log('✅ MSG91 welcome template sent to', phone);
+    return { success: true, provider: 'msg91' };
+  } catch (err) {
+    console.log('⚠️ MSG91 welcome template send error:', err.message);
+    return { success: false, provider: 'msg91', detail: err.message };
+  }
+}
+
+// Unified welcome sender — template first (reaches a brand-new contact regardless of session
+// state), falls back to free text only if the template isn't configured yet.
+async function sendWelcomeMessage(phone, patientName, fallbackMsg) {
+  const templateResult = await sendWelcomeTemplate(phone, patientName);
+  if (templateResult.success) return templateResult;
+  return sendWhatsAppFree(phone, fallbackMsg);
+}
+
 // Parses free-text vitals like "BP 120/80, temp 98.6, pulse 72" — deliberately permissive since
 // real patients won't format this consistently. Returns only the fields it actually found.
 function parseVitalsFromText(text) {
@@ -571,12 +631,11 @@ app.post('/api/auth/register', async (req, res) => {
 
     const token = jwt.sign({ id: patient._id, phone }, JWT_SECRET, { expiresIn: '7d' });
 
-    // Welcome message via MSG91 — note: a brand-new contact who has never messaged your business
-    // number won't receive free-text via MSG91 until they message you first (WhatsApp's 24h
-    // session rule) — this is a platform limitation, not a bug. Once they add a medicine, that
-    // reminder still fires correctly via the approved template regardless.
+    // Tries the welcome template first (works even for a brand-new contact who's never
+    // messaged your business number), falls back to free text if the template isn't
+    // configured — same fix already proven for risk_alert.
     const welcomeMsg = `🎉 Welcome to Biomexa, ${name}!\n\nYour WhatsApp dose reminders are now active. We'll notify you when it's time to take your medicine.\n\nReply CONFIRM after each dose to track your adherence.\n\n- Biomexa Team`;
-    const waResult = await sendWhatsAppFree(phone, welcomeMsg);
+    const waResult = await sendWelcomeMessage(phone, name, welcomeMsg);
 
     res.json({ message: 'Registered successfully', token, patient: { name, phone }, whatsappConnected: waResult.success });
   } catch (err) {
@@ -613,20 +672,33 @@ app.post('/api/quick-reminder', async (req, res) => {
     patient.medicines.push({ name: medicineName, dosage: dosage || '', time, frequency: 'daily', foodNote: foodNote || '', active: true });
     await patient.save();
 
-    const today = new Date().toISOString().split('T')[0];
-    await Dose.create({
-      patientPhone: phone,
-      medicineName,
-      dosage: dosage || '',
-      scheduledTime: time,
-      scheduledDate: today,
-      foodNote: foodNote || '',
-      status: 'pending'
-    });
+    // Same fix as /api/medicines: don't create a "today" dose for a time that's already passed —
+    // the reminder cron only matches an exact current-time tick, it can't catch up retroactively,
+    // so that dose would sit stuck as Pending forever. Skip it and let tomorrow's daily
+    // generation create the first real one instead.
+    const now = new Date();
+    const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const timeAlreadyPassedToday = time <= currentTime;
 
+    if (!timeAlreadyPassedToday) {
+      const today = new Date().toISOString().split('T')[0];
+      await Dose.create({
+        patientPhone: phone,
+        medicineName,
+        dosage: dosage || '',
+        scheduledTime: time,
+        scheduledDate: today,
+        foodNote: foodNote || '',
+        status: 'pending'
+      });
+    }
+
+    const firstReminderNote = timeAlreadyPassedToday
+      ? `Today's ${time} slot has already passed, so your first reminder will be tomorrow at ${time}.`
+      : '';
     const msg = isNewAccount
-      ? `🎉 Hi ${name}! Your reminder for *${medicineName}* is set for ${time} daily.\n\nWe've also created your Biomexa account with this number — use "Forgot password" on the login page anytime if you want full dashboard access.\n\n- Biomexa Team`
-      : `✅ Added a new reminder for *${medicineName}* at ${time} daily to your existing Biomexa account.\n\n- Biomexa Team`;
+      ? `🎉 Hi ${name}! Your reminder for *${medicineName}* is set for ${time} daily.${firstReminderNote ? '\n' + firstReminderNote : ''}\n\nWe've also created your Biomexa account with this number — use "Forgot password" on the login page anytime if you want full dashboard access.\n\n- Biomexa Team`
+      : `✅ Added a new reminder for *${medicineName}* at ${time} daily to your existing Biomexa account.${firstReminderNote ? '\n' + firstReminderNote : ''}\n\n- Biomexa Team`;
 
     // A brand-new contact hasn't messaged your business number yet, so MSG91 free-text delivery
     // isn't guaranteed (WhatsApp only allows that within an open 24h session). The approved
@@ -922,23 +994,39 @@ app.post('/api/medicines', auth, async (req, res) => {
       { new: true }
     );
 
-    const today = new Date().toISOString().split('T')[0];
-    await Dose.create({
-      patientPhone: req.user.phone,
-      medicineName: name,
-      dosage,
-      scheduledTime: time,
-      scheduledDate: today,
-      foodNote: foodNote || '',
-      status: 'pending'
-    });
+    // If today's slot for this time has already passed, creating a "today" dose would leave it
+    // permanently stuck as Pending — the reminder cron only fires on an exact current-time match,
+    // it never catches up on a time that's already gone by. In that case, skip today's dose
+    // entirely and let it start tomorrow instead, which the daily generation job creates
+    // automatically. This is what was silently failing for reminders set for a time earlier in
+    // the day than when the medicine was actually added.
+    const now = new Date();
+    const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const timeAlreadyPassedToday = time <= currentTime;
+
+    let firstReminderNote;
+    if (timeAlreadyPassedToday) {
+      firstReminderNote = `Today's ${time} slot has already passed, so your first reminder will be tomorrow at ${time}.`;
+    } else {
+      const today = new Date().toISOString().split('T')[0];
+      await Dose.create({
+        patientPhone: req.user.phone,
+        medicineName: name,
+        dosage,
+        scheduledTime: time,
+        scheduledDate: today,
+        foodNote: foodNote || '',
+        status: 'pending'
+      });
+      firstReminderNote = `You'll receive a WhatsApp reminder when it's time to take it.`;
+    }
 
     // Send confirmation WhatsApp
     const durationNote = days ? `\n📅 This reminder will run for ${days} day${days > 1 ? 's' : ''} and then stop automatically.` : '';
-    const confirmMsg = `💊 *Medicine Added*\n\n${name} — ${dosage}\n⏰ ${time}\n${foodNote ? '🍽️ ' + foodNote + '\n' : ''}${durationNote}\nYou'll receive a WhatsApp reminder when it's time to take it.\n\n- Biomexa Team`;
+    const confirmMsg = `💊 *Medicine Added*\n\n${name} — ${dosage}\n⏰ ${time}\n${foodNote ? '🍽️ ' + foodNote + '\n' : ''}${durationNote}\n${firstReminderNote}\n\n- Biomexa Team`;
     sendWhatsAppFree(req.user.phone, confirmMsg);
 
-    res.json({ message: 'Medicine added and dose scheduled for today', medicines: patient.medicines });
+    res.json({ message: timeAlreadyPassedToday ? 'Medicine added — first reminder is tomorrow' : 'Medicine added and dose scheduled for today', medicines: patient.medicines });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -1282,7 +1370,7 @@ app.post('/api/doctors/register', async (req, res) => {
     const token = jwt.sign({ id: doctor._id, phone, role: 'doctor' }, JWT_SECRET, { expiresIn: '7d' });
 
     const welcomeMsg = `👨‍⚕️ *Welcome to Biomexa, Dr. ${name}!*\n\nYour doctor profile is now live on the Biomexa Connect network. Patients with a high risk score can reach you instantly via WhatsApp.\n\nYou're marked *Available* by default — toggle this anytime from your dashboard.\n\n- Biomexa Team`;
-    sendWhatsAppFree(phone, welcomeMsg);
+    sendWelcomeMessage(phone, `Dr. ${name}`, welcomeMsg);
 
     res.json({ message: 'Doctor registered successfully', token, doctor: { id: doctor._id, name, phone, specialty: doctor.specialty, available: doctor.available } });
   } catch (err) {
@@ -1936,7 +2024,11 @@ app.get('/stats', async (req, res) => {
 // provider) is configured server-side. No auth needed — this is not sensitive, just a
 // feature-availability flag.
 app.get('/api/whatsapp-status', (req, res) => {
-  res.json({ msg91Configured: MSG91_CONFIGURED, riskTemplateConfigured: !!MSG91_RISK_TEMPLATE_NAME });
+  res.json({
+    msg91Configured: MSG91_CONFIGURED,
+    riskTemplateConfigured: !!MSG91_RISK_TEMPLATE_NAME,
+    welcomeTemplateConfigured: !!MSG91_WELCOME_TEMPLATE_NAME
+  });
 });
 
 // ========== START SERVER ==========

@@ -159,6 +159,7 @@ tr:hover { background: rgba(13,115,119,0.05); }
         <div class="value" id="waActiveAlerts" style="color: var(--danger);">—</div>
       </div>
     </div>
+    <p id="welcomeTemplateStatus" style="margin-top:10px;font-size:0.78rem;"></p>
   </div>
 
   <div class="ai-panel" id="broadcastPanel" style="border-color: var(--danger);">
@@ -326,6 +327,13 @@ function loadWaSystemStatus() {
         riskEl.innerHTML = '✅ <span style="color:var(--success);">Risk alert template active — reaches patients regardless of session state.</span>';
       } else {
         riskEl.innerHTML = '⚠️ <span style="color:var(--accent);">No approved risk alert template set — broadcasts fall back to free text, which fails for anyone who hasn\'t messaged recently (Meta error 131047).</span>';
+      }
+
+      const welcomeEl = document.getElementById('welcomeTemplateStatus');
+      if (s.welcomeTemplateConfigured) {
+        welcomeEl.innerHTML = '✅ <span style="color:var(--success);">Welcome template active — new signups get a real WhatsApp welcome message.</span>';
+      } else {
+        welcomeEl.innerHTML = '⚠️ <span style="color:var(--accent);">No approved welcome template set — new patient/doctor signups won\'t get a welcome message until they message you first (same 131047 issue).</span>';
       }
     })
     .catch(() => {});
