@@ -8,8 +8,45 @@ const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 
 const app = express();
+app.set('trust proxy', 1); // Render sits behind a reverse proxy — without this, req.ip returns
+                            // the proxy's address for every request, not the real client IP,
+                            // which would make the rate limiter below treat all users as one.
 app.use(cors());
 app.use(express.json());
+
+// ========== RATE LIMITING ==========
+// Simple in-memory limiter — appropriate for a single-instance deployment (no Redis needed).
+// Protects against brute-force password guessing, OTP spam, and unlimited account creation
+// (which also burns real MSG91 message credits). Keyed by IP + route, sliding window.
+const rateLimitStore = new Map();
+function rateLimit({ windowMs, max, message }) {
+  return (req, res, next) => {
+    const key = `${req.ip}:${req.baseUrl}${req.path}`;
+    const now = Date.now();
+    const entry = rateLimitStore.get(key) || { count: 0, resetAt: now + windowMs };
+    if (now > entry.resetAt) {
+      entry.count = 0;
+      entry.resetAt = now + windowMs;
+    }
+    entry.count++;
+    rateLimitStore.set(key, entry);
+    if (entry.count > max) {
+      return res.status(429).json({ message: message || 'Too many attempts. Please try again later.' });
+    }
+    next();
+  };
+}
+// Periodically clear stale entries so this Map doesn't grow unbounded over a long-running process.
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of rateLimitStore.entries()) {
+    if (now > entry.resetAt) rateLimitStore.delete(key);
+  }
+}, 10 * 60 * 1000);
+
+const loginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 8, message: 'Too many login attempts. Please wait 15 minutes and try again.' });
+const otpLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 5, message: 'Too many reset requests. Please wait 15 minutes and try again.' });
+const signupLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 10, message: 'Too many signup attempts from this connection. Please try again in an hour.' });
 
 // ========== CONFIG ==========
 const JWT_SECRET = process.env.JWT_SECRET || 'biomexasecret';
@@ -619,7 +656,7 @@ function generateResetToken() {
 // ========== AUTH ROUTES ==========
 
 // Register
-app.post('/api/auth/register', async (req, res) => {
+app.post('/api/auth/register', signupLimiter, async (req, res) => {
   try {
     const { name, phone, email, password } = req.body;
     const existing = await Patient.findOne({ phone });
@@ -648,7 +685,7 @@ app.post('/api/auth/register', async (req, res) => {
 // password to type. If MSG91 is active, this works immediately with zero WhatsApp setup on their
 // end. Under the hood this still creates a real Patient account (random password) so the same
 // person can later log in properly via "Forgot password" if they want the full dashboard.
-app.post('/api/quick-reminder', async (req, res) => {
+app.post('/api/quick-reminder', signupLimiter, async (req, res) => {
   try {
     const { name, phone, medicineName, dosage, time, foodNote } = req.body;
     if (!name || !phone || !medicineName || !time) {
@@ -726,7 +763,7 @@ app.post('/api/quick-reminder', async (req, res) => {
 // the Diabmexa AI guide's "Daily Vitals & Glucose Tracker" where a visitor isn't logged in.
 // Finds/creates the patient by phone, saves a real VitalsLog entry, updates their baseline, and
 // runs the same danger check the WhatsApp flow uses so risk alerts stay consistent everywhere.
-app.post('/api/quick-vitals', async (req, res) => {
+app.post('/api/quick-vitals', signupLimiter, async (req, res) => {
   try {
     const { name, phone, glucose, bpSystolic, bpDiastolic, temperature, heartRate } = req.body;
     if (!phone || (!glucose && !bpSystolic && !temperature && !heartRate)) {
@@ -765,7 +802,7 @@ app.post('/api/quick-vitals', async (req, res) => {
 });
 
 // Login
-app.post('/api/auth/login', async (req, res) => {
+app.post('/api/auth/login', loginLimiter, async (req, res) => {
   try {
     const { phone, password } = req.body;
     const patient = await Patient.findOne({ phone });
@@ -814,7 +851,7 @@ app.post('/api/auth/login', async (req, res) => {
 // Tries WhatsApp first (only works if the account has messaged Biomexa's WhatsApp number
 // recently — MSG91's session rule), then email (works for anyone with an email on file, once
 // EMAIL_USER/EMAIL_APP_PASSWORD are set). Succeeds if EITHER channel delivers.
-app.post('/api/auth/forgot-password', async (req, res) => {
+app.post('/api/auth/forgot-password', otpLimiter, async (req, res) => {
   try {
     const { phone, role } = req.body;
     const isDoctor = role === 'doctor';
@@ -1354,7 +1391,7 @@ const doctorAuth = (req, res, next) => {
 };
 
 // Doctor signup — creates a real doctor account for the "Connect with a Doctor" portal
-app.post('/api/doctors/register', async (req, res) => {
+app.post('/api/doctors/register', signupLimiter, async (req, res) => {
   try {
     const { name, email, phone, password, specialty, licenseNumber, experienceYears, bio } = req.body;
     if (!name || !phone || !password || !licenseNumber) {
@@ -1379,7 +1416,7 @@ app.post('/api/doctors/register', async (req, res) => {
 });
 
 // Doctor login (real accounts)
-app.post('/api/doctors/login', async (req, res) => {
+app.post('/api/doctors/login', loginLimiter, async (req, res) => {
   try {
     const { phone, password } = req.body;
     const doctor = await Doctor.findOne({ phone });
@@ -1718,7 +1755,7 @@ async function adminAuth(req, res, next) {
   }
 }
 
-app.get('/api/admin/login', adminAuth, (req, res) => {
+app.get('/api/admin/login', loginLimiter, adminAuth, (req, res) => {
   res.json({ message: 'Admin authenticated' });
 });
 
