@@ -1105,7 +1105,7 @@ async function generateTodaysDoses(todayStr) {
           continue;
         }
 
-        const existing = await Dose.findOne({ patientPhone: patient.phone, medicineName: med.name, scheduledDate: todayStr });
+        const existing = await Dose.findOne({ patientPhone: patient.phone, medicineName: med.name, scheduledTime: med.time, scheduledDate: todayStr });
         if (existing) continue;
 
         await Dose.create({
