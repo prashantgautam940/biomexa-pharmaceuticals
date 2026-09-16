@@ -687,13 +687,17 @@ app.post('/api/auth/register', signupLimiter, async (req, res) => {
 // person can later log in properly via "Forgot password" if they want the full dashboard.
 app.post('/api/quick-reminder', signupLimiter, async (req, res) => {
   try {
-    const { name, phone, medicineName, dosage, time, foodNote } = req.body;
+    const { name, phone, medicineName, dosage, time, foodNote, durationDays } = req.body;
     if (!name || !phone || !medicineName || !time) {
       return res.status(400).json({ message: 'Name, phone, medicine, and time are required.' });
     }
     const timeRegex = /^([01]\d|2[0-3]):([0-5]\d)$/;
     if (!timeRegex.test(time)) {
       return res.status(400).json({ message: 'Time must be in 24-hour format (HH:MM), e.g. 09:00' });
+    }
+    const days = durationDays ? parseInt(durationDays, 10) : null;
+    if (days !== null && (isNaN(days) || days < 1 || days > 365)) {
+      return res.status(400).json({ message: 'Treatment duration must be between 1 and 365 days, or left blank for ongoing.' });
     }
 
     let patient = await Patient.findOne({ phone });
@@ -706,7 +710,9 @@ app.post('/api/quick-reminder', signupLimiter, async (req, res) => {
       patient = await Patient.create({ name, phone, password: hashed, medicines: [] });
     }
 
-    patient.medicines.push({ name: medicineName, dosage: dosage || '', time, frequency: 'daily', foodNote: foodNote || '', active: true });
+    const startDate = new Date();
+    const endDate = days ? new Date(startDate.getTime() + days * 86400000) : null;
+    patient.medicines.push({ name: medicineName, dosage: dosage || '', time, frequency: 'daily', foodNote: foodNote || '', active: true, durationDays: days, startDate, endDate });
     await patient.save();
 
     // Same fix as /api/medicines: don't create a "today" dose for a time that's already passed —
@@ -733,9 +739,10 @@ app.post('/api/quick-reminder', signupLimiter, async (req, res) => {
     const firstReminderNote = timeAlreadyPassedToday
       ? `Today's ${time} slot has already passed, so your first reminder will be tomorrow at ${time}.`
       : '';
+    const durationNote = days ? `\n📅 This reminder will run for ${days} day${days > 1 ? 's' : ''} and then stop automatically.` : '';
     const msg = isNewAccount
-      ? `🎉 Hi ${name}! Your reminder for *${medicineName}* is set for ${time} daily.${firstReminderNote ? '\n' + firstReminderNote : ''}\n\nWe've also created your Biomexa account with this number — use "Forgot password" on the login page anytime if you want full dashboard access.\n\n- Biomexa Team`
-      : `✅ Added a new reminder for *${medicineName}* at ${time} daily to your existing Biomexa account.${firstReminderNote ? '\n' + firstReminderNote : ''}\n\n- Biomexa Team`;
+      ? `🎉 Hi ${name}! Your reminder for *${medicineName}* is set for ${time} daily.${firstReminderNote ? '\n' + firstReminderNote : ''}${durationNote}\n\nWe've also created your Biomexa account with this number — use "Forgot password" on the login page anytime if you want full dashboard access.\n\n- Biomexa Team`
+      : `✅ Added a new reminder for *${medicineName}* at ${time} daily to your existing Biomexa account.${firstReminderNote ? '\n' + firstReminderNote : ''}${durationNote}\n\n- Biomexa Team`;
 
     // A brand-new contact hasn't messaged your business number yet, so MSG91 free-text delivery
     // isn't guaranteed (WhatsApp only allows that within an open 24h session). The approved

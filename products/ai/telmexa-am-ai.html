@@ -619,31 +619,14 @@
 
         <div class="grid-2">
             <div class="card tilt reveal">
-                <div class="card-header"><i class="fas fa-chart-pie"></i> Your Adherence Score</div>
-                <div class="adherence-ring">
-                    <svg width="150" height="150" viewBox="0 0 150 150">
-                        <circle cx="75" cy="75" r="65" fill="none" stroke="var(--bg-light)" stroke-width="10"/>
-                        <circle cx="75" cy="75" r="65" fill="none" stroke="url(#grad1)" stroke-width="10"
-                            stroke-dasharray="408" stroke-dashoffset="102" stroke-linecap="round"/>
-                        <defs>
-                            <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="0%">
-                                <stop offset="0%" style="stop-color:var(--primary);stop-opacity:1" />
-                                <stop offset="100%" style="stop-color:var(--primary-light);stop-opacity:1" />
-                            </linearGradient>
-                        </defs>
-                    </svg>
-                    <div class="score">
-                        <div class="number" id="adherenceScore">75%</div>
-                        <div class="label">Adherence</div>
-                    </div>
-                </div>
-                <p style="text-align: center; color: var(--text-muted); font-size: 0.9rem;">
-                    Based on your last 7 days of logged doses. Take your morning dose consistently to improve.
+                <div class="card-header"><i class="fas fa-chart-pie"></i> Your Real Adherence Score</div>
+                <p style="text-align: center; color: var(--text-muted); font-size: 0.9rem; padding: 1.5rem 0;">
+                    Your real adherence score — calculated from your actual confirmed doses, not a demo — lives on your Biomexa dashboard. Set up your WhatsApp reminder below, and it'll start tracking automatically the moment you confirm your first dose.
                 </p>
-                <div style="margin-top: 1rem; display: flex; gap: 0.5rem; justify-content: center;">
-                    <button class="voice-btn" style="padding: 0.75rem 1.5rem; font-size: 0.9rem;" onclick="logDose()">
-                        <i class="fas fa-check"></i> Log Dose Taken
-                    </button>
+                <div style="text-align: center;">
+                    <a href="../../patient.html" class="voice-btn" style="display: inline-block; padding: 0.75rem 1.5rem; font-size: 0.9rem; text-decoration: none;">
+                        <i class="fas fa-chart-line"></i> View My Dashboard
+                    </a>
                 </div>
             </div>
 
@@ -747,31 +730,6 @@
                 <div class="vitals-history" id="vitalsHistory">
                     <h4><i class="fas fa-history"></i> Recent Readings</h4>
                     <div id="vitalsList"></div>
-                </div>
-            </div>
-
-            <div class="card tilt reveal">
-                <div class="card-header"><i class="fas fa-file-medical"></i> Prescription & Documents</div>
-                <div class="upload-area" onclick="document.getElementById('prescriptionInput').click()">
-                    <i class="fas fa-cloud-upload-alt"></i>
-                    <p style="font-weight: 600; color: var(--text); margin-bottom: 0.25rem;">Click to upload prescription</p>
-                    <p>Supports JPG, PNG, PDF (max 5MB)</p>
-                    <input type="file" id="prescriptionInput" style="display: none;" accept=".jpg,.jpeg,.png,.pdf" onchange="handlePrescriptionUpload(this)">
-                </div>
-                <div class="prescription-list" id="prescriptionList"></div>
-
-                <div style="margin-top: 2rem; padding-top: 2rem; border-top: 1px solid var(--border);">
-                    <div class="card-header"><i class="fas fa-pills"></i> Current Medication List</div>
-                    <div id="medList" style="display: flex; flex-direction: column; gap: 0.5rem;">
-                        <div class="prescription-item">
-                            <i class="fas fa-capsules"></i>
-                            <span class="filename">Telmexa AM — 1 tab daily (Morning)</span>
-                            <span style="color: var(--success); font-size: 0.75rem;">Active</span>
-                        </div>
-                    </div>
-                    <button class="voice-btn secondary" style="margin-top: 1rem; width: 100%; justify-content: center;" onclick="showToast('Add medication feature coming soon')">
-                        <i class="fas fa-plus"></i> Add Another Medication
-                    </button>
                 </div>
             </div>
         </div>
@@ -1105,56 +1063,6 @@
                     <span>${moodIcons[v.mood] || ''}</span>
                 </div>`;
             }).join('');
-
-            const score = Math.min(100, 50 + (vitals.length * 5));
-            document.getElementById('adherenceScore').textContent = score + '%';
-        }
-
-        function logDose() {
-            let doses = JSON.parse(localStorage.getItem('telmexa_doses') || '[]');
-            doses.push({ date: new Date().toISOString(), taken: true });
-            localStorage.setItem('telmexa_doses', JSON.stringify(doses));
-            showToast('Dose logged! Great job staying on track.');
-
-            const vitals = JSON.parse(localStorage.getItem('telmexa_vitals') || '[]');
-            const score = Math.min(100, 60 + (doses.length * 3) + (vitals.length * 2));
-            document.getElementById('adherenceScore').textContent = score + '%';
-        }
-
-        function handlePrescriptionUpload(input) {
-            const file = input.files[0];
-            if (!file) return;
-
-            let prescriptions = JSON.parse(localStorage.getItem('telmexa_prescriptions') || '[]');
-            prescriptions.push({ name: file.name, size: (file.size/1024).toFixed(1) + ' KB', date: new Date().toLocaleDateString() });
-            localStorage.setItem('telmexa_prescriptions', JSON.stringify(prescriptions));
-            renderPrescriptions();
-            showToast('Prescription uploaded: ' + file.name);
-        }
-
-        function renderPrescriptions() {
-            const prescriptions = JSON.parse(localStorage.getItem('telmexa_prescriptions') || '[]');
-            const list = document.getElementById('prescriptionList');
-            if (prescriptions.length === 0) {
-                list.innerHTML = '<p style="color: var(--text-muted); text-align: center; padding: 1rem;">No prescriptions uploaded yet.</p>';
-                return;
-            }
-            list.innerHTML = prescriptions.map((p, i) => `
-                <div class="prescription-item">
-                    <i class="fas fa-file-prescription"></i>
-                    <span class="filename">${p.name} <span style="color: var(--text-muted); font-size: 0.8rem;">(${p.size})</span></span>
-                    <span style="color: var(--text-muted); font-size: 0.8rem;">${p.date}</span>
-                    <i class="fas fa-trash delete" onclick="deletePrescription(${i})"></i>
-                </div>
-            `).join('');
-        }
-
-        function deletePrescription(index) {
-            let prescriptions = JSON.parse(localStorage.getItem('telmexa_prescriptions') || '[]');
-            prescriptions.splice(index, 1);
-            localStorage.setItem('telmexa_prescriptions', JSON.stringify(prescriptions));
-            renderPrescriptions();
-            showToast('Prescription removed');
         }
 
         function toggleChat() {
@@ -1216,7 +1124,6 @@
 
         window.addEventListener('DOMContentLoaded', () => {
             renderVitals();
-            renderPrescriptions();
             initTilt();
             initReveal();
         });
