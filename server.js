@@ -996,6 +996,43 @@ app.get('/api/patient/vitals-history', auth, async (req, res) => {
   }
 });
 
+// Lets a logged-in patient log vitals directly from their own dashboard — same underlying save
+// as the WhatsApp flow (VitalsLog, baseline update, risk-alert check), just entered via a form
+// instead of parsed from free text. Identified by the auth token, not a phone in the body.
+app.post('/api/patient/vitals', auth, async (req, res) => {
+  try {
+    const { bpSystolic, bpDiastolic, temperature, heartRate, glucose } = req.body;
+    if (!bpSystolic && !temperature && !heartRate && !glucose) {
+      return res.status(400).json({ message: 'Enter at least one reading.' });
+    }
+
+    const patient = await Patient.findOne({ phone: req.user.phone });
+    if (!patient) return res.status(404).json({ message: 'Patient not found' });
+
+    const vitals = {};
+    if (bpSystolic) vitals.bpSystolic = parseInt(bpSystolic, 10);
+    if (bpDiastolic) vitals.bpDiastolic = parseInt(bpDiastolic, 10);
+    if (temperature) vitals.temperature = parseFloat(temperature);
+    if (heartRate) vitals.heartRate = parseInt(heartRate, 10);
+    if (glucose) vitals.glucose = parseInt(glucose, 10);
+
+    await VitalsLog.create({ patientPhone: req.user.phone, ...vitals, source: 'manual' });
+
+    const baselineUpdate = {};
+    if (vitals.bpSystolic) baselineUpdate['baselineVitals.bpSystolic'] = vitals.bpSystolic;
+    if (vitals.bpDiastolic) baselineUpdate['baselineVitals.bpDiastolic'] = vitals.bpDiastolic;
+    if (vitals.temperature) baselineUpdate['baselineVitals.temperature'] = vitals.temperature;
+    if (vitals.glucose) baselineUpdate['baselineVitals.glucose'] = vitals.glucose;
+    if (Object.keys(baselineUpdate).length) await Patient.findOneAndUpdate({ phone: req.user.phone }, baselineUpdate);
+
+    const alert = await triggerRiskAlert(patient, vitals);
+
+    res.json({ message: 'Vitals saved.', riskFlagged: !!alert });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 // Sends one real WhatsApp message right now, so a patient can immediately confirm they're
 // receiving messages from Biomexa's WhatsApp number.
 app.post('/api/patient/test-whatsapp', auth, async (req, res) => {

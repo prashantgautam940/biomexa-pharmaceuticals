@@ -263,12 +263,48 @@ input[type="time"] { color-scheme: dark; }
       </div>
     </div>
 
-    <!-- My Vitals — everything the patient has sent over WhatsApp after confirming a dose -->
+    <!-- My Vitals — everything the patient has sent over WhatsApp, plus a direct entry form -->
     <div class="card">
       <div class="card-header">
         <span class="card-title">🩺 My Vitals</span>
-        <span style="color:#64748b;font-size:12px;">Logged via WhatsApp</span>
+        <span style="color:#64748b;font-size:12px;">Logged via WhatsApp or entered here</span>
       </div>
+
+      <form id="vitalsForm" style="margin-bottom:16px;">
+        <table style="width:100%;border-collapse:collapse;margin-bottom:10px;">
+          <tbody>
+            <tr>
+              <td style="padding:6px 8px 6px 0;font-size:13px;color:#94a3b8;width:40%;">Blood Pressure (mmHg)</td>
+              <td style="padding:6px 0;display:flex;gap:6px;">
+                <input type="number" id="vBpSys" placeholder="Sys e.g. 120" style="width:100%;padding:8px 10px;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#f1f5f9;font-size:13px;">
+                <span style="align-self:center;color:#64748b;">/</span>
+                <input type="number" id="vBpDia" placeholder="Dia e.g. 80" style="width:100%;padding:8px 10px;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#f1f5f9;font-size:13px;">
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:6px 8px 6px 0;font-size:13px;color:#94a3b8;">Temperature (°F)</td>
+              <td style="padding:6px 0;">
+                <input type="number" step="0.1" id="vTemp" placeholder="e.g. 98.6" style="width:100%;padding:8px 10px;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#f1f5f9;font-size:13px;">
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:6px 8px 6px 0;font-size:13px;color:#94a3b8;">Pulse (bpm)</td>
+              <td style="padding:6px 0;">
+                <input type="number" id="vPulse" placeholder="e.g. 72" style="width:100%;padding:8px 10px;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#f1f5f9;font-size:13px;">
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:6px 8px 6px 0;font-size:13px;color:#94a3b8;">Blood Sugar (mg/dL)</td>
+              <td style="padding:6px 0;">
+                <input type="number" id="vGlucose" placeholder="e.g. 110" style="width:100%;padding:8px 10px;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#f1f5f9;font-size:13px;">
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <button type="submit" class="btn" id="vSubmitBtn" style="width:auto;padding:9px 18px;">Save Vitals</button>
+        <span id="vFormMsg" style="font-size:12.5px;margin-left:10px;"></span>
+      </form>
+
       <div id="vitalsHistoryList">
         <div class="empty-state">Loading...</div>
       </div>
@@ -636,6 +672,44 @@ input[type="time"] { color-scheme: dark; }
       } finally {
         btn.disabled = false;
         btn.textContent = 'Add Medicine';
+      }
+    });
+
+    document.getElementById('vitalsForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById('vSubmitBtn');
+      const msg = document.getElementById('vFormMsg');
+      btn.disabled = true;
+      btn.textContent = 'Saving...';
+      msg.textContent = '';
+
+      const payload = {
+        bpSystolic: document.getElementById('vBpSys').value || undefined,
+        bpDiastolic: document.getElementById('vBpDia').value || undefined,
+        temperature: document.getElementById('vTemp').value || undefined,
+        heartRate: document.getElementById('vPulse').value || undefined,
+        glucose: document.getElementById('vGlucose').value || undefined
+      };
+
+      try {
+        const res = await fetch(`${API_URL}/api/patient/vitals`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.message || 'Could not save vitals');
+
+        msg.style.color = '#34d399';
+        msg.textContent = data.riskFlagged ? '⚠️ Saved — this reading was flagged for review.' : 'Saved!';
+        document.getElementById('vitalsForm').reset();
+        loadVitalsHistory();
+      } catch (err) {
+        msg.style.color = '#f87171';
+        msg.textContent = err.message;
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Save Vitals';
       }
     });
 
