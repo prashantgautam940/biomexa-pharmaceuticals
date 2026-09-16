@@ -1360,7 +1360,7 @@ app.post('/api/webhooks/msg91-whatsapp', async (req, res) => {
         await Dose.findByIdAndUpdate(convo.doseId, { status: took ? 'taken' : 'missed' });
 
         if (took) {
-          await sendWhatsAppFree(phone, `✅ Great, logged as taken! Quick check-in — reply with your BP, temperature, pulse, or sugar level if you have them handy (e.g. "BP 120/80, temp 98.6, pulse 72, sugar 110"). Or just reply "skip".`);
+          await sendWhatsAppFree(phone, '✅ Great, logged as taken!\n\n📋 Quick check-in — reply with your vitals in this format (fill in what you have, skip any line):\n\n```\nBP: 120/80\nTemp: 98.6\nPulse: 72\nSugar: 110\n```\n\nOr just reply "skip".');
           await ConversationState.findOneAndUpdate({ patientPhone: phone }, { state: 'awaiting_vitals', updatedAt: new Date() });
         } else {
           await sendWhatsAppFree(phone, `Noted — marked as not taken. Please try to take it as soon as possible, or reach out to your doctor via the Biomexa app if you're having trouble with this medicine.`);
@@ -1379,7 +1379,7 @@ app.post('/api/webhooks/msg91-whatsapp', async (req, res) => {
 
       const vitals = parseVitalsFromText(freeText);
       if (Object.keys(vitals).length === 0) {
-        await sendWhatsAppFree(phone, `Sorry, I couldn't read any vitals from that. Try a format like "BP 120/80, temp 98.6, pulse 72, sugar 110" — or reply "skip".`);
+        await sendWhatsAppFree(phone, 'Sorry, I couldn\'t read any vitals from that. Try this format:\n\n```\nBP: 120/80\nTemp: 98.6\nPulse: 72\nSugar: 110\n```\n\nOr reply "skip".');
         return;
       }
 
