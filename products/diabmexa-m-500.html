@@ -264,7 +264,8 @@
                         </div>
                         <div style="margin-bottom: 1rem;">
                             <label style="display:block;font-size:0.78rem;color:var(--text-muted);margin-bottom:4px;">Preferred time</label>
-                            <input type="time" id="remTime" value="08:00" required style="width:100%;padding:10px 12px;background:var(--bg-light);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:0.88rem;">
+                            <input type="time" id="remTime" value="08:00" required onchange="updateRemTimePreview()" style="width:100%;padding:10px 12px;background:var(--bg-light);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:0.88rem;">
+                            <small id="remTimePreview" style="display:block;margin-top:4px;color:#5eead4;font-size:11px;"></small>
                         </div>
                         <div style="margin-bottom: 1rem;">
                             <label style="display:block;font-size:0.78rem;color:var(--text-muted);margin-bottom:4px;">Treatment duration (days) — optional</label>
@@ -418,6 +419,17 @@
             .then(r => r.json())
             .then(status => { if (status.msg91Configured) document.getElementById('reminderMsg91Note').style.display = 'block'; })
             .catch(() => {});
+
+        function updateRemTimePreview() {
+            const val = document.getElementById('remTime').value;
+            const preview = document.getElementById('remTimePreview');
+            if (!val) { preview.textContent = ''; return; }
+            const [h, m] = val.split(':').map(Number);
+            const period = h >= 12 ? 'PM' : 'AM';
+            const h12 = h % 12 === 0 ? 12 : h % 12;
+            preview.textContent = '= ' + h12 + ':' + String(m).padStart(2, '0') + ' ' + period + ' — double-check before submitting';
+        }
+        updateRemTimePreview();
 
         document.getElementById('reminderForm').addEventListener('submit', async (e) => {
             e.preventDefault();
