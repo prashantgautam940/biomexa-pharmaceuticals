@@ -1118,11 +1118,32 @@ app.post('/api/patient/test-whatsapp', auth, async (req, res) => {
 // Add Medicine
 app.post('/api/medicines', auth, async (req, res) => {
   try {
-    const { name, dosage, time, frequency, foodNote, durationDays } = req.body;
+    const { name, dosage, frequency, foodNote, durationDays } = req.body;
+
+    // Accepts either a single `time` (backward compatible with older clients) or a `times`
+    // array — this is what lets a patient add one medicine with two reminder times (e.g. a
+    // twice-daily prescription) in a single submission, instead of having to repeat the whole
+    // form with the same medicine name twice.
+    const rawTimes = Array.isArray(req.body.times) ? req.body.times : [req.body.time];
+    const times = rawTimes.filter(Boolean);
+
+    if (!times.length) {
+      return res.status(400).json({ message: 'At least one reminder time is required.' });
+    }
+    if (times.length > 4) {
+      return res.status(400).json({ message: 'Up to 4 reminder times are supported per medicine.' });
+    }
 
     const timeRegex = /^([01]\d|2[0-3]):([0-5]\d)$/;
-    if (!timeRegex.test(time)) {
-      return res.status(400).json({ message: 'Time must be in 24-hour format (HH:MM), e.g. 14:30' });
+    for (const t of times) {
+      if (!timeRegex.test(t)) {
+        return res.status(400).json({ message: `"${t}" is not a valid time — use 24-hour format (HH:MM), e.g. 14:30` });
+      }
+    }
+    // Reject exact duplicate times in the same submission — everything downstream (dose dedup,
+    // the reminder cron's exact-time match) assumes each time for a given medicine is distinct.
+    if (new Set(times).size !== times.length) {
+      return res.status(400).json({ message: 'Each reminder time must be different.' });
     }
 
     const days = durationDays ? parseInt(durationDays, 10) : null;
@@ -1132,46 +1153,62 @@ app.post('/api/medicines', auth, async (req, res) => {
 
     const startDate = new Date();
     const endDate = days ? new Date(startDate.getTime() + days * 86400000) : null;
+    const now = new Date();
+    const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const today = now.toISOString().split('T')[0];
+
+    // One medicine sub-document per time — this keeps every existing piece of logic (daily
+    // regeneration, the reminder cron's exact-time match, per-dose confirmation and vitals
+    // capture) working completely unchanged, since each one is a real, independent medicine
+    // entry rather than a new data shape those systems would need to understand.
+    const medicineEntries = times.map(t => ({
+      name, dosage, time: t, frequency, foodNote, active: true, durationDays: days, startDate, endDate
+    }));
 
     const patient = await Patient.findOneAndUpdate(
       { phone: req.user.phone },
-      { $push: { medicines: { name, dosage, time, frequency, foodNote, active: true, durationDays: days, startDate, endDate } } },
+      { $push: { medicines: { $each: medicineEntries } } },
       { new: true }
     );
 
-    // If today's slot for this time has already passed, creating a "today" dose would leave it
-    // permanently stuck as Pending — the reminder cron only fires on an exact current-time match,
-    // it never catches up on a time that's already gone by. In that case, skip today's dose
-    // entirely and let it start tomorrow instead, which the daily generation job creates
-    // automatically. This is what was silently failing for reminders set for a time earlier in
-    // the day than when the medicine was actually added.
-    const now = new Date();
-    const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-    const timeAlreadyPassedToday = time <= currentTime;
+    // Same "time already passed today" protection as before, applied per time — a medicine
+    // added with one time in the future and one already passed today correctly gets today's
+    // dose for the future one and starts the passed one tomorrow, rather than losing both.
+    const createdToday = [];
+    const deferredToTomorrow = [];
+    for (const t of times) {
+      if (t <= currentTime) {
+        deferredToTomorrow.push(t);
+      } else {
+        await Dose.create({
+          patientPhone: req.user.phone,
+          medicineName: name,
+          dosage,
+          scheduledTime: t,
+          scheduledDate: today,
+          foodNote: foodNote || '',
+          status: 'pending'
+        });
+        createdToday.push(t);
+      }
+    }
 
-    let firstReminderNote;
-    if (timeAlreadyPassedToday) {
-      firstReminderNote = `Today's ${time} slot has already passed, so your first reminder will be tomorrow at ${time}.`;
+    const timesLabel = times.join(' & ');
+    let scheduleNote;
+    if (deferredToTomorrow.length === 0) {
+      scheduleNote = `You'll receive a WhatsApp reminder when it's time to take it.`;
+    } else if (createdToday.length === 0) {
+      scheduleNote = `Today's slot${deferredToTomorrow.length > 1 ? 's' : ''} (${deferredToTomorrow.join(', ')}) already passed, so your first reminder${deferredToTomorrow.length > 1 ? 's start' : ' starts'} tomorrow.`;
     } else {
-      const today = new Date().toISOString().split('T')[0];
-      await Dose.create({
-        patientPhone: req.user.phone,
-        medicineName: name,
-        dosage,
-        scheduledTime: time,
-        scheduledDate: today,
-        foodNote: foodNote || '',
-        status: 'pending'
-      });
-      firstReminderNote = `You'll receive a WhatsApp reminder when it's time to take it.`;
+      scheduleNote = `${createdToday.join(', ')} is scheduled for today. ${deferredToTomorrow.join(', ')} already passed today, so that one starts tomorrow.`;
     }
 
     // Send confirmation WhatsApp
     const durationNote = days ? `\n📅 This reminder will run for ${days} day${days > 1 ? 's' : ''} and then stop automatically.` : '';
-    const confirmMsg = `💊 *Medicine Added*\n\n${name} — ${dosage}\n⏰ ${time}\n${foodNote ? '🍽️ ' + foodNote + '\n' : ''}${durationNote}\n${firstReminderNote}\n\n- Biomexa Team`;
+    const confirmMsg = `💊 *Medicine Added*\n\n${name} — ${dosage}\n⏰ ${timesLabel}\n${foodNote ? '🍽️ ' + foodNote + '\n' : ''}${durationNote}\n${scheduleNote}\n\n- Biomexa Team`;
     sendWhatsAppFree(req.user.phone, confirmMsg);
 
-    res.json({ message: timeAlreadyPassedToday ? 'Medicine added — first reminder is tomorrow' : 'Medicine added and dose scheduled for today', medicines: patient.medicines });
+    res.json({ message: `Medicine added with ${times.length} reminder time${times.length > 1 ? 's' : ''}.`, medicines: patient.medicines });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

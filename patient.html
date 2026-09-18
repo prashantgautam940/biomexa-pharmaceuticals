@@ -326,19 +326,18 @@ input[type="time"] { color-scheme: dark; }
             <label>Dosage *</label>
             <input type="text" id="medDosage" placeholder="e.g., 500mg" required>
           </div>
-          <div class="form-group">
-            <label>Time (24-hour format) *</label>
-            <input type="time" id="medTime" required onchange="updateTimePreview()">
-            <small id="medTimePreview" style="display:block;margin-top:4px;color:#64748b;font-size:12px;"></small>
+          <div class="form-group full">
+            <label>Reminder Time(s) *</label>
+            <div id="medTimesContainer"></div>
+            <button type="button" id="addTimeBtn" onclick="addTimeRow()" style="margin-top:6px;background:none;border:1px dashed #475569;color:#5eead4;padding:6px 12px;border-radius:6px;font-size:12.5px;cursor:pointer;">+ Add another time</button>
           </div>
           <div class="form-group">
             <label>Frequency *</label>
-            <select id="medFreq" required>
+            <select id="medFreq" required onchange="handleFrequencyChange()">
               <option value="daily">Daily</option>
               <option value="twice-daily">Twice Daily</option>
               <option value="weekly">Weekly</option>
             </select>
-            <small style="display:block;margin-top:4px;color:#64748b;font-size:11px;">For Twice Daily, add this medicine once for each time (e.g., 08:00 and 20:00) — each gets its own reminder and confirmation.</small>
           </div>
           <div class="form-group">
             <label>Treatment Duration (days)</label>
@@ -637,18 +636,70 @@ input[type="time"] { color-scheme: dark; }
         .catch(() => { msg.style.color = '#f87171'; msg.textContent = 'Test failed — check your connection.'; });
     }
 
-    // Shows a clear 12-hour AM/PM readout right under the time field — the 24-hour input alone
+    // ===== Multi-time reminder rows =====
+    // Each medicine can have up to 4 independent reminder times — this is what lets "twice
+    // daily" (or any custom schedule) be set up in one submission instead of repeating the
+    // whole form with the same medicine name for each time.
+    const MAX_TIMES = 4;
+    let timeRowCount = 0;
+
+    function addTimeRow(initialValue) {
+      if (timeRowCount >= MAX_TIMES) return;
+      timeRowCount++;
+      const id = timeRowCount;
+      const container = document.getElementById('medTimesContainer');
+      const row = document.createElement('div');
+      row.className = 'time-row';
+      row.id = `timeRow${id}`;
+      row.style.cssText = 'display:flex;gap:8px;align-items:flex-start;margin-bottom:8px;';
+      row.innerHTML = `
+        <div style="flex:1;">
+          <input type="time" id="medTime${id}" required value="${initialValue || ''}" onchange="updateTimePreview(${id})" style="width:100%;">
+          <small id="medTimePreview${id}" style="display:block;margin-top:4px;color:#5eead4;font-size:12px;"></small>
+        </div>
+        ${id > 1 ? `<button type="button" onclick="removeTimeRow(${id})" style="background:none;border:1px solid #475569;color:#f87171;padding:8px 10px;border-radius:6px;cursor:pointer;height:38px;">✕</button>` : ''}
+      `;
+      container.appendChild(row);
+      if (initialValue) updateTimePreview(id);
+      syncAddButtonVisibility();
+    }
+
+    function removeTimeRow(id) {
+      const row = document.getElementById(`timeRow${id}`);
+      if (row) row.remove();
+      syncAddButtonVisibility();
+    }
+
+    function syncAddButtonVisibility() {
+      const remaining = document.getElementById('medTimesContainer').children.length;
+      document.getElementById('addTimeBtn').style.display = remaining >= MAX_TIMES ? 'none' : 'inline-block';
+    }
+
+    // Shows a clear 12-hour AM/PM readout right under each time field — the 24-hour input alone
     // is exactly what caused a real mix-up (00:30 entered when 12:30 PM was meant).
-    function updateTimePreview() {
-      const val = document.getElementById('medTime').value;
-      const preview = document.getElementById('medTimePreview');
+    function updateTimePreview(id) {
+      const val = document.getElementById(`medTime${id}`).value;
+      const preview = document.getElementById(`medTimePreview${id}`);
       if (!val) { preview.textContent = ''; return; }
       const [h, m] = val.split(':').map(Number);
       const period = h >= 12 ? 'PM' : 'AM';
       const h12 = h % 12 === 0 ? 12 : h % 12;
       preview.textContent = `= ${h12}:${String(m).padStart(2, '0')} ${period} — double-check this is right before saving`;
-      preview.style.color = '#5eead4';
     }
+
+    // Selecting "Twice Daily" automatically adds a second time row if there's only one — a
+    // helpful nudge, not a requirement; the patient can still add/remove rows freely regardless
+    // of what's selected here.
+    function handleFrequencyChange() {
+      const freq = document.getElementById('medFreq').value;
+      const container = document.getElementById('medTimesContainer');
+      if (freq === 'twice-daily' && container.children.length === 1) {
+        addTimeRow();
+      }
+    }
+
+    // Start with one time row on page load.
+    addTimeRow();
 
     document.getElementById('medicineForm').addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -656,10 +707,14 @@ input[type="time"] { color-scheme: dark; }
       btn.disabled = true;
       btn.textContent = 'Adding...';
 
+      const times = Array.from(document.getElementById('medTimesContainer').children)
+        .map(row => row.querySelector('input[type="time"]').value)
+        .filter(Boolean);
+
       const payload = {
         name: document.getElementById('medName').value,
         dosage: document.getElementById('medDosage').value,
-        time: document.getElementById('medTime').value,
+        times,
         frequency: document.getElementById('medFreq').value,
         foodNote: document.getElementById('medFood').value,
         durationDays: document.getElementById('medDuration').value || null
@@ -677,8 +732,11 @@ input[type="time"] { color-scheme: dark; }
         const data = await res.json();
         if (!res.ok) throw new Error(data.message);
 
-        showMsg('Medicine added! Dose scheduled for today.', false);
+        showMsg(data.message || 'Medicine added!', false);
         document.getElementById('medicineForm').reset();
+        document.getElementById('medTimesContainer').innerHTML = '';
+        timeRowCount = 0;
+        addTimeRow();
         loadDoses();
         loadStats();
       } catch (err) {
