@@ -352,19 +352,64 @@ async function sendWelcomeMessage(phone, patientName, fallbackMsg) {
 
 // Parses free-text vitals like "BP 120/80, temp 98.6, pulse 72" — deliberately permissive since
 // real patients won't format this consistently. Returns only the fields it actually found.
+// Two layers: first tries explicit labels (100% reliable, unchanged from before — anyone who
+// writes "pulse 72" or "sugar 110" gets exactly that, regardless of order or what else is in
+// the message). Anything NOT caught by a label falls through to a smart bare-number pass, so a
+// patient can just type "120/80 98.6 72 110" with no labels at all. That fallback deliberately
+// does NOT try to guess between a bare pulse number and a bare glucose number by value — their
+// normal and dangerous ranges genuinely overlap, and guessing wrong there could tell a doctor
+// "high pulse" when it was actually dangerous blood sugar. Instead: BP is found by its unique
+// "/" shape (safe, unambiguous), temperature by a decimal point (people essentially never write
+// a decimal for pulse or sugar, so this is a real signal, not a guess), and whatever whole
+// numbers are left are taken in order — first remaining is pulse, next is sugar.
 function parseVitalsFromText(text) {
   const result = {};
+  let consumed = text;
+
   const bpMatch = text.match(/(\d{2,3})\s*\/\s*(\d{2,3})/); // "120/80" anywhere in the message
   if (bpMatch) {
     result.bpSystolic = parseInt(bpMatch[1], 10);
     result.bpDiastolic = parseInt(bpMatch[2], 10);
+    consumed = consumed.replace(bpMatch[0], ' ');
   }
-  const tempMatch = text.match(/temp(?:erature)?[:\s]*([\d.]+)/i) || text.match(/([\d.]{3,5})\s*(?:f|°f|degrees)/i);
-  if (tempMatch) result.temperature = parseFloat(tempMatch[1]);
-  const hrMatch = text.match(/(?:pulse|hr|heart\s*rate)[:\s]*(\d{2,3})/i);
-  if (hrMatch) result.heartRate = parseInt(hrMatch[1], 10);
-  const glucoseMatch = text.match(/(?:sugar|glucose|blood\s*sugar|bs)[:\s]*(\d{2,3})/i);
-  if (glucoseMatch) result.glucose = parseInt(glucoseMatch[1], 10);
+
+  const tempLabelMatch = text.match(/temp(?:erature)?[:\s]*([\d.]+)/i) || text.match(/([\d.]{3,5})\s*(?:f|°f|degrees)/i);
+  if (tempLabelMatch) {
+    result.temperature = parseFloat(tempLabelMatch[1]);
+    consumed = consumed.replace(tempLabelMatch[0], ' ');
+  }
+
+  const hrLabelMatch = text.match(/(?:pulse|hr|heart\s*rate)[:\s]*(\d{2,3})/i);
+  if (hrLabelMatch) {
+    result.heartRate = parseInt(hrLabelMatch[1], 10);
+    consumed = consumed.replace(hrLabelMatch[0], ' ');
+  }
+
+  const glucoseLabelMatch = text.match(/(?:sugar|glucose|blood\s*sugar|bs)[:\s]*(\d{2,3})/i);
+  if (glucoseLabelMatch) {
+    result.glucose = parseInt(glucoseLabelMatch[1], 10);
+    consumed = consumed.replace(glucoseLabelMatch[0], ' ');
+  }
+
+  // Bare-number fallback for whatever wasn't caught by a label above.
+  if (result.temperature === undefined) {
+    const bareDecimal = consumed.match(/\b(\d{2,3}\.\d)\b/);
+    if (bareDecimal) {
+      result.temperature = parseFloat(bareDecimal[1]);
+      consumed = consumed.replace(bareDecimal[0], ' ');
+    }
+  }
+
+  if (result.heartRate === undefined || result.glucose === undefined) {
+    const bareWholeNumbers = (consumed.match(/\b\d{2,3}\b/g) || []).map(n => parseInt(n, 10));
+    if (result.heartRate === undefined && bareWholeNumbers.length) {
+      result.heartRate = bareWholeNumbers.shift();
+    }
+    if (result.glucose === undefined && bareWholeNumbers.length) {
+      result.glucose = bareWholeNumbers.shift();
+    }
+  }
+
   return result;
 }
 
@@ -1461,7 +1506,7 @@ app.post('/api/webhooks/msg91-whatsapp', async (req, res) => {
         await Dose.findByIdAndUpdate(convo.doseId, { status: took ? 'taken' : 'missed' });
 
         if (took) {
-          await sendWhatsAppFree(phone, '✅ Great, logged as taken!\n\n📋 Quick check-in — reply with your vitals in this format (fill in what you have, skip any line):\n\n```\nBP: 120/80\nTemp: 98.6\nPulse: 72\nSugar: 110\n```\n\nOr just reply "skip".');
+          await sendWhatsAppFree(phone, '✅ Great, logged as taken!\n\n📋 Quick check-in — just reply with your numbers in this order, no labels needed:\n\n```\n120/80 98.6 72 110\n```\n(BP, Temp, Pulse, Sugar — skip any you don\'t have)\n\nOr use labels if you\'d rather: "BP 120/80, sugar 110". Or just reply "skip".');
           await ConversationState.findOneAndUpdate({ patientPhone: phone }, { state: 'awaiting_vitals', updatedAt: new Date() });
         } else {
           await sendWhatsAppFree(phone, `Noted — marked as not taken. Please try to take it as soon as possible, or reach out to your doctor via the Biomexa app if you're having trouble with this medicine.`);
@@ -1480,7 +1525,7 @@ app.post('/api/webhooks/msg91-whatsapp', async (req, res) => {
 
       const vitals = parseVitalsFromText(freeText);
       if (Object.keys(vitals).length === 0) {
-        await sendWhatsAppFree(phone, 'Sorry, I couldn\'t read any vitals from that. Try this format:\n\n```\nBP: 120/80\nTemp: 98.6\nPulse: 72\nSugar: 110\n```\n\nOr reply "skip".');
+        await sendWhatsAppFree(phone, 'Sorry, I couldn\'t read any numbers from that. Try just sending them like this:\n\n```\n120/80 98.6 72 110\n```\n(BP, Temp, Pulse, Sugar, in that order — skip any you don\'t have)\n\nOr reply "skip".');
         return;
       }
 
