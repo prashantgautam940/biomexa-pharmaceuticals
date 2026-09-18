@@ -160,6 +160,7 @@ tr:hover { background: rgba(13,115,119,0.05); }
       </div>
     </div>
     <p id="welcomeTemplateStatus" style="margin-top:10px;font-size:0.78rem;"></p>
+    <p id="doctorAlertTemplateStatus" style="margin-top:4px;font-size:0.78rem;"></p>
   </div>
 
   <div class="ai-panel" id="broadcastPanel" style="border-color: var(--danger);">
@@ -334,6 +335,13 @@ function loadWaSystemStatus() {
         welcomeEl.innerHTML = '✅ <span style="color:var(--success);">Welcome template active — new signups get a real WhatsApp welcome message.</span>';
       } else {
         welcomeEl.innerHTML = '⚠️ <span style="color:var(--accent);">No approved welcome template set — new patient/doctor signups won\'t get a welcome message until they message you first (same 131047 issue).</span>';
+      }
+
+      const doctorAlertEl = document.getElementById('doctorAlertTemplateStatus');
+      if (s.doctorAlertTemplateConfigured) {
+        doctorAlertEl.innerHTML = '✅ <span style="color:var(--success);">Doctor alert template active — critical patient alerts reach doctors regardless of session state.</span>';
+      } else {
+        doctorAlertEl.innerHTML = '⚠️ <span style="color:var(--accent);">No approved doctor alert template set — the message notifying a doctor of a dangerous reading can silently fail if they haven\'t messaged recently (same 131047 issue).</span>';
       }
     })
     .catch(() => {});

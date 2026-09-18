@@ -225,6 +225,71 @@ async function sendRiskAlertMessage(phone, patientName, riskLevel, reason) {
   return sendWhatsAppFree(phone, fallbackMsg);
 }
 
+// ===== DOCTOR ALERT TEMPLATE — closes the last critical 131047 gap. The message telling a
+// doctor a patient's vitals are dangerous was still free-text, meaning it could silently fail
+// to reach the doctor at exactly the moment it matters most (confirmed pattern via MSG91 Logs:
+// repeated "Failed By Meta" / 131047 entries with no template name, same signature as every
+// other free-text failure this session). =====
+// Setup: create + get Meta approval for a fourth template in MSG91 (identical process to the
+// other three). Suggested body: "Biomexa Doctor Alert: Patient {{patient_name}} ({{phone}})
+// has a {{severity}} reading — {{reason}}. Please reach out as soon as possible." — no buttons.
+const MSG91_DOCTOR_ALERT_TEMPLATE_NAME = process.env.MSG91_DOCTOR_ALERT_TEMPLATE_NAME || null;
+const MSG91_DOCTOR_ALERT_TEMPLATE_NAMESPACE = process.env.MSG91_DOCTOR_ALERT_TEMPLATE_NAMESPACE || '';
+
+async function sendDoctorAlertTemplate(doctorPhone, patientName, patientPhone, severity, reason) {
+  if (!MSG91_CONFIGURED || !MSG91_DOCTOR_ALERT_TEMPLATE_NAME) {
+    return { success: false, provider: 'msg91_doctor_alert_template_not_configured' };
+  }
+  try {
+    const res = await fetch('https://api.msg91.com/api/v5/whatsapp/whatsapp-outbound-message/bulk/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'authkey': MSG91_AUTH_KEY },
+      body: JSON.stringify({
+        integrated_number: MSG91_INTEGRATED_NUMBER,
+        content_type: 'template',
+        payload: {
+          messaging_product: 'whatsapp',
+          type: 'template',
+          template: {
+            name: MSG91_DOCTOR_ALERT_TEMPLATE_NAME,
+            language: { code: MSG91_TEMPLATE_LANG, policy: 'deterministic' },
+            namespace: MSG91_DOCTOR_ALERT_TEMPLATE_NAMESPACE,
+            to_and_components: [{
+              to: [doctorPhone.replace(/\D/g, '')],
+              components: {
+                body_1: { type: 'text', value: patientName, parameter_name: 'patient_name' },
+                body_2: { type: 'text', value: patientPhone, parameter_name: 'phone' },
+                body_3: { type: 'text', value: severity, parameter_name: 'severity' },
+                body_4: { type: 'text', value: reason, parameter_name: 'reason' }
+              }
+            }]
+          }
+        }
+      }),
+      signal: AbortSignal.timeout(10000)
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      console.log('⚠️ MSG91 doctor alert template send failed:', JSON.stringify(data).substring(0, 500));
+      return { success: false, provider: 'msg91', detail: data };
+    }
+    console.log('✅ MSG91 doctor alert template sent to', doctorPhone);
+    return { success: true, provider: 'msg91' };
+  } catch (err) {
+    console.log('⚠️ MSG91 doctor alert template send error:', err.message);
+    return { success: false, provider: 'msg91', detail: err.message };
+  }
+}
+
+// Unified doctor-alert sender — template first, free text fallback only if not configured yet.
+async function sendDoctorAlertMessage(doctorPhone, patientName, patientPhone, severity, reason) {
+  const templateResult = await sendDoctorAlertTemplate(doctorPhone, patientName, patientPhone, severity, reason);
+  if (templateResult.success) return templateResult;
+
+  const fallbackMsg = `🚨 *RISK ALERT — ${severity.toUpperCase()}*\n\nPatient: ${patientName}\nPhone: ${patientPhone}\nIssue: ${reason}\n\nLogged via Biomexa WhatsApp vitals capture. Please reach out as soon as possible.\n\n- Biomexa Team`;
+  return sendWhatsAppFree(doctorPhone, fallbackMsg);
+}
+
 // ===== WELCOME TEMPLATE — same fix as risk_alert, applied to the one message every single new
 // signup needs and, until now, could never actually receive: brand-new contacts have no open
 // WhatsApp session, so the free-text welcome message was silently blocked (Meta error 131047)
@@ -619,8 +684,7 @@ async function triggerRiskAlert(patient, vitals) {
   });
 
   if (availableDoctor) {
-    const doctorMsg = `🚨 *RISK ALERT — ${danger.severity.toUpperCase()}*\n\nPatient: ${patient.name}\nPhone: ${patient.phone}\nIssue: ${danger.reason}\n\nLogged via Biomexa WhatsApp vitals capture. Please reach out as soon as possible.\n\n- Biomexa Team`;
-    sendWhatsAppFree(availableDoctor.phone, doctorMsg);
+    sendDoctorAlertMessage(availableDoctor.phone, patient.name, patient.phone, danger.severity, danger.reason);
   }
 
   // Uses the risk alert template when configured (works regardless of session state) — this is
@@ -2119,7 +2183,8 @@ app.get('/api/whatsapp-status', (req, res) => {
   res.json({
     msg91Configured: MSG91_CONFIGURED,
     riskTemplateConfigured: !!MSG91_RISK_TEMPLATE_NAME,
-    welcomeTemplateConfigured: !!MSG91_WELCOME_TEMPLATE_NAME
+    welcomeTemplateConfigured: !!MSG91_WELCOME_TEMPLATE_NAME,
+    doctorAlertTemplateConfigured: !!MSG91_DOCTOR_ALERT_TEMPLATE_NAME
   });
 });
 
