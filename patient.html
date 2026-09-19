@@ -267,46 +267,41 @@ input[type="time"] { color-scheme: dark; }
     <div class="card">
       <div class="card-header">
         <span class="card-title">🩺 My Vitals</span>
-        <span style="color:#64748b;font-size:12px;">Logged via WhatsApp or entered here</span>
       </div>
+      <p style="color:#64748b;font-size:12.5px;margin:-4px 0 16px;">Log a new reading — or reply with your numbers on WhatsApp and it shows up here automatically.</p>
 
-      <form id="vitalsForm" style="margin-bottom:16px;">
-        <table style="width:100%;border-collapse:collapse;margin-bottom:10px;">
-          <tbody>
-            <tr>
-              <td style="padding:6px 8px 6px 0;font-size:13px;color:#94a3b8;width:40%;">Blood Pressure (mmHg)</td>
-              <td style="padding:6px 0;display:flex;gap:6px;">
-                <input type="number" id="vBpSys" placeholder="Sys e.g. 120" style="width:100%;padding:8px 10px;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#f1f5f9;font-size:13px;">
-                <span style="align-self:center;color:#64748b;">/</span>
-                <input type="number" id="vBpDia" placeholder="Dia e.g. 80" style="width:100%;padding:8px 10px;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#f1f5f9;font-size:13px;">
-              </td>
-            </tr>
-            <tr>
-              <td style="padding:6px 8px 6px 0;font-size:13px;color:#94a3b8;">Temperature (°F)</td>
-              <td style="padding:6px 0;">
-                <input type="number" step="0.1" id="vTemp" placeholder="e.g. 98.6" style="width:100%;padding:8px 10px;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#f1f5f9;font-size:13px;">
-              </td>
-            </tr>
-            <tr>
-              <td style="padding:6px 8px 6px 0;font-size:13px;color:#94a3b8;">Pulse (bpm)</td>
-              <td style="padding:6px 0;">
-                <input type="number" id="vPulse" placeholder="e.g. 72" style="width:100%;padding:8px 10px;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#f1f5f9;font-size:13px;">
-              </td>
-            </tr>
-            <tr>
-              <td style="padding:6px 8px 6px 0;font-size:13px;color:#94a3b8;">Blood Sugar (mg/dL)</td>
-              <td style="padding:6px 0;">
-                <input type="number" id="vGlucose" placeholder="e.g. 110" style="width:100%;padding:8px 10px;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#f1f5f9;font-size:13px;">
-              </td>
-            </tr>
-          </tbody>
-        </table>
-        <button type="submit" class="btn" id="vSubmitBtn" style="width:auto;padding:9px 18px;">Save Vitals</button>
-        <span id="vFormMsg" style="font-size:12.5px;margin-left:10px;"></span>
+      <form id="vitalsForm">
+        <div class="form-grid">
+          <div class="form-group">
+            <label>🩸 Blood Pressure <span style="color:#475569;font-weight:400;">(mmHg)</span></label>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <input type="number" id="vBpSys" placeholder="120 (systolic)">
+              <span style="color:#475569;flex-shrink:0;">/</span>
+              <input type="number" id="vBpDia" placeholder="80 (diastolic)">
+            </div>
+          </div>
+          <div class="form-group">
+            <label>🌡️ Temperature <span style="color:#475569;font-weight:400;">(°F)</span></label>
+            <input type="number" step="0.1" id="vTemp" placeholder="98.6">
+          </div>
+          <div class="form-group">
+            <label>💓 Pulse <span style="color:#475569;font-weight:400;">(bpm)</span></label>
+            <input type="number" id="vPulse" placeholder="72">
+          </div>
+          <div class="form-group">
+            <label>🍬 Blood Sugar <span style="color:#475569;font-weight:400;">(mg/dL)</span></label>
+            <input type="number" id="vGlucose" placeholder="110">
+          </div>
+        </div>
+        <button type="submit" class="btn" id="vSubmitBtn" style="width:100%;">Save Vitals</button>
+        <div id="vFormMsg" style="font-size:12.5px;margin-top:10px;text-align:center;"></div>
       </form>
 
-      <div id="vitalsHistoryList">
-        <div class="empty-state">Loading...</div>
+      <div style="border-top:1px solid #1f2937;margin:20px 0 14px;padding-top:16px;">
+        <div style="color:#64748b;font-size:12px;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:10px;">📋 Recent Readings</div>
+        <div id="vitalsHistoryList">
+          <div class="empty-state">Loading...</div>
+        </div>
       </div>
     </div>
 
