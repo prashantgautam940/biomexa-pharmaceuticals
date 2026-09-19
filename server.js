@@ -1506,7 +1506,7 @@ app.post('/api/webhooks/msg91-whatsapp', async (req, res) => {
         await Dose.findByIdAndUpdate(convo.doseId, { status: took ? 'taken' : 'missed' });
 
         if (took) {
-          await sendWhatsAppFree(phone, '✅ Logged as taken!\n\n📋 *Quick check-in*\n\nGot all 4? Just reply with the numbers, in order:\nBP, Temp, Pulse, Sugar\n\n```\n120/80 98.6 72 110\n```\n\nOnly have some? Use labels instead:\n"sugar 110" or "BP 120/80, pulse 72"\n\nOr reply "skip".');
+          await sendWhatsAppFree(phone, '✅ Logged as taken!\n\n📋 *Quick check-in*\n\nGot all 4? Just copy the numbers below (skip the words in brackets):\n\n```\n120/80(BP) 98.6(Temp) 72(Pulse) 110(Sugar)\n```\n\nOnly have some? Use labels instead:\n"sugar 110" or "BP 120/80, pulse 72"\n\nOr reply "skip".');
           await ConversationState.findOneAndUpdate({ patientPhone: phone }, { state: 'awaiting_vitals', updatedAt: new Date() });
         } else {
           await sendWhatsAppFree(phone, `Noted — marked as not taken. Please try to take it as soon as possible, or reach out to your doctor via the Biomexa app if you're having trouble with this medicine.`);
@@ -1525,7 +1525,7 @@ app.post('/api/webhooks/msg91-whatsapp', async (req, res) => {
 
       const vitals = parseVitalsFromText(freeText);
       if (Object.keys(vitals).length === 0) {
-        await sendWhatsAppFree(phone, 'Sorry, I couldn\'t read any numbers from that.\n\nGot all 4? Send them in order:\n```\n120/80 98.6 72 110\n```\n(BP, Temp, Pulse, Sugar)\n\nOnly some? Use labels:\n"sugar 110" or "BP 120/80"\n\nOr reply "skip".');
+        await sendWhatsAppFree(phone, 'Sorry, I couldn\'t read any numbers from that.\n\nGot all 4? Copy the numbers below (skip the bracketed words):\n```\n120/80(BP) 98.6(Temp) 72(Pulse) 110(Sugar)\n```\n\nOnly some? Use labels:\n"sugar 110" or "BP 120/80"\n\nOr reply "skip".');
         return;
       }
 
