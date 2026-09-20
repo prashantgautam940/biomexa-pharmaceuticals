@@ -263,6 +263,20 @@ input[type="time"] { color-scheme: dark; }
       </div>
     </div>
 
+    <!-- Treatment Report — real AI analysis of the whole course so far, same engine the doctor uses -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">📊 Treatment Report</span>
+      </div>
+      <p style="color:#64748b;font-size:12.5px;margin:-4px 0 14px;">A full analysis of how your treatment is going so far — adherence, vitals trends, and advice for what's next.</p>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <button class="btn" id="reportGenBtn" onclick="generateTreatmentReport()" style="width:auto;padding:9px 18px;">Generate Report</button>
+        <button class="btn" id="reportSendBtn" onclick="sendTreatmentReportWhatsapp()" style="width:auto;padding:9px 18px;background:#1e293b;border:1px solid #334155;display:none;">📱 Send to My WhatsApp</button>
+      </div>
+      <div id="reportMsg" style="font-size:12.5px;margin-top:8px;"></div>
+      <div id="reportContent" style="margin-top:16px;display:none;"></div>
+    </div>
+
     <!-- My Vitals — everything the patient has sent over WhatsApp, plus a direct entry form -->
     <div class="card">
       <div class="card-header">
@@ -779,6 +793,98 @@ input[type="time"] { color-scheme: dark; }
         btn.textContent = 'Save Vitals';
       }
     });
+
+    // ===== Treatment Report =====
+    // Calls the same real AI engine the doctor dashboard uses — can take up to a minute if the
+    // engine is asleep (Render free tier), same cold-start behavior as "Run Analysis" there.
+    function generateTreatmentReport() {
+      const btn = document.getElementById('reportGenBtn');
+      const msg = document.getElementById('reportMsg');
+      const content = document.getElementById('reportContent');
+      btn.disabled = true;
+      btn.textContent = 'Analyzing...';
+      msg.style.color = '#64748b';
+      msg.textContent = 'This can take up to a minute if the AI engine is waking up — hang tight.';
+      content.style.display = 'none';
+      document.getElementById('reportSendBtn').style.display = 'none';
+
+      fetch(`${API_URL}/api/patient/treatment-report`, { headers: { 'Authorization': `Bearer ${token}` } })
+        .then(res => res.json().then(data => ({ ok: res.ok, data })))
+        .then(({ ok, data }) => {
+          if (!ok) throw new Error(data.message);
+          renderTreatmentReport(data);
+          msg.textContent = '';
+          document.getElementById('reportSendBtn').style.display = 'inline-block';
+        })
+        .catch(err => {
+          msg.style.color = '#f87171';
+          msg.textContent = err.message;
+        })
+        .finally(() => {
+          btn.disabled = false;
+          btn.textContent = 'Generate Report';
+        });
+    }
+
+    function renderTreatmentReport(r) {
+      const content = document.getElementById('reportContent');
+      const scoreColor = r.effectiveness_score >= 70 ? '#34d399' : r.effectiveness_score >= 40 ? '#fbbf24' : '#f87171';
+
+      const insightsList = (r.clinical_insights || []).map(i => `<li style="margin-bottom:6px;">${i}</li>`).join('') || '<li style="color:#64748b;">No specific concerns flagged.</li>';
+      const recsList = (r.treatment_recommendations || []).map(rec => `<li style="margin-bottom:6px;">${rec}</li>`).join('') || '<li style="color:#64748b;">Continue as prescribed.</li>';
+
+      content.innerHTML = `
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:16px;">
+          <div style="background:#0f172a;border-radius:8px;padding:12px;text-align:center;">
+            <div style="font-size:22px;font-weight:700;color:${scoreColor};">${r.effectiveness_score}</div>
+            <div style="font-size:11px;color:#64748b;">${r.effectiveness_category}</div>
+          </div>
+          <div style="background:#0f172a;border-radius:8px;padding:12px;text-align:center;">
+            <div style="font-size:22px;font-weight:700;color:#5eead4;">${r.adherence_summary?.adherence_rate ?? '—'}%</div>
+            <div style="font-size:11px;color:#64748b;">Adherence</div>
+          </div>
+          <div style="background:#0f172a;border-radius:8px;padding:12px;text-align:center;">
+            <div style="font-size:22px;font-weight:700;color:#f1f5f9;">${r.course_duration_days}</div>
+            <div style="font-size:11px;color:#64748b;">Days Tracked</div>
+          </div>
+        </div>
+        <div style="margin-bottom:14px;">
+          <div style="font-size:12px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px;">🔍 Key Insights</div>
+          <ul style="margin:0;padding-left:18px;font-size:13px;color:#cbd5e1;">${insightsList}</ul>
+        </div>
+        <div>
+          <div style="font-size:12px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px;">💡 Advice For Further Treatment</div>
+          <ul style="margin:0;padding-left:18px;font-size:13px;color:#cbd5e1;">${recsList}</ul>
+        </div>
+        ${!r.usedRealVitals ? '<div style="margin-top:14px;font-size:11.5px;color:#64748b;">📌 Based on estimated vitals — log real readings on WhatsApp or above for a more accurate report.</div>' : ''}
+      `;
+      content.style.display = 'block';
+    }
+
+    function sendTreatmentReportWhatsapp() {
+      const btn = document.getElementById('reportSendBtn');
+      const msg = document.getElementById('reportMsg');
+      btn.disabled = true;
+      btn.textContent = 'Sending...';
+
+      fetch(`${API_URL}/api/patient/treatment-report/send-whatsapp`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+        .then(res => res.json().then(data => ({ ok: res.ok, data })))
+        .then(({ ok, data }) => {
+          msg.style.color = ok && data.whatsappSent ? '#34d399' : '#f87171';
+          msg.textContent = data.message;
+        })
+        .catch(() => {
+          msg.style.color = '#f87171';
+          msg.textContent = 'Could not send right now.';
+        })
+        .finally(() => {
+          btn.disabled = false;
+          btn.textContent = '📱 Send to My WhatsApp';
+        });
+    }
 
     function loadVitalsHistory() {
       fetch(`${API_URL}/api/patient/vitals-history`, { headers: { 'Authorization': `Bearer ${token}` } })

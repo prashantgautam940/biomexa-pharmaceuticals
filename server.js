@@ -1105,6 +1105,101 @@ app.get('/api/patient/vitals-history', auth, async (req, res) => {
   }
 });
 
+// Builds the same real AI-engine analysis used on the doctor side (effectiveness score, real
+// clinical insights, treatment recommendations) but scoped to the logged-in patient's own data
+// via their auth token — this is the shared logic both /api/patient/treatment-report and its
+// WhatsApp-sending counterpart below call, so the portal view and the WhatsApp summary are
+// always built from the exact same real analysis, never two different computations drifting
+// apart.
+async function buildPatientTreatmentReport(phone) {
+  const patient = await Patient.findOne({ phone });
+  if (!patient) return { error: 'Patient not found', status: 404 };
+
+  const doses = await Dose.find({ patientPhone: phone }).sort({ scheduledDate: 1 });
+  if (!doses.length) return { error: 'No dose history yet — add a medicine and confirm a few doses first, then check back.', status: 400 };
+
+  const vitalsLogs = await VitalsLog.find({ patientPhone: phone }).sort({ recordedAt: 1 });
+  const vitalsByDay = {};
+  for (const v of vitalsLogs) {
+    const day = v.recordedAt.toISOString().split('T')[0];
+    vitalsByDay[day] = v;
+  }
+  const usedRealVitals = vitalsLogs.length > 0;
+
+  const primaryMed = patient.medicines?.[0] || { name: doses[0].medicineName, dosage: doses[0].dosage, time: doses[0].scheduledTime };
+  const schedule = [...new Set(patient.medicines?.map(m => m.time) || [doses[0].scheduledTime])];
+
+  const dose_history = doses
+    .filter(d => d.status !== 'pending')
+    .map(d => {
+      const dayLog = vitalsByDay[d.scheduledDate];
+      return {
+        date: d.scheduledDate,
+        status: d.status === 'taken' ? 'taken' : 'not_taken',
+        vitals: {
+          bp_systolic: dayLog?.bpSystolic || patient.baselineVitals?.bpSystolic || 130,
+          bp_diastolic: dayLog?.bpDiastolic || patient.baselineVitals?.bpDiastolic || 85,
+          glucose: dayLog?.glucose || patient.baselineVitals?.glucose || 110,
+          temperature: dayLog?.temperature || patient.baselineVitals?.temperature || 98.6
+        },
+        symptoms: []
+      };
+    });
+
+  if (!dose_history.length) return { error: 'All your doses so far are still pending — check back once you\'ve confirmed a few.', status: 400 };
+
+  const payload = {
+    patient: {
+      id: patient.phone,
+      drug_name: primaryMed.name || 'Unknown',
+      drug_dose: primaryMed.dosage || '',
+      schedule: schedule.length ? schedule : ['08:00'],
+      baseline_bp: [patient.baselineVitals?.bpSystolic || 140, patient.baselineVitals?.bpDiastolic || 90],
+      baseline_glucose: patient.baselineVitals?.glucose || 110,
+      baseline_temp: patient.baselineVitals?.temperature || 98.6,
+      history: patient.medicalHistory || [],
+      baseline_blood_test: {}
+    },
+    dose_history,
+    indication: 'hypertension'
+  };
+
+  const result = await callAiEngine('/analyze', payload);
+  if (!result.ok) {
+    const messages = {
+      not_configured: 'The AI engine isn\'t configured yet — please try again later.',
+      unreachable: 'Could not reach the AI engine right now — it may be waking up from sleep, please try again in a minute.',
+      engine_error: 'The AI engine returned an error: ' + result.detail
+    };
+    return { error: messages[result.reason] || 'AI engine unavailable', status: 503 };
+  }
+
+  return { data: { ...result.data, usedRealVitals, patientName: patient.name } };
+}
+
+app.get('/api/patient/treatment-report', auth, async (req, res) => {
+  const result = await buildPatientTreatmentReport(req.user.phone);
+  if (result.error) return res.status(result.status).json({ message: result.error });
+  res.json(result.data);
+});
+
+// Sends a condensed, readable version of the same report over WhatsApp — the full report with
+// every data point stays on the portal, WhatsApp gets the score, adherence, and the top
+// insight/recommendation so it's genuinely readable as a chat message, not a wall of JSON.
+app.post('/api/patient/treatment-report/send-whatsapp', auth, async (req, res) => {
+  const result = await buildPatientTreatmentReport(req.user.phone);
+  if (result.error) return res.status(result.status).json({ message: result.error });
+
+  const r = result.data;
+  const topInsight = r.clinical_insights?.[0] || 'No specific concerns flagged.';
+  const topRecommendation = r.treatment_recommendations?.[0] || 'Continue as prescribed.';
+
+  const msg = `📊 *Your Treatment Report*\n\n💊 ${r.drug_name}\n📅 ${r.course_duration_days} day(s) tracked\n✅ Adherence: ${r.adherence_summary?.adherence_rate}%\n⭐ Effectiveness: ${r.effectiveness_category} (${r.effectiveness_score}/100)\n\n🔍 *Key insight:*\n${topInsight}\n\n💡 *Advice:*\n${topRecommendation}\n\nFull report with all details is on your Biomexa dashboard.\n\n- Biomexa Team`;
+
+  const waResult = await sendWhatsAppFree(req.user.phone, msg);
+  res.json({ message: waResult.success ? 'Report sent to your WhatsApp!' : 'Could not deliver to WhatsApp right now, but your full report is ready on the dashboard.', whatsappSent: waResult.success });
+});
+
 // Lets a logged-in patient log vitals directly from their own dashboard — same underlying save
 // as the WhatsApp flow (VitalsLog, baseline update, risk-alert check), just entered via a form
 // instead of parsed from free text. Identified by the auth token, not a phone in the body.
