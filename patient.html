@@ -295,6 +295,13 @@ input[type="time"] { color-scheme: dark; }
       </div>
       <div id="reportMsg" style="font-size:12.5px;margin-top:8px;"></div>
       <div id="reportContent" style="margin-top:16px;display:none;"></div>
+
+      <div style="border-top:1px solid #1f2937;margin:18px 0 12px;padding-top:14px;">
+        <div style="color:#64748b;font-size:12px;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:10px;">⏰ Missed Doses — Exact Date & Time</div>
+        <div id="missedDosesList">
+          <div class="empty-state">Loading...</div>
+        </div>
+      </div>
     </div>
 
     <!-- My Vitals — everything the patient has sent over WhatsApp, plus a direct entry form -->
@@ -919,6 +926,32 @@ input[type="time"] { color-scheme: dark; }
     }
     loadUploadedReports();
 
+    // ===== Missed Doses — exact date & time, loaded automatically =====
+    function loadMissedDoses() {
+      fetch(`${API_URL}/api/patient/missed-doses`, { headers: { 'Authorization': `Bearer ${token}` } })
+        .then(res => res.json())
+        .then(doses => {
+          const el = document.getElementById('missedDosesList');
+          if (!doses || !doses.length) {
+            el.innerHTML = '<div class="empty-state">No missed doses on record — keep it up!</div>';
+            return;
+          }
+          el.innerHTML = doses.map(d => {
+            const dateLabel = new Date(d.scheduledDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+            return `
+              <div style="display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid #1f2937;">
+                <span style="font-size:13px;color:#e2e8f0;">${d.medicineName}${d.dosage ? ' — ' + d.dosage : ''}</span>
+                <span style="font-size:12px;color:#f87171;">${dateLabel}, ${d.scheduledTime}</span>
+              </div>
+            `;
+          }).join('');
+        })
+        .catch(() => {
+          document.getElementById('missedDosesList').innerHTML = '<div class="empty-state">Could not load right now.</div>';
+        });
+    }
+    loadMissedDoses();
+
     function generateTreatmentReport() {
       const btn = document.getElementById('reportGenBtn');
       const msg = document.getElementById('reportMsg');
@@ -1040,7 +1073,7 @@ input[type="time"] { color-scheme: dark; }
     loadDoses();
     loadStats();
     loadVitalsHistory();
-    setInterval(() => { loadDoses(); loadStats(); loadVitalsHistory(); }, 30000);
+    setInterval(() => { loadDoses(); loadStats(); loadVitalsHistory(); loadMissedDoses(); }, 30000);
   </script>
 </body>
 </html>

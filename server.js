@@ -1236,6 +1236,20 @@ app.get('/api/patient/uploaded-reports', auth, async (req, res) => {
   }
 });
 
+// Every missed dose with its exact scheduled date and time — the detail level a patient (or
+// their doctor) needs to actually see the pattern, not just an aggregate adherence percentage.
+app.get('/api/patient/missed-doses', auth, async (req, res) => {
+  try {
+    const missed = await Dose.find({ patientPhone: req.user.phone, status: 'missed' })
+      .sort({ scheduledDate: -1, scheduledTime: -1 })
+      .limit(60);
+    res.json(missed);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+
 // Builds the same real AI-engine analysis used on the doctor side (effectiveness score, real
 // clinical insights, treatment recommendations) but scoped to the logged-in patient's own data
 // via their auth token — this is the shared logic both /api/patient/treatment-report and its
