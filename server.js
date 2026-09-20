@@ -12,7 +12,7 @@ app.set('trust proxy', 1); // Render sits behind a reverse proxy — without thi
                             // the proxy's address for every request, not the real client IP,
                             // which would make the rate limiter below treat all users as one.
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '8mb' })); // default is 100kb — a base64-encoded 5MB upload needs headroom
 
 // ========== RATE LIMITING ==========
 // Simple in-memory limiter — appropriate for a single-instance deployment (no Redis needed).
@@ -83,6 +83,62 @@ async function callAiEngine(path, payload, isRetry = false) {
     return { ok: true, data };
   } catch (err) {
     if (!isRetry) return callAiEngine(path, payload, true);
+    return { ok: false, reason: 'unreachable', detail: err.message };
+  }
+}
+
+// ========== PRESCRIPTION / LAB REPORT ANALYSIS (Claude vision API) ==========
+// Reads an uploaded prescription or lab report image/PDF and extracts the key factors —
+// medicines, dosages, abnormal lab values, anything worth flagging. Uses Anthropic's Claude API
+// directly (a real vision-capable model), not a fake keyword scan. Needs its own API key from
+// https://console.anthropic.com — a real paid API key, separate from a claude.ai subscription.
+// Until ANTHROPIC_API_KEY is set, uploads still work (the file is saved), the analysis step just
+// says plainly that it isn't configured yet rather than pretending to have read the document.
+const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || null;
+
+async function analyzeDocumentWithClaude(fileData, fileType) {
+  if (!ANTHROPIC_API_KEY) return { ok: false, reason: 'not_configured' };
+
+  const isPdf = fileType === 'application/pdf';
+  const contentBlock = isPdf
+    ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: fileData } }
+    : { type: 'image', source: { type: 'base64', media_type: fileType, data: fileData } };
+
+  const prompt = `You're looking at a patient-uploaded prescription or lab report. Extract the key factors clearly and concisely, in plain language a patient can understand:
+
+- Medicines mentioned: name, dosage, and frequency if visible
+- Any lab values present: the value, whether it's in/out of the normal range, and what that generally means
+- Anything that stands out as worth discussing with a doctor
+
+Keep it factual and based only on what's actually in the document — don't guess at anything illegible. End with a brief reminder that this is a summary to discuss with their doctor, not a diagnosis. Keep the whole thing under 250 words.`;
+
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-5',
+        max_tokens: 600,
+        messages: [{
+          role: 'user',
+          content: [contentBlock, { type: 'text', text: prompt }]
+        }]
+      }),
+      signal: AbortSignal.timeout(45000)
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      console.log('⚠️ Claude document analysis failed:', JSON.stringify(data).substring(0, 300));
+      return { ok: false, reason: 'api_error', detail: data.error?.message || `HTTP ${res.status}` };
+    }
+    const text = data.content?.find(b => b.type === 'text')?.text || 'No analysis returned.';
+    return { ok: true, analysis: text };
+  } catch (err) {
+    console.log('⚠️ Claude document analysis error:', err.message);
     return { ok: false, reason: 'unreachable', detail: err.message };
   }
 }
@@ -619,6 +675,19 @@ const vitalsLogSchema = new mongoose.Schema({
   recordedAt: { type: Date, default: Date.now }
 });
 
+// Prescriptions and lab reports a patient uploads for AI analysis. Stores the file itself as
+// base64 (no external file storage configured) — kept intentionally small (5MB cap, enforced at
+// upload) since Mongo documents have a 16MB hard limit and base64 adds ~33% overhead.
+const uploadedDocumentSchema = new mongoose.Schema({
+  patientPhone: String,
+  fileName: String,
+  fileType: String, // mime type, e.g. image/jpeg, application/pdf
+  fileData: String, // base64, no data: URL prefix
+  analysis: String, // Claude's extracted key factors, filled in after analysis completes
+  analysisStatus: { type: String, default: 'pending' }, // pending | done | failed | not_configured
+  uploadedAt: { type: Date, default: Date.now }
+});
+
 // Tracks what we're waiting for next from a patient on WhatsApp — dose confirmation, then vitals,
 // then nothing. This is what lets the inbound webhook interpret a short reply like "Taken" or
 // "120/80" correctly, based on where the conversation currently is.
@@ -666,6 +735,7 @@ const Otp = mongoose.model('Otp', otpSchema);
 const Doctor = mongoose.model('Doctor', doctorSchema);
 const ConnectRequest = mongoose.model('ConnectRequest', connectRequestSchema);
 const VitalsLog = mongoose.model('VitalsLog', vitalsLogSchema);
+const UploadedDocument = mongoose.model('UploadedDocument', uploadedDocumentSchema);
 const ConversationState = mongoose.model('ConversationState', conversationStateSchema);
 const RiskAlert = mongoose.model('RiskAlert', riskAlertSchema);
 const Admin = mongoose.model('Admin', adminSchema);
@@ -1100,6 +1170,67 @@ app.get('/api/patient/vitals-history', auth, async (req, res) => {
   try {
     const logs = await VitalsLog.find({ patientPhone: req.user.phone }).sort({ recordedAt: -1 }).limit(30);
     res.json(logs);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+const ALLOWED_DOCUMENT_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
+const MAX_DOCUMENT_BASE64_LENGTH = 5 * 1024 * 1024 * 1.4; // ~5MB file, base64 adds ~33% overhead
+
+// Upload a prescription or lab report for AI analysis. Accepts base64 (sent as plain JSON,
+// no multipart handling needed) — the frontend reads the file via FileReader before sending.
+// Analysis runs synchronously in the same request when Claude is configured; the request can
+// take up to ~30s for that reason, which the frontend's loading state accounts for.
+app.post('/api/patient/upload-report', auth, async (req, res) => {
+  try {
+    const { fileName, fileType, fileData } = req.body;
+    if (!fileName || !fileType || !fileData) {
+      return res.status(400).json({ message: 'File name, type, and data are required.' });
+    }
+    if (!ALLOWED_DOCUMENT_TYPES.includes(fileType)) {
+      return res.status(400).json({ message: 'Only JPG, PNG, WEBP, or PDF files are supported.' });
+    }
+    if (fileData.length > MAX_DOCUMENT_BASE64_LENGTH) {
+      return res.status(400).json({ message: 'File is too large — please upload something under 5MB.' });
+    }
+
+    const doc = await UploadedDocument.create({
+      patientPhone: req.user.phone,
+      fileName, fileType, fileData,
+      analysisStatus: 'pending'
+    });
+
+    const result = await analyzeDocumentWithClaude(fileData, fileType);
+    if (result.ok) {
+      doc.analysis = result.analysis;
+      doc.analysisStatus = 'done';
+    } else if (result.reason === 'not_configured') {
+      doc.analysisStatus = 'not_configured';
+    } else {
+      doc.analysisStatus = 'failed';
+      doc.analysis = 'Analysis failed — you can try re-uploading, or ask your doctor to review this directly.';
+    }
+    await doc.save();
+
+    res.json({
+      message: result.ok ? 'Uploaded and analyzed!' : result.reason === 'not_configured' ? 'Uploaded — AI analysis isn\'t configured yet, but your file is saved.' : 'Uploaded, but analysis failed.',
+      document: { _id: doc._id, fileName: doc.fileName, analysis: doc.analysis, analysisStatus: doc.analysisStatus, uploadedAt: doc.uploadedAt }
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// List of past uploads — deliberately excludes fileData (the base64 blob) from the list view
+// to keep the response small; a single document's full data is fetched separately if needed.
+app.get('/api/patient/uploaded-reports', auth, async (req, res) => {
+  try {
+    const docs = await UploadedDocument.find({ patientPhone: req.user.phone })
+      .select('-fileData')
+      .sort({ uploadedAt: -1 })
+      .limit(20);
+    res.json(docs);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

@@ -263,6 +263,26 @@ input[type="time"] { color-scheme: dark; }
       </div>
     </div>
 
+    <!-- Upload Report / Prescription — real AI analysis via Claude's vision API -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">📄 Upload Report or Prescription</span>
+      </div>
+      <p style="color:#64748b;font-size:12.5px;margin:-4px 0 14px;">Upload a photo or PDF of a prescription or lab report — AI reads it and pulls out the key factors, ready to discuss with your doctor.</p>
+
+      <form id="uploadForm" style="margin-bottom:14px;">
+        <input type="file" id="reportFile" accept="image/jpeg,image/png,image/webp,application/pdf" style="display:none;" onchange="handleFileSelected()">
+        <div id="uploadDropzone" onclick="document.getElementById('reportFile').click()" style="border:1px dashed #334155;border-radius:10px;padding:20px;text-align:center;cursor:pointer;font-size:13px;color:#64748b;">
+          📎 Click to choose a file — JPG, PNG, or PDF, up to 5MB
+        </div>
+        <div id="selectedFileName" style="font-size:12.5px;color:#5eead4;margin-top:8px;display:none;"></div>
+        <button type="submit" class="btn" id="uploadBtn" style="width:100%;margin-top:10px;display:none;">Upload & Analyze</button>
+      </form>
+      <div id="uploadMsg" style="font-size:12.5px;margin-bottom:10px;"></div>
+
+      <div id="reportsHistory"></div>
+    </div>
+
     <!-- Treatment Report — real AI analysis of the whole course so far, same engine the doctor uses -->
     <div class="card">
       <div class="card-header">
@@ -797,6 +817,108 @@ input[type="time"] { color-scheme: dark; }
     // ===== Treatment Report =====
     // Calls the same real AI engine the doctor dashboard uses — can take up to a minute if the
     // engine is asleep (Render free tier), same cold-start behavior as "Run Analysis" there.
+    // ===== Upload Report / Prescription =====
+    let selectedFileBase64 = null;
+    let selectedFileType = null;
+    let selectedFileName = null;
+
+    function handleFileSelected() {
+      const input = document.getElementById('reportFile');
+      const file = input.files[0];
+      const msg = document.getElementById('uploadMsg');
+      msg.textContent = '';
+      if (!file) return;
+
+      const allowed = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
+      if (!allowed.includes(file.type)) {
+        msg.style.color = '#f87171';
+        msg.textContent = 'Only JPG, PNG, WEBP, or PDF files are supported.';
+        input.value = '';
+        return;
+      }
+      if (file.size > 5 * 1024 * 1024) {
+        msg.style.color = '#f87171';
+        msg.textContent = 'File is too large — please choose something under 5MB.';
+        input.value = '';
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = () => {
+        // reader.result is a data: URL like "data:image/jpeg;base64,xxxx" — strip the prefix,
+        // the backend just wants the raw base64.
+        selectedFileBase64 = reader.result.split(',')[1];
+        selectedFileType = file.type;
+        selectedFileName = file.name;
+        document.getElementById('selectedFileName').textContent = `✓ ${file.name} ready to upload`;
+        document.getElementById('selectedFileName').style.display = 'block';
+        document.getElementById('uploadBtn').style.display = 'block';
+      };
+      reader.readAsDataURL(file);
+    }
+
+    document.getElementById('uploadForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!selectedFileBase64) return;
+
+      const btn = document.getElementById('uploadBtn');
+      const msg = document.getElementById('uploadMsg');
+      btn.disabled = true;
+      btn.textContent = 'Analyzing... (can take up to 30 seconds)';
+      msg.textContent = '';
+
+      try {
+        const res = await fetch(`${API_URL}/api/patient/upload-report`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({ fileName: selectedFileName, fileType: selectedFileType, fileData: selectedFileBase64 })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.message);
+
+        msg.style.color = data.document.analysisStatus === 'done' ? '#34d399' : '#fbbf24';
+        msg.textContent = data.message;
+
+        document.getElementById('uploadForm').reset();
+        document.getElementById('selectedFileName').style.display = 'none';
+        document.getElementById('uploadBtn').style.display = 'none';
+        selectedFileBase64 = null;
+        loadUploadedReports();
+      } catch (err) {
+        msg.style.color = '#f87171';
+        msg.textContent = err.message;
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Upload & Analyze';
+      }
+    });
+
+    function loadUploadedReports() {
+      fetch(`${API_URL}/api/patient/uploaded-reports`, { headers: { 'Authorization': `Bearer ${token}` } })
+        .then(res => res.json())
+        .then(docs => {
+          const el = document.getElementById('reportsHistory');
+          if (!docs || !docs.length) { el.innerHTML = ''; return; }
+
+          el.innerHTML = '<div style="font-size:12px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.04em;margin:14px 0 8px;">Past Uploads</div>' +
+            docs.map(d => {
+              const date = new Date(d.uploadedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+              const statusBadge = d.analysisStatus === 'done' ? '✅' : d.analysisStatus === 'failed' ? '❌' : '⏳';
+              return `
+                <div style="background:#0f172a;border-radius:8px;padding:12px 14px;margin-bottom:8px;">
+                  <div style="display:flex;justify-content:space-between;font-size:12.5px;color:#94a3b8;margin-bottom:6px;">
+                    <span>${statusBadge} ${d.fileName}</span>
+                    <span>${date}</span>
+                  </div>
+                  ${d.analysis ? `<div style="font-size:13px;color:#cbd5e1;white-space:pre-wrap;">${d.analysis}</div>` : ''}
+                </div>
+              `;
+            }).join('');
+        })
+        .catch(() => {});
+    }
+    loadUploadedReports();
+
     function generateTreatmentReport() {
       const btn = document.getElementById('reportGenBtn');
       const msg = document.getElementById('reportMsg');
