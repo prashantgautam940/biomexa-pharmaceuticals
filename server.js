@@ -143,6 +143,71 @@ Keep it factual and based only on what's actually in the document — don't gues
   }
 }
 
+// ========== PRESCRIPTION / LAB REPORT ANALYSIS (Gemini vision API — free tier) ==========
+// Google's Gemini API has a genuine ongoing free tier for its Flash models (no trial-credit
+// ceiling, unlike Anthropic's one-time trial credit) — this is what lets the document analysis
+// feature be tested and used at zero cost before deciding whether to pay for anything.
+// Get a free key at https://aistudio.google.com/apikey — no credit card required.
+//
+// Model note: using gemini-3.8-flash specifically because the 2.5 generation is being shut down
+// by Google in October 2026 and the 2.0 generation already shut down in June 2026 — checked
+// Google's own current docs before picking this rather than guessing at a model name that would
+// break in a few weeks.
+//
+// Real privacy tradeoff worth knowing: on Google's free tier, prompts and responses (including
+// uploaded prescription images) may be used by Google to improve their products, per their
+// current terms — this does not apply on a paid Gemini plan. Worth keeping in mind for a
+// healthcare app handling real patient documents.
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || null;
+const GEMINI_MODEL = 'gemini-3.8-flash';
+
+async function analyzeDocumentWithGemini(fileData, fileType) {
+  if (!GEMINI_API_KEY) return { ok: false, reason: 'not_configured' };
+
+  const prompt = `You're looking at a patient-uploaded prescription or lab report. Extract the key factors clearly and concisely, in plain language a patient can understand:
+
+- Medicines mentioned: name, dosage, and frequency if visible
+- Any lab values present: the value, whether it's in/out of the normal range, and what that generally means
+- Anything that stands out as worth discussing with a doctor
+
+Keep it factual and based only on what's actually in the document — don't guess at anything illegible. End with a brief reminder that this is a summary to discuss with their doctor, not a diagnosis. Keep the whole thing under 250 words.`;
+
+  try {
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{
+          parts: [
+            { text: prompt },
+            { inline_data: { mime_type: fileType, data: fileData } }
+          ]
+        }]
+      }),
+      signal: AbortSignal.timeout(45000)
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      console.log('⚠️ Gemini document analysis failed:', JSON.stringify(data).substring(0, 300));
+      return { ok: false, reason: 'api_error', detail: data.error?.message || `HTTP ${res.status}` };
+    }
+    const text = data.candidates?.[0]?.content?.parts?.find(p => p.text)?.text || 'No analysis returned.';
+    return { ok: true, analysis: text };
+  } catch (err) {
+    console.log('⚠️ Gemini document analysis error:', err.message);
+    return { ok: false, reason: 'unreachable', detail: err.message };
+  }
+}
+
+// Unified document analyzer — tries Gemini first (free, no cost while testing), falls back to
+// Claude only if Gemini isn't configured but Claude is. Set GEMINI_API_KEY to test for free;
+// having both configured is fine too, Gemini just takes priority.
+async function analyzeDocument(fileData, fileType) {
+  const geminiResult = await analyzeDocumentWithGemini(fileData, fileType);
+  if (geminiResult.ok || geminiResult.reason !== 'not_configured') return geminiResult;
+  return analyzeDocumentWithClaude(fileData, fileType);
+}
+
 // ========== MSG91 WHATSAPP — TWO-WAY DOSE CONFIRMATION & VITALS CAPTURE ==========
 // MSG91 is Biomexa's sole WhatsApp provider: one real business number, real webhooks for
 // inbound replies, and quick-reply buttons — which is what makes "patient taps Taken/Not Taken,
@@ -1180,8 +1245,8 @@ const MAX_DOCUMENT_BASE64_LENGTH = 5 * 1024 * 1024 * 1.4; // ~5MB file, base64 a
 
 // Upload a prescription or lab report for AI analysis. Accepts base64 (sent as plain JSON,
 // no multipart handling needed) — the frontend reads the file via FileReader before sending.
-// Analysis runs synchronously in the same request when Claude is configured; the request can
-// take up to ~30s for that reason, which the frontend's loading state accounts for.
+// Analysis runs synchronously in the same request when Gemini or Claude is configured; the
+// request can take up to ~30s for that reason, which the frontend's loading state accounts for.
 app.post('/api/patient/upload-report', auth, async (req, res) => {
   try {
     const { fileName, fileType, fileData } = req.body;
@@ -1201,7 +1266,7 @@ app.post('/api/patient/upload-report', auth, async (req, res) => {
       analysisStatus: 'pending'
     });
 
-    const result = await analyzeDocumentWithClaude(fileData, fileType);
+    const result = await analyzeDocument(fileData, fileType);
     if (result.ok) {
       doc.analysis = result.analysis;
       doc.analysisStatus = 'done';
