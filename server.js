@@ -161,7 +161,7 @@ Keep it factual and based only on what's actually in the document — don't gues
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || null;
 const GEMINI_MODEL = 'gemini-3.8-flash';
 
-async function analyzeDocumentWithGemini(fileData, fileType, isRetry = false) {
+async function analyzeDocumentWithGemini(fileData, fileType, attempt = 0) {
   if (!GEMINI_API_KEY) return { ok: false, reason: 'not_configured' };
 
   const prompt = `You're looking at a patient-uploaded prescription or lab report. Extract the key factors clearly and concisely, in plain language a patient can understand:
@@ -193,16 +193,17 @@ Keep it factual and based only on what's actually in the document — don't gues
     });
     const data = await res.json();
     if (!res.ok) {
-      // 503/UNAVAILABLE means Google's model is temporarily overloaded — confirmed via a real
-      // "high demand" response on a live free-tier request — not a real problem with the key,
-      // request, or code. Worth one automatic retry after a short wait rather than making the
-      // patient manually re-upload for something that's usually gone within seconds. Any other
-      // error (bad key, malformed request) fails immediately — retrying those would just waste
-      // the patient's wait time on something a retry can't fix.
-      if (res.status === 503 && !isRetry) {
-        console.log('⏳ Gemini overloaded (503) — retrying once in 3s...');
-        await new Promise(r => setTimeout(r, 3000));
-        return analyzeDocumentWithGemini(fileData, fileType, true);
+      // 503/UNAVAILABLE means Google's model is temporarily overloaded — confirmed via real
+      // "high demand" responses on live requests, a well-documented recurring pattern across
+      // the whole Gemini lineup (not specific to this model or this key). Worth retrying with
+      // backoff rather than making the patient manually re-upload for something that usually
+      // clears within a minute. Any other error (bad key, malformed request) fails immediately —
+      // retrying those would just waste the patient's wait time on something a retry can't fix.
+      if (res.status === 503 && attempt < 2) {
+        const waitMs = attempt === 0 ? 3000 : 8000;
+        console.log(`⏳ Gemini overloaded (503) — retry ${attempt + 1}/2 in ${waitMs / 1000}s...`);
+        await new Promise(r => setTimeout(r, waitMs));
+        return analyzeDocumentWithGemini(fileData, fileType, attempt + 1);
       }
       console.log('⚠️ Gemini document analysis failed:', JSON.stringify(data).substring(0, 300));
       return { ok: false, reason: 'api_error', detail: data.error?.message || `HTTP ${res.status}` };
@@ -215,12 +216,16 @@ Keep it factual and based only on what's actually in the document — don't gues
   }
 }
 
-// Unified document analyzer — tries Gemini first (free, no cost while testing), falls back to
-// Claude only if Gemini isn't configured but Claude is. Set GEMINI_API_KEY to test for free;
-// having both configured is fine too, Gemini just takes priority.
+// Unified document analyzer — tries Gemini first (free), and now also falls back to Claude if
+// Gemini fails for ANY reason after its own retries are exhausted, not just when Gemini isn't
+// configured. This only kicks in when both providers are actually configured, so it never
+// incurs cost the person hasn't already opted into by setting up both keys — it just means a
+// temporary Gemini outage doesn't leave the feature broken when a working backup is right there.
 async function analyzeDocument(fileData, fileType) {
   const geminiResult = await analyzeDocumentWithGemini(fileData, fileType);
-  if (geminiResult.ok || geminiResult.reason !== 'not_configured') return geminiResult;
+  if (geminiResult.ok) return geminiResult;
+  if (!ANTHROPIC_API_KEY) return geminiResult;
+  console.log(`ℹ️ Gemini failed (${geminiResult.reason}), falling back to Claude...`);
   return analyzeDocumentWithClaude(fileData, fileType);
 }
 
