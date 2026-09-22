@@ -173,9 +173,14 @@ async function analyzeDocumentWithGemini(fileData, fileType) {
 Keep it factual and based only on what's actually in the document — don't guess at anything illegible. End with a brief reminder that this is a summary to discuss with their doctor, not a diagnosis. Keep the whole thing under 250 words.`;
 
   try {
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`, {
+    // Uses the x-goog-api-key header rather than the older ?key= URL query parameter — Google's
+    // newer "AQ." auth keys (the default for all keys issued since mid-2026) are documented to
+    // require this specifically; sending them via the query-param method returns
+    // ACCESS_TOKEN_TYPE_UNSUPPORTED. The header method works for the older AIza-format keys too,
+    // so this is the safer choice regardless of which key type is configured.
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_API_KEY },
       body: JSON.stringify({
         contents: [{
           parts: [
