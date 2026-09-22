@@ -166,9 +166,46 @@ Rules: base this only on what's actually in the document — never guess at anyt
 // current terms — this does not apply on a paid Gemini plan. Worth keeping in mind for a
 // healthcare app handling real patient documents.
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || null;
-const GEMINI_MODEL = 'gemini-3.8-flash';
+// Two models tried in sequence: 3.8 Flash first (the newest, most capable), then 3.5 Flash-Lite
+// as a same-family backup if the first is overloaded — confirmed via Google's own current docs
+// that Flash-Lite is a separate, currently-supported, genuinely free ("billing not required")
+// model. Since it's a different, less brand-new model, it's a reasonable bet to have different
+// capacity than 3.8 Flash during a demand spike on the newest release specifically.
+const GEMINI_MODELS = ['gemini-3.8-flash', 'gemini-3.5-flash-lite'];
 
-async function analyzeDocumentWithGemini(fileData, fileType, attempt = 0) {
+async function callGeminiModel(model, fileData, fileType, prompt, attempt = 0) {
+  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_API_KEY },
+    body: JSON.stringify({
+      contents: [{
+        parts: [
+          { text: prompt },
+          { inline_data: { mime_type: fileType, data: fileData } }
+        ]
+      }]
+    }),
+    signal: AbortSignal.timeout(70000)
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    // 503/UNAVAILABLE means this specific model is temporarily overloaded — confirmed via real
+    // "high demand" responses on live requests, a well-documented recurring pattern across the
+    // whole Gemini lineup. Worth retrying with backoff within the SAME model first (usually
+    // clears within a minute), before this function's caller moves on to the next model.
+    if (res.status === 503 && attempt < 2) {
+      const waitMs = attempt === 0 ? 3000 : 8000;
+      console.log(`⏳ ${model} overloaded (503) — retry ${attempt + 1}/2 in ${waitMs / 1000}s...`);
+      await new Promise(r => setTimeout(r, waitMs));
+      return callGeminiModel(model, fileData, fileType, prompt, attempt + 1);
+    }
+    return { ok: false, status: res.status, detail: data.error?.message || `HTTP ${res.status}`, data };
+  }
+  const text = data.candidates?.[0]?.content?.parts?.find(p => p.text)?.text || 'No analysis returned.';
+  return { ok: true, analysis: text };
+}
+
+async function analyzeDocumentWithGemini(fileData, fileType) {
   if (!GEMINI_API_KEY) return { ok: false, reason: 'not_configured' };
 
   const prompt = `You're looking at a patient-uploaded prescription or lab report. Write a summary an average patient — not a medical professional — can genuinely understand at a glance. This same text will be shown on their dashboard AND sent to them as a WhatsApp message, so use WhatsApp's formatting: *asterisks* for bold section headers, plain short lines, no markdown tables or nested bullets.
@@ -186,48 +223,22 @@ One or two short, concrete points on what stands out — only if something genui
 
 Rules: base this only on what's actually in the document — never guess at anything illegible or invent a value. Avoid medical jargon; if a technical term is unavoidable, explain it in a few plain words right there. End with one line reminding them this is a summary to discuss with their doctor, not a diagnosis. Keep the whole thing under 220 words so it reads well as a WhatsApp message.`;
 
-  try {
-    // Uses the x-goog-api-key header rather than the older ?key= URL query parameter — Google's
-    // newer "AQ." auth keys (the default for all keys issued since mid-2026) are documented to
-    // require this specifically; sending them via the query-param method returns
-    // ACCESS_TOKEN_TYPE_UNSUPPORTED. The header method works for the older AIza-format keys too,
-    // so this is the safer choice regardless of which key type is configured.
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_API_KEY },
-      body: JSON.stringify({
-        contents: [{
-          parts: [
-            { text: prompt },
-            { inline_data: { mime_type: fileType, data: fileData } }
-          ]
-        }]
-      }),
-      signal: AbortSignal.timeout(70000)
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      // 503/UNAVAILABLE means Google's model is temporarily overloaded — confirmed via real
-      // "high demand" responses on live requests, a well-documented recurring pattern across
-      // the whole Gemini lineup (not specific to this model or this key). Worth retrying with
-      // backoff rather than making the patient manually re-upload for something that usually
-      // clears within a minute. Any other error (bad key, malformed request) fails immediately —
-      // retrying those would just waste the patient's wait time on something a retry can't fix.
-      if (res.status === 503 && attempt < 2) {
-        const waitMs = attempt === 0 ? 3000 : 8000;
-        console.log(`⏳ Gemini overloaded (503) — retry ${attempt + 1}/2 in ${waitMs / 1000}s...`);
-        await new Promise(r => setTimeout(r, waitMs));
-        return analyzeDocumentWithGemini(fileData, fileType, attempt + 1);
+  let lastFailure = null;
+  for (const model of GEMINI_MODELS) {
+    try {
+      const result = await callGeminiModel(model, fileData, fileType, prompt);
+      if (result.ok) {
+        if (model !== GEMINI_MODELS[0]) console.log(`✅ Succeeded on fallback model ${model}`);
+        return { ok: true, analysis: result.analysis };
       }
-      console.log('⚠️ Gemini document analysis failed:', JSON.stringify(data).substring(0, 300));
-      return { ok: false, reason: 'api_error', detail: data.error?.message || `HTTP ${res.status}` };
+      lastFailure = result;
+      console.log(`⚠️ ${model} failed:`, JSON.stringify(result.data || {}).substring(0, 300));
+    } catch (err) {
+      lastFailure = { detail: err.message };
+      console.log(`⚠️ ${model} error:`, err.message);
     }
-    const text = data.candidates?.[0]?.content?.parts?.find(p => p.text)?.text || 'No analysis returned.';
-    return { ok: true, analysis: text };
-  } catch (err) {
-    console.log('⚠️ Gemini document analysis error:', err.message);
-    return { ok: false, reason: 'unreachable', detail: err.message };
   }
+  return { ok: false, reason: 'api_error', detail: lastFailure?.detail || 'All Gemini models unavailable' };
 }
 
 // Unified document analyzer — tries Gemini first (free), and now also falls back to Claude if
