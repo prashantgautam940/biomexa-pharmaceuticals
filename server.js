@@ -128,7 +128,7 @@ Keep it factual and based only on what's actually in the document — don't gues
           content: [contentBlock, { type: 'text', text: prompt }]
         }]
       }),
-      signal: AbortSignal.timeout(45000)
+      signal: AbortSignal.timeout(70000)
     });
     const data = await res.json();
     if (!res.ok) {
@@ -189,7 +189,7 @@ Keep it factual and based only on what's actually in the document — don't gues
           ]
         }]
       }),
-      signal: AbortSignal.timeout(45000)
+      signal: AbortSignal.timeout(70000)
     });
     const data = await res.json();
     if (!res.ok) {
