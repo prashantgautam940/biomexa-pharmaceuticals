@@ -1400,6 +1400,18 @@ app.get('/api/patient/uploaded-reports', auth, async (req, res) => {
   }
 });
 
+// Lets a patient delete an uploaded report/prescription — removes the file data and analysis
+// entirely, not just from the visible list.
+app.delete('/api/patient/uploaded-reports/:id', auth, async (req, res) => {
+  try {
+    const doc = await UploadedDocument.findOneAndDelete({ _id: req.params.id, patientPhone: req.user.phone });
+    if (!doc) return res.status(404).json({ message: 'Report not found.' });
+    res.json({ message: 'Report deleted.' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 // Sends a previously-completed document analysis over WhatsApp — the prompt already formats
 // the analysis with WhatsApp-style *bold* headers, so this sends the exact same text shown on
 // the dashboard rather than reformatting or condensing it again.
@@ -1738,6 +1750,19 @@ app.get('/api/doses/today', auth, async (req, res) => {
       scheduledDate: today
     }).sort({ scheduledTime: 1 });
     res.json(doses);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Lets a patient delete a single dose entry — e.g. a test entry or one added by mistake.
+// Scoped to the patient's own phone so this can never touch another patient's records, even
+// with a guessed/valid-looking dose ID.
+app.delete('/api/doses/:id', auth, async (req, res) => {
+  try {
+    const dose = await Dose.findOneAndDelete({ _id: req.params.id, patientPhone: req.user.phone });
+    if (!dose) return res.status(404).json({ message: 'Dose not found.' });
+    res.json({ message: 'Dose deleted.' });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

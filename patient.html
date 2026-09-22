@@ -46,6 +46,12 @@ body {
   border-radius: 16px;
   padding: 24px;
   margin-bottom: 24px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.card:hover {
+  border-color: #3f5470;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.25);
 }
 .card-header {
   display: flex;
@@ -68,7 +74,9 @@ body {
   background: #0f172a;
   border-radius: 12px;
   padding: 16px;
+  transition: background 0.15s;
 }
+.stat-box:hover { background: #142033; }
 .stat-label { color: #94a3b8; font-size: 12px; text-transform: uppercase; margin-bottom: 8px; }
 .stat-value { color: #f1f5f9; font-size: 24px; font-weight: 700; }
 .dose-item {
@@ -145,8 +153,9 @@ input, select {
   color: #f1f5f9;
   font-size: 14px;
   outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
 }
-input:focus, select:focus { border-color: #14b8a6; }
+input:focus, select:focus { border-color: #14b8a6; box-shadow: 0 0 0 3px rgba(20,184,166,0.15); }
 input[type="time"] { color-scheme: dark; }
 .empty-state {
   text-align: center;
@@ -589,15 +598,33 @@ input[type="time"] { color-scheme: dark; }
               <h4>${d.medicineName} — ${d.dosage}</h4>
               <p>${d.foodNote || 'No food instructions'}</p>
             </div>
-            <div style="text-align:right;">
-              <div class="dose-time">${d.scheduledTime}</div>
-              <div style="color:#94a3b8;font-size:11px;margin-top:4px;text-transform:uppercase;">${d.status}</div>
-              ${d.status === 'pending' ? `<button class="btn btn-confirm" onclick="confirmDose('${d._id}')">Confirm</button>` : ''}
+            <div style="text-align:right;display:flex;align-items:center;gap:10px;">
+              <div>
+                <div class="dose-time">${d.scheduledTime}</div>
+                <div style="color:#94a3b8;font-size:11px;margin-top:4px;text-transform:uppercase;">${d.status}</div>
+                ${d.status === 'pending' ? `<button class="btn btn-confirm" onclick="confirmDose('${d._id}')">Confirm</button>` : ''}
+              </div>
+              <button onclick="deleteDose('${d._id}')" title="Delete this dose" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:16px;padding:4px 6px;border-radius:6px;transition:color 0.15s, background 0.15s;" onmouseover="this.style.color='#f87171';this.style.background='rgba(248,113,113,0.1)';" onmouseout="this.style.color='#64748b';this.style.background='none';">🗑️</button>
             </div>
           </div>
         `).join('');
       } catch (err) {
         document.getElementById('dosesList').innerHTML = '<div class="empty-state">Error loading doses. Is the server running?</div>';
+      }
+    }
+
+    async function deleteDose(id) {
+      if (!confirm('Delete this dose entry? This cannot be undone.')) return;
+      try {
+        const res = await fetch(`${API_URL}/api/doses/${id}`, {
+          method: 'DELETE',
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!res.ok) throw new Error();
+        loadDoses();
+        loadStats();
+      } catch (err) {
+        alert('Failed to delete dose');
       }
     }
 
@@ -1029,31 +1056,70 @@ input[type="time"] { color-scheme: dark; }
         });
     }
 
+    let reportsExpanded = false;
+    let cachedReports = [];
+
+    function toggleReportsExpanded() {
+      reportsExpanded = !reportsExpanded;
+      renderUploadedReports();
+    }
+
+    async function deleteUploadedReport(id) {
+      if (!confirm('Delete this report? This cannot be undone.')) return;
+      try {
+        const res = await fetch(`${API_URL}/api/patient/uploaded-reports/${id}`, {
+          method: 'DELETE',
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!res.ok) throw new Error();
+        loadUploadedReports();
+      } catch (err) {
+        alert('Failed to delete report');
+      }
+    }
+
+    function renderUploadedReports() {
+      const el = document.getElementById('reportsHistory');
+      if (!cachedReports.length) { el.innerHTML = ''; return; }
+
+      const VISIBLE_COUNT = 2;
+      const visibleDocs = reportsExpanded ? cachedReports : cachedReports.slice(0, VISIBLE_COUNT);
+      const hiddenCount = cachedReports.length - VISIBLE_COUNT;
+
+      const cards = visibleDocs.map(d => {
+        const date = new Date(d.uploadedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+        const statusBadge = d.analysisStatus === 'done' ? '✅' : d.analysisStatus === 'failed' ? '❌' : '⏳';
+        const sendBtn = d.analysisStatus === 'done'
+          ? `<button onclick="sendReportToWhatsapp('${d._id}', this)" style="background:none;border:1px solid #334155;color:#5eead4;padding:4px 10px;border-radius:6px;font-size:11.5px;cursor:pointer;margin-top:8px;transition:border-color 0.15s;" onmouseover="this.style.borderColor='#5eead4';" onmouseout="this.style.borderColor='#334155';">📱 Send to WhatsApp</button>`
+          : '';
+        return `
+          <div style="background:#0f172a;border-radius:8px;padding:12px 14px;margin-bottom:8px;transition:background 0.15s;">
+            <div style="display:flex;justify-content:space-between;align-items:center;font-size:12.5px;color:#94a3b8;margin-bottom:6px;">
+              <span>${statusBadge} ${d.fileName}</span>
+              <span style="display:flex;align-items:center;gap:10px;">
+                ${date}
+                <button onclick="deleteUploadedReport('${d._id}')" title="Delete this report" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:14px;padding:2px 4px;border-radius:4px;transition:color 0.15s;" onmouseover="this.style.color='#f87171';" onmouseout="this.style.color='#64748b';">🗑️</button>
+              </span>
+            </div>
+            ${d.analysis ? `<div style="font-size:13px;color:#cbd5e1;white-space:pre-wrap;line-height:1.5;">${formatAnalysisForPortal(d.analysis)}</div>` : ''}
+            ${sendBtn}
+          </div>
+        `;
+      }).join('');
+
+      const toggleBtn = hiddenCount > 0
+        ? `<button onclick="toggleReportsExpanded()" style="background:none;border:none;color:#5eead4;cursor:pointer;font-size:12px;padding:6px 0;text-decoration:underline;">${reportsExpanded ? 'Show less' : `Show ${hiddenCount} more`}</button>`
+        : '';
+
+      el.innerHTML = `<div style="font-size:12px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.04em;margin:14px 0 8px;">Past Uploads</div>${cards}${toggleBtn}`;
+    }
+
     function loadUploadedReports() {
       fetch(`${API_URL}/api/patient/uploaded-reports`, { headers: { 'Authorization': `Bearer ${token}` } })
         .then(res => res.json())
         .then(docs => {
-          const el = document.getElementById('reportsHistory');
-          if (!docs || !docs.length) { el.innerHTML = ''; return; }
-
-          el.innerHTML = '<div style="font-size:12px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.04em;margin:14px 0 8px;">Past Uploads</div>' +
-            docs.map(d => {
-              const date = new Date(d.uploadedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
-              const statusBadge = d.analysisStatus === 'done' ? '✅' : d.analysisStatus === 'failed' ? '❌' : '⏳';
-              const sendBtn = d.analysisStatus === 'done'
-                ? `<button onclick="sendReportToWhatsapp('${d._id}', this)" style="background:none;border:1px solid #334155;color:#5eead4;padding:4px 10px;border-radius:6px;font-size:11.5px;cursor:pointer;margin-top:8px;">📱 Send to WhatsApp</button>`
-                : '';
-              return `
-                <div style="background:#0f172a;border-radius:8px;padding:12px 14px;margin-bottom:8px;">
-                  <div style="display:flex;justify-content:space-between;font-size:12.5px;color:#94a3b8;margin-bottom:6px;">
-                    <span>${statusBadge} ${d.fileName}</span>
-                    <span>${date}</span>
-                  </div>
-                  ${d.analysis ? `<div style="font-size:13px;color:#cbd5e1;white-space:pre-wrap;line-height:1.5;">${formatAnalysisForPortal(d.analysis)}</div>` : ''}
-                  ${sendBtn}
-                </div>
-              `;
-            }).join('');
+          cachedReports = docs || [];
+          renderUploadedReports();
         })
         .catch(() => {});
     }
