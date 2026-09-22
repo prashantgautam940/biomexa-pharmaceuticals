@@ -1474,7 +1474,14 @@ async function buildPatientTreatmentReport(phone) {
     return { error: messages[result.reason] || 'AI engine unavailable', status: 503 };
   }
 
-  return { data: { ...result.data, usedRealVitals, patientName: patient.name, dailyBreakdown } };
+  // The AI engine wraps its actual analysis fields (drug_name, effectiveness_score,
+  // adherence_summary, clinical_insights, treatment_recommendations, etc.) one level deeper
+  // than the top of the HTTP response — under full_report — with a separate, differently-shaped
+  // "dashboard" summary alongside it. Confirmed by reading ai_engine.py directly: the earlier
+  // code was reading these fields off the top level, where they never existed, which is exactly
+  // why every one of them came through as undefined on both the portal and WhatsApp.
+  const report = result.data.full_report || {};
+  return { data: { ...report, usedRealVitals, patientName: patient.name, dailyBreakdown } };
 }
 
 app.get('/api/patient/treatment-report', auth, async (req, res) => {
