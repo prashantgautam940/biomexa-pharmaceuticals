@@ -12,7 +12,7 @@ app.set('trust proxy', 1); // Render sits behind a reverse proxy — without thi
                             // the proxy's address for every request, not the real client IP,
                             // which would make the rate limiter below treat all users as one.
 app.use(cors());
-app.use(express.json({ limit: '8mb' })); // default is 100kb — a base64-encoded 5MB upload needs headroom
+app.use(express.json({ limit: '22mb' })); // default is 100kb — up to 3 files (~5MB each, base64 adds ~33%) per upload needs real headroom
 
 // ========== RATE LIMITING ==========
 // Simple in-memory limiter — appropriate for a single-instance deployment (no Redis needed).
@@ -96,28 +96,48 @@ async function callAiEngine(path, payload, isRetry = false) {
 // says plainly that it isn't configured yet rather than pretending to have read the document.
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || null;
 
-async function analyzeDocumentWithClaude(fileData, fileType) {
-  if (!ANTHROPIC_API_KEY) return { ok: false, reason: 'not_configured' };
+// Builds the shared analysis prompt — same structure and rules for both providers, just the
+// language changes. Kept as one function so improving the extraction quality only needs to
+// happen in one place.
+function buildAnalysisPrompt(language, fileCount) {
+  const languageInstruction = language && language !== 'English'
+    ? `Write your ENTIRE response in ${language} — every word, including the section headers themselves (translate "Medicines", "Lab Values", "Worth Discussing" naturally into ${language}, keep the emojis). Do not mix in English except for the actual medicine/drug names, which should stay as printed on the document.`
+    : 'Write your response in clear, plain English.';
 
-  const isPdf = fileType === 'application/pdf';
-  const contentBlock = isPdf
-    ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: fileData } }
-    : { type: 'image', source: { type: 'base64', media_type: fileType, data: fileData } };
+  const multiFileNote = fileCount > 1
+    ? `You're looking at ${fileCount} images/pages that are all part of the SAME prescription or report (e.g. front and back, or multiple pages) — read them together as one document, not separately, and don't repeat information that appears on more than one page.`
+    : `You're looking at a patient-uploaded prescription or lab report.`;
 
-  const prompt = `You're looking at a patient-uploaded prescription or lab report. Write a summary an average patient — not a medical professional — can genuinely understand at a glance. This same text will be shown on their dashboard AND sent to them as a WhatsApp message, so use WhatsApp's formatting: *asterisks* for bold section headers, plain short lines, no markdown tables or nested bullets.
+  return `${multiFileNote} Write a summary an average patient — not a medical professional — can genuinely understand at a glance. This same text will be shown on their dashboard AND sent to them as a WhatsApp message, so use WhatsApp's formatting: *asterisks* for bold section headers, plain short lines, no markdown tables or nested bullets. ${languageInstruction}
 
 Structure it exactly like this, skipping any section that doesn't apply:
 
 *💊 Medicines*
-For each one: name, dosage, and what it's generally used for in one short plain-language phrase (e.g. "Metformin 500mg — helps manage blood sugar").
+For each one: name, dosage, how often and when to take it (e.g. "after food", "at night") if that's shown, and what it's generally used for in one short plain-language phrase (e.g. "Metformin 500mg, twice daily after food — helps manage blood sugar").
 
 *🔬 Lab Values*
 For each one: the value, and a plain-language flag like "normal", "a bit high", or "low" — never just the raw number alone. Briefly say in everyday words what that value relates to (e.g. "HbA1c 7.2% — a bit high; this reflects average blood sugar over ~3 months").
 
+*📋 Doctor's Notes*
+Any diagnosis, instructions, or follow-up advice written on the document (e.g. "follow up in 2 weeks", "avoid salty food") — only if something is actually written there.
+
 *💡 Worth Discussing*
 One or two short, concrete points on what stands out — only if something genuinely does.
 
-Rules: base this only on what's actually in the document — never guess at anything illegible or invent a value. Avoid medical jargon; if a technical term is unavoidable, explain it in a few plain words right there. End with one line reminding them this is a summary to discuss with their doctor, not a diagnosis. Keep the whole thing under 220 words so it reads well as a WhatsApp message.`;
+Rules: base this only on what's actually in the document — never guess at anything illegible or invent a value. If handwriting is genuinely hard to read, say so plainly for that specific item rather than skipping it silently (e.g. "Medicine name unclear — please confirm with your pharmacist") rather than guessing. Avoid medical jargon; if a technical term is unavoidable, explain it in a few plain words right there. End with one line reminding them this is a summary to discuss with their doctor, not a diagnosis. Keep the whole thing under 280 words so it reads well as a WhatsApp message.`;
+}
+
+async function analyzeDocumentWithClaude(files, language) {
+  if (!ANTHROPIC_API_KEY) return { ok: false, reason: 'not_configured' };
+
+  const contentBlocks = files.map(f => {
+    const isPdf = f.fileType === 'application/pdf';
+    return isPdf
+      ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: f.fileData } }
+      : { type: 'image', source: { type: 'base64', media_type: f.fileType, data: f.fileData } };
+  });
+
+  const prompt = buildAnalysisPrompt(language, files.length);
 
   try {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -129,10 +149,10 @@ Rules: base this only on what's actually in the document — never guess at anyt
       },
       body: JSON.stringify({
         model: 'claude-sonnet-5',
-        max_tokens: 600,
+        max_tokens: 900,
         messages: [{
           role: 'user',
-          content: [contentBlock, { type: 'text', text: prompt }]
+          content: [...contentBlocks, { type: 'text', text: prompt }]
         }]
       }),
       signal: AbortSignal.timeout(70000)
@@ -173,18 +193,11 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY || null;
 // capacity than 3.8 Flash during a demand spike on the newest release specifically.
 const GEMINI_MODELS = ['gemini-3.8-flash', 'gemini-3.5-flash-lite'];
 
-async function callGeminiModel(model, fileData, fileType, prompt, attempt = 0) {
+async function callGeminiModel(model, parts, attempt = 0) {
   const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_API_KEY },
-    body: JSON.stringify({
-      contents: [{
-        parts: [
-          { text: prompt },
-          { inline_data: { mime_type: fileType, data: fileData } }
-        ]
-      }]
-    }),
+    body: JSON.stringify({ contents: [{ parts }] }),
     signal: AbortSignal.timeout(70000)
   });
   const data = await res.json();
@@ -197,7 +210,7 @@ async function callGeminiModel(model, fileData, fileType, prompt, attempt = 0) {
       const waitMs = attempt === 0 ? 3000 : 8000;
       console.log(`⏳ ${model} overloaded (503) — retry ${attempt + 1}/2 in ${waitMs / 1000}s...`);
       await new Promise(r => setTimeout(r, waitMs));
-      return callGeminiModel(model, fileData, fileType, prompt, attempt + 1);
+      return callGeminiModel(model, parts, attempt + 1);
     }
     return { ok: false, status: res.status, detail: data.error?.message || `HTTP ${res.status}`, data };
   }
@@ -205,28 +218,19 @@ async function callGeminiModel(model, fileData, fileType, prompt, attempt = 0) {
   return { ok: true, analysis: text };
 }
 
-async function analyzeDocumentWithGemini(fileData, fileType) {
+async function analyzeDocumentWithGemini(files, language) {
   if (!GEMINI_API_KEY) return { ok: false, reason: 'not_configured' };
 
-  const prompt = `You're looking at a patient-uploaded prescription or lab report. Write a summary an average patient — not a medical professional — can genuinely understand at a glance. This same text will be shown on their dashboard AND sent to them as a WhatsApp message, so use WhatsApp's formatting: *asterisks* for bold section headers, plain short lines, no markdown tables or nested bullets.
-
-Structure it exactly like this, skipping any section that doesn't apply:
-
-*💊 Medicines*
-For each one: name, dosage, and what it's generally used for in one short plain-language phrase (e.g. "Metformin 500mg — helps manage blood sugar").
-
-*🔬 Lab Values*
-For each one: the value, and a plain-language flag like "normal", "a bit high", or "low" — never just the raw number alone. Briefly say in everyday words what that value relates to (e.g. "HbA1c 7.2% — a bit high; this reflects average blood sugar over ~3 months").
-
-*💡 Worth Discussing*
-One or two short, concrete points on what stands out — only if something genuinely does.
-
-Rules: base this only on what's actually in the document — never guess at anything illegible or invent a value. Avoid medical jargon; if a technical term is unavoidable, explain it in a few plain words right there. End with one line reminding them this is a summary to discuss with their doctor, not a diagnosis. Keep the whole thing under 220 words so it reads well as a WhatsApp message.`;
+  const prompt = buildAnalysisPrompt(language, files.length);
+  const parts = [
+    { text: prompt },
+    ...files.map(f => ({ inline_data: { mime_type: f.fileType, data: f.fileData } }))
+  ];
 
   let lastFailure = null;
   for (const model of GEMINI_MODELS) {
     try {
-      const result = await callGeminiModel(model, fileData, fileType, prompt);
+      const result = await callGeminiModel(model, parts);
       if (result.ok) {
         if (model !== GEMINI_MODELS[0]) console.log(`✅ Succeeded on fallback model ${model}`);
         return { ok: true, analysis: result.analysis };
@@ -246,12 +250,14 @@ Rules: base this only on what's actually in the document — never guess at anyt
 // configured. This only kicks in when both providers are actually configured, so it never
 // incurs cost the person hasn't already opted into by setting up both keys — it just means a
 // temporary Gemini outage doesn't leave the feature broken when a working backup is right there.
-async function analyzeDocument(fileData, fileType) {
-  const geminiResult = await analyzeDocumentWithGemini(fileData, fileType);
+// `files` is an array of {fileType, fileData} — 1 to 3 pages/images analyzed together as one
+// document. `language` is the patient's preferred language for the written-out analysis.
+async function analyzeDocument(files, language) {
+  const geminiResult = await analyzeDocumentWithGemini(files, language);
   if (geminiResult.ok) return geminiResult;
   if (!ANTHROPIC_API_KEY) return geminiResult;
   console.log(`ℹ️ Gemini failed (${geminiResult.reason}), falling back to Claude...`);
-  return analyzeDocumentWithClaude(fileData, fileType);
+  return analyzeDocumentWithClaude(files, language);
 }
 
 // ========== MSG91 WHATSAPP — TWO-WAY DOSE CONFIRMATION & VITALS CAPTURE ==========
@@ -702,6 +708,7 @@ const patientSchema = new mongoose.Schema({
   phone: { type: String, unique: true },
   email: String,
   password: String,
+  preferredLanguage: { type: String, default: 'English' }, // drives AI-generated report language (document analysis, treatment reports)
   baselineVitals: {
     bpSystolic: Number,
     bpDiastolic: Number,
@@ -791,10 +798,15 @@ const vitalsLogSchema = new mongoose.Schema({
 // upload) since Mongo documents have a 16MB hard limit and base64 adds ~33% overhead.
 const uploadedDocumentSchema = new mongoose.Schema({
   patientPhone: String,
-  fileName: String,
-  fileType: String, // mime type, e.g. image/jpeg, application/pdf
-  fileData: String, // base64, no data: URL prefix
-  analysis: String, // Claude's extracted key factors, filled in after analysis completes
+  // New multi-file shape — up to 3 files analyzed together as one document (e.g. front/back of
+  // a prescription, or a multi-page report). Old single-file fields below are kept so documents
+  // uploaded before this change still read back correctly.
+  files: [{ fileName: String, fileType: String, fileData: String }],
+  fileName: String, // legacy single-file field, or a display summary name for a multi-file upload
+  fileType: String,
+  fileData: String,
+  language: { type: String, default: 'English' }, // language this analysis was generated in
+  analysis: String, // AI-extracted key factors, filled in after analysis completes
   analysisStatus: { type: String, default: 'pending' }, // pending | done | failed | not_configured
   uploadedAt: { type: Date, default: Date.now }
 });
@@ -1281,15 +1293,23 @@ app.get('/api/patient/profile', auth, async (req, res) => {
 // Phone is intentionally not editable here since it's the account identifier used for login,
 // WhatsApp delivery, and every record tied to this patient; changing it needs its own
 // verification flow, not a plain profile edit.
+const SUPPORTED_LANGUAGES = ['English', 'Hindi', 'Tamil', 'Telugu', 'Bengali', 'Marathi', 'Gujarati', 'Kannada'];
+
 app.patch('/api/patient/profile', auth, async (req, res) => {
   try {
-    const { name, email } = req.body;
+    const { name, email, preferredLanguage } = req.body;
     const update = {};
     if (name !== undefined) {
       if (!name.trim()) return res.status(400).json({ message: 'Name cannot be empty.' });
       update.name = name.trim();
     }
     if (email !== undefined) update.email = email.trim();
+    if (preferredLanguage !== undefined) {
+      if (!SUPPORTED_LANGUAGES.includes(preferredLanguage)) {
+        return res.status(400).json({ message: `Language must be one of: ${SUPPORTED_LANGUAGES.join(', ')}` });
+      }
+      update.preferredLanguage = preferredLanguage;
+    }
     if (!Object.keys(update).length) return res.status(400).json({ message: 'Nothing to update.' });
 
     const patient = await Patient.findOneAndUpdate({ phone: req.user.phone }, update, { new: true }).select('-password');
@@ -1340,32 +1360,51 @@ app.get('/api/patient/vitals-history', auth, async (req, res) => {
 });
 
 const ALLOWED_DOCUMENT_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
-const MAX_DOCUMENT_BASE64_LENGTH = 5 * 1024 * 1024 * 1.4; // ~5MB file, base64 adds ~33% overhead
+const MAX_DOCUMENT_BASE64_LENGTH = 5 * 1024 * 1024 * 1.4; // ~5MB per file, base64 adds ~33% overhead
+const MAX_FILES_PER_UPLOAD = 3;
 
-// Upload a prescription or lab report for AI analysis. Accepts base64 (sent as plain JSON,
-// no multipart handling needed) — the frontend reads the file via FileReader before sending.
+// Upload a prescription or lab report for AI analysis. Accepts either a single file (fileName/
+// fileType/fileData — the original shape, kept for backward compatibility) or multiple files
+// together (a `files` array — e.g. front and back of a prescription, or several pages of a
+// report), analyzed together as one document. Sent as plain base64 JSON, no multipart handling
+// needed — the frontend reads each file via FileReader before sending.
 // Analysis runs synchronously in the same request when Gemini or Claude is configured; the
 // request can take up to ~30s for that reason, which the frontend's loading state accounts for.
 app.post('/api/patient/upload-report', auth, async (req, res) => {
   try {
-    const { fileName, fileType, fileData } = req.body;
-    if (!fileName || !fileType || !fileData) {
-      return res.status(400).json({ message: 'File name, type, and data are required.' });
+    const rawFiles = Array.isArray(req.body.files) ? req.body.files
+      : (req.body.fileName ? [{ fileName: req.body.fileName, fileType: req.body.fileType, fileData: req.body.fileData }] : []);
+    const files = rawFiles.filter(f => f && f.fileName && f.fileType && f.fileData);
+
+    if (!files.length) {
+      return res.status(400).json({ message: 'At least one file (name, type, and data) is required.' });
     }
-    if (!ALLOWED_DOCUMENT_TYPES.includes(fileType)) {
-      return res.status(400).json({ message: 'Only JPG, PNG, WEBP, or PDF files are supported.' });
+    if (files.length > MAX_FILES_PER_UPLOAD) {
+      return res.status(400).json({ message: `Up to ${MAX_FILES_PER_UPLOAD} files are supported per upload.` });
     }
-    if (fileData.length > MAX_DOCUMENT_BASE64_LENGTH) {
-      return res.status(400).json({ message: 'File is too large — please upload something under 5MB.' });
+    for (const f of files) {
+      if (!ALLOWED_DOCUMENT_TYPES.includes(f.fileType)) {
+        return res.status(400).json({ message: `"${f.fileName}" — only JPG, PNG, WEBP, or PDF files are supported.` });
+      }
+      if (f.fileData.length > MAX_DOCUMENT_BASE64_LENGTH) {
+        return res.status(400).json({ message: `"${f.fileName}" is too large — please upload something under 5MB.` });
+      }
     }
+
+    const patient = await Patient.findOne({ phone: req.user.phone });
+    const language = patient?.preferredLanguage || 'English';
+    const displayName = files.length > 1 ? `${files[0].fileName} (+${files.length - 1} more)` : files[0].fileName;
 
     const doc = await UploadedDocument.create({
       patientPhone: req.user.phone,
-      fileName, fileType, fileData,
+      files: files.map(f => ({ fileName: f.fileName, fileType: f.fileType, fileData: f.fileData })),
+      fileName: displayName,
+      fileType: files[0].fileType,
+      language,
       analysisStatus: 'pending'
     });
 
-    const result = await analyzeDocument(fileData, fileType);
+    const result = await analyzeDocument(files, language);
     if (result.ok) {
       doc.analysis = result.analysis;
       doc.analysisStatus = 'done';

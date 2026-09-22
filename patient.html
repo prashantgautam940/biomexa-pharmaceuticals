@@ -277,12 +277,12 @@ input[type="time"] { color-scheme: dark; }
       <div class="card-header">
         <span class="card-title">📄 Upload Report or Prescription</span>
       </div>
-      <p style="color:#64748b;font-size:12.5px;margin:-4px 0 14px;">Upload a photo or PDF of a prescription or lab report — AI reads it and pulls out the key factors, ready to discuss with your doctor.</p>
+      <p style="color:#64748b;font-size:12.5px;margin:-4px 0 14px;">Upload up to 3 photos or PDFs (e.g. front & back, or multiple pages) — AI reads them together and pulls out the key factors, ready to discuss with your doctor. Written in your <a href="#" onclick="document.getElementById('profLanguage').scrollIntoView({behavior:'smooth'}); return false;" style="color:#5eead4;">preferred language</a>.</p>
 
       <form id="uploadForm" style="margin-bottom:14px;">
-        <input type="file" id="reportFile" accept="image/jpeg,image/png,image/webp,application/pdf" style="display:none;" onchange="handleFileSelected()">
+        <input type="file" id="reportFile" accept="image/jpeg,image/png,image/webp,application/pdf" multiple style="display:none;" onchange="handleFileSelected()">
         <div id="uploadDropzone" onclick="document.getElementById('reportFile').click()" style="border:1px dashed #334155;border-radius:10px;padding:20px;text-align:center;cursor:pointer;font-size:13px;color:#64748b;">
-          📎 Click to choose a file — JPG, PNG, or PDF, up to 5MB
+          📎 Click to choose up to 3 files — JPG, PNG, or PDF, up to 5MB each
         </div>
         <div id="selectedFileName" style="font-size:12.5px;color:#5eead4;margin-top:8px;display:none;"></div>
         <button type="submit" class="btn" id="uploadBtn" style="width:100%;margin-top:10px;display:none;">Upload & Analyze</button>
@@ -437,12 +437,26 @@ input[type="time"] { color-scheme: dark; }
             <input type="email" id="profEmail" placeholder="you@example.com">
           </div>
           <div class="form-group">
+            <label>Report Language <span style="color:#475569;font-weight:400;">(for AI reports & analysis)</span></label>
+            <select id="profLanguage">
+              <option value="English">English</option>
+              <option value="Hindi">हिंदी (Hindi)</option>
+              <option value="Tamil">தமிழ் (Tamil)</option>
+              <option value="Telugu">తెలుగు (Telugu)</option>
+              <option value="Bengali">বাংলা (Bengali)</option>
+              <option value="Marathi">मराठी (Marathi)</option>
+              <option value="Gujarati">ગુજરાતી (Gujarati)</option>
+              <option value="Kannada">ಕನ್ನಡ (Kannada)</option>
+            </select>
+          </div>
+          <div class="form-group">
             <label>Member Since</label>
             <input type="text" id="profSince" disabled style="opacity:0.6;cursor:not-allowed;">
           </div>
         </div>
         <button type="submit" class="btn" id="profSaveBtn" style="width:auto;padding:9px 18px;">Save Profile</button>
         <span id="profMsg" style="font-size:12.5px;margin-left:10px;"></span>
+
       </form>
 
       <div style="border-top:1px solid #1f2937;margin:20px 0 16px;padding-top:16px;">
@@ -491,6 +505,7 @@ input[type="time"] { color-scheme: dark; }
           document.getElementById('profName').value = profile.name || '';
           document.getElementById('profPhone').value = profile.phone || '';
           document.getElementById('profEmail').value = profile.email || '';
+          document.getElementById('profLanguage').value = profile.preferredLanguage || 'English';
           if (profile.createdAt) {
             document.getElementById('profSince').value = new Date(profile.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' });
           }
@@ -511,7 +526,8 @@ input[type="time"] { color-scheme: dark; }
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
           body: JSON.stringify({
             name: document.getElementById('profName').value,
-            email: document.getElementById('profEmail').value
+            email: document.getElementById('profEmail').value,
+            preferredLanguage: document.getElementById('profLanguage').value
           })
         });
         const data = await res.json();
@@ -955,48 +971,62 @@ input[type="time"] { color-scheme: dark; }
     // Calls the same real AI engine the doctor dashboard uses — can take up to a minute if the
     // engine is asleep (Render free tier), same cold-start behavior as "Run Analysis" there.
     // ===== Upload Report / Prescription =====
-    let selectedFileBase64 = null;
-    let selectedFileType = null;
-    let selectedFileName = null;
+    const MAX_UPLOAD_FILES = 3;
+    let selectedFiles = []; // [{ fileName, fileType, fileData }]
 
     function handleFileSelected() {
       const input = document.getElementById('reportFile');
-      const file = input.files[0];
+      const files = Array.from(input.files || []);
       const msg = document.getElementById('uploadMsg');
       msg.textContent = '';
-      if (!file) return;
+      if (!files.length) return;
+
+      if (files.length > MAX_UPLOAD_FILES) {
+        msg.style.color = '#f87171';
+        msg.textContent = `Please choose up to ${MAX_UPLOAD_FILES} files at once.`;
+        input.value = '';
+        return;
+      }
 
       const allowed = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
-      if (!allowed.includes(file.type)) {
-        msg.style.color = '#f87171';
-        msg.textContent = 'Only JPG, PNG, WEBP, or PDF files are supported.';
-        input.value = '';
-        return;
-      }
-      if (file.size > 5 * 1024 * 1024) {
-        msg.style.color = '#f87171';
-        msg.textContent = 'File is too large — please choose something under 5MB.';
-        input.value = '';
-        return;
+      for (const file of files) {
+        if (!allowed.includes(file.type)) {
+          msg.style.color = '#f87171';
+          msg.textContent = `"${file.name}" — only JPG, PNG, WEBP, or PDF files are supported.`;
+          input.value = '';
+          return;
+        }
+        if (file.size > 5 * 1024 * 1024) {
+          msg.style.color = '#f87171';
+          msg.textContent = `"${file.name}" is too large — please choose something under 5MB.`;
+          input.value = '';
+          return;
+        }
       }
 
-      const reader = new FileReader();
-      reader.onload = () => {
-        // reader.result is a data: URL like "data:image/jpeg;base64,xxxx" — strip the prefix,
-        // the backend just wants the raw base64.
-        selectedFileBase64 = reader.result.split(',')[1];
-        selectedFileType = file.type;
-        selectedFileName = file.name;
-        document.getElementById('selectedFileName').textContent = `✓ ${file.name} ready to upload`;
-        document.getElementById('selectedFileName').style.display = 'block';
-        document.getElementById('uploadBtn').style.display = 'block';
-      };
-      reader.readAsDataURL(file);
+      selectedFiles = [];
+      let loadedCount = 0;
+      files.forEach(file => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          // reader.result is a data: URL like "data:image/jpeg;base64,xxxx" — strip the prefix,
+          // the backend just wants the raw base64.
+          selectedFiles.push({ fileName: file.name, fileType: file.type, fileData: reader.result.split(',')[1] });
+          loadedCount++;
+          if (loadedCount === files.length) {
+            const names = files.map(f => f.name).join(', ');
+            document.getElementById('selectedFileName').textContent = `✓ ${files.length} file${files.length > 1 ? 's' : ''} ready: ${names}`;
+            document.getElementById('selectedFileName').style.display = 'block';
+            document.getElementById('uploadBtn').style.display = 'block';
+          }
+        };
+        reader.readAsDataURL(file);
+      });
     }
 
     document.getElementById('uploadForm').addEventListener('submit', async (e) => {
       e.preventDefault();
-      if (!selectedFileBase64) return;
+      if (!selectedFiles.length) return;
 
       const btn = document.getElementById('uploadBtn');
       const msg = document.getElementById('uploadMsg');
@@ -1008,7 +1038,7 @@ input[type="time"] { color-scheme: dark; }
         const res = await fetch(`${API_URL}/api/patient/upload-report`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-          body: JSON.stringify({ fileName: selectedFileName, fileType: selectedFileType, fileData: selectedFileBase64 })
+          body: JSON.stringify({ files: selectedFiles })
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.message);
@@ -1019,7 +1049,7 @@ input[type="time"] { color-scheme: dark; }
         document.getElementById('uploadForm').reset();
         document.getElementById('selectedFileName').style.display = 'none';
         document.getElementById('uploadBtn').style.display = 'none';
-        selectedFileBase64 = null;
+        selectedFiles = [];
         loadUploadedReports();
       } catch (err) {
         msg.style.color = '#f87171';
