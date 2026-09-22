@@ -1408,22 +1408,41 @@ async function buildPatientTreatmentReport(phone) {
   const primaryMed = patient.medicines?.[0] || { name: doses[0].medicineName, dosage: doses[0].dosage, time: doses[0].scheduledTime };
   const schedule = [...new Set(patient.medicines?.map(m => m.time) || [doses[0].scheduledTime])];
 
-  const dose_history = doses
-    .filter(d => d.status !== 'pending')
-    .map(d => {
-      const dayLog = vitalsByDay[d.scheduledDate];
-      return {
-        date: d.scheduledDate,
-        status: d.status === 'taken' ? 'taken' : 'not_taken',
-        vitals: {
-          bp_systolic: dayLog?.bpSystolic || patient.baselineVitals?.bpSystolic || 130,
-          bp_diastolic: dayLog?.bpDiastolic || patient.baselineVitals?.bpDiastolic || 85,
-          glucose: dayLog?.glucose || patient.baselineVitals?.glucose || 110,
-          temperature: dayLog?.temperature || patient.baselineVitals?.temperature || 98.6
-        },
-        symptoms: []
-      };
-    });
+  const relevantDoses = doses.filter(d => d.status !== 'pending');
+  const dose_history = relevantDoses.map(d => {
+    const dayLog = vitalsByDay[d.scheduledDate];
+    return {
+      date: d.scheduledDate,
+      status: d.status === 'taken' ? 'taken' : 'not_taken',
+      vitals: {
+        bp_systolic: dayLog?.bpSystolic || patient.baselineVitals?.bpSystolic || 130,
+        bp_diastolic: dayLog?.bpDiastolic || patient.baselineVitals?.bpDiastolic || 85,
+        glucose: dayLog?.glucose || patient.baselineVitals?.glucose || 110,
+        temperature: dayLog?.temperature || patient.baselineVitals?.temperature || 98.6
+      },
+      symptoms: []
+    };
+  });
+
+  // The day-by-day breakdown the patient actually sees — same data used to build the AI
+  // payload above, just kept in a shape the frontend can render directly as a per-day table:
+  // date, medicine, dose status, and whether that day's vitals are real (logged) or an estimate
+  // (baseline/default fallback), so the patient can tell which rows to trust as real readings.
+  const dailyBreakdown = relevantDoses.map(d => {
+    const dayLog = vitalsByDay[d.scheduledDate];
+    return {
+      date: d.scheduledDate,
+      time: d.scheduledTime,
+      medicineName: d.medicineName,
+      dosage: d.dosage,
+      status: d.status,
+      vitalsSource: dayLog ? 'logged' : 'estimated',
+      vitals: dayLog ? {
+        bpSystolic: dayLog.bpSystolic, bpDiastolic: dayLog.bpDiastolic,
+        temperature: dayLog.temperature, heartRate: dayLog.heartRate, glucose: dayLog.glucose
+      } : null
+    };
+  }).reverse(); // most recent day first, matching how the rest of the dashboard reads
 
   if (!dose_history.length) return { error: 'All your doses so far are still pending — check back once you\'ve confirmed a few.', status: 400 };
 
@@ -1443,8 +1462,10 @@ async function buildPatientTreatmentReport(phone) {
     indication: 'hypertension'
   };
 
+  console.log(`📊 Treatment report requested for ${phone} — ${dose_history.length} dose(s) in range`);
   const result = await callAiEngine('/analyze', payload);
   if (!result.ok) {
+    console.log(`⚠️ Treatment report AI call failed for ${phone}: ${result.reason} — ${result.detail || ''}`);
     const messages = {
       not_configured: 'The AI engine isn\'t configured yet — please try again later.',
       unreachable: 'Could not reach the AI engine right now — it may be waking up from sleep, please try again in a minute.',
@@ -1453,12 +1474,15 @@ async function buildPatientTreatmentReport(phone) {
     return { error: messages[result.reason] || 'AI engine unavailable', status: 503 };
   }
 
-  return { data: { ...result.data, usedRealVitals, patientName: patient.name } };
+  return { data: { ...result.data, usedRealVitals, patientName: patient.name, dailyBreakdown } };
 }
 
 app.get('/api/patient/treatment-report', auth, async (req, res) => {
   const result = await buildPatientTreatmentReport(req.user.phone);
-  if (result.error) return res.status(result.status).json({ message: result.error });
+  if (result.error) {
+    console.log(`❌ Treatment report failed for ${req.user.phone}: ${result.error}`);
+    return res.status(result.status).json({ message: result.error });
+  }
   res.json(result.data);
 });
 
