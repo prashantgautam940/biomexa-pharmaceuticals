@@ -900,6 +900,32 @@ input[type="time"] { color-scheme: dark; }
       }
     });
 
+    // Converts the *bold* markers the AI uses for WhatsApp formatting into real <strong> tags
+    // for the portal view, and escapes HTML first so nothing from the AI's raw text output can
+    // inject markup.
+    function formatAnalysisForPortal(text) {
+      const escaped = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      return escaped.replace(/\*([^*\n]+)\*/g, '<strong style="color:#f1f5f9;">$1</strong>');
+    }
+
+    function sendReportToWhatsapp(docId, btn) {
+      btn.disabled = true;
+      btn.textContent = 'Sending...';
+      fetch(`${API_URL}/api/patient/uploaded-reports/${docId}/send-whatsapp`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+        .then(res => res.json().then(data => ({ ok: res.ok, data })))
+        .then(({ data }) => {
+          btn.textContent = data.whatsappSent ? '✓ Sent!' : 'Failed — retry';
+          setTimeout(() => { btn.disabled = false; btn.textContent = '📱 Send to WhatsApp'; }, 2500);
+        })
+        .catch(() => {
+          btn.textContent = 'Failed — retry';
+          btn.disabled = false;
+        });
+    }
+
     function loadUploadedReports() {
       fetch(`${API_URL}/api/patient/uploaded-reports`, { headers: { 'Authorization': `Bearer ${token}` } })
         .then(res => res.json())
@@ -911,13 +937,17 @@ input[type="time"] { color-scheme: dark; }
             docs.map(d => {
               const date = new Date(d.uploadedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
               const statusBadge = d.analysisStatus === 'done' ? '✅' : d.analysisStatus === 'failed' ? '❌' : '⏳';
+              const sendBtn = d.analysisStatus === 'done'
+                ? `<button onclick="sendReportToWhatsapp('${d._id}', this)" style="background:none;border:1px solid #334155;color:#5eead4;padding:4px 10px;border-radius:6px;font-size:11.5px;cursor:pointer;margin-top:8px;">📱 Send to WhatsApp</button>`
+                : '';
               return `
                 <div style="background:#0f172a;border-radius:8px;padding:12px 14px;margin-bottom:8px;">
                   <div style="display:flex;justify-content:space-between;font-size:12.5px;color:#94a3b8;margin-bottom:6px;">
                     <span>${statusBadge} ${d.fileName}</span>
                     <span>${date}</span>
                   </div>
-                  ${d.analysis ? `<div style="font-size:13px;color:#cbd5e1;white-space:pre-wrap;">${d.analysis}</div>` : ''}
+                  ${d.analysis ? `<div style="font-size:13px;color:#cbd5e1;white-space:pre-wrap;line-height:1.5;">${formatAnalysisForPortal(d.analysis)}</div>` : ''}
+                  ${sendBtn}
                 </div>
               `;
             }).join('');

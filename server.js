@@ -104,13 +104,20 @@ async function analyzeDocumentWithClaude(fileData, fileType) {
     ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: fileData } }
     : { type: 'image', source: { type: 'base64', media_type: fileType, data: fileData } };
 
-  const prompt = `You're looking at a patient-uploaded prescription or lab report. Extract the key factors clearly and concisely, in plain language a patient can understand:
+  const prompt = `You're looking at a patient-uploaded prescription or lab report. Write a summary an average patient — not a medical professional — can genuinely understand at a glance. This same text will be shown on their dashboard AND sent to them as a WhatsApp message, so use WhatsApp's formatting: *asterisks* for bold section headers, plain short lines, no markdown tables or nested bullets.
 
-- Medicines mentioned: name, dosage, and frequency if visible
-- Any lab values present: the value, whether it's in/out of the normal range, and what that generally means
-- Anything that stands out as worth discussing with a doctor
+Structure it exactly like this, skipping any section that doesn't apply:
 
-Keep it factual and based only on what's actually in the document — don't guess at anything illegible. End with a brief reminder that this is a summary to discuss with their doctor, not a diagnosis. Keep the whole thing under 250 words.`;
+*💊 Medicines*
+For each one: name, dosage, and what it's generally used for in one short plain-language phrase (e.g. "Metformin 500mg — helps manage blood sugar").
+
+*🔬 Lab Values*
+For each one: the value, and a plain-language flag like "normal", "a bit high", or "low" — never just the raw number alone. Briefly say in everyday words what that value relates to (e.g. "HbA1c 7.2% — a bit high; this reflects average blood sugar over ~3 months").
+
+*💡 Worth Discussing*
+One or two short, concrete points on what stands out — only if something genuinely does.
+
+Rules: base this only on what's actually in the document — never guess at anything illegible or invent a value. Avoid medical jargon; if a technical term is unavoidable, explain it in a few plain words right there. End with one line reminding them this is a summary to discuss with their doctor, not a diagnosis. Keep the whole thing under 220 words so it reads well as a WhatsApp message.`;
 
   try {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -164,13 +171,20 @@ const GEMINI_MODEL = 'gemini-3.8-flash';
 async function analyzeDocumentWithGemini(fileData, fileType, attempt = 0) {
   if (!GEMINI_API_KEY) return { ok: false, reason: 'not_configured' };
 
-  const prompt = `You're looking at a patient-uploaded prescription or lab report. Extract the key factors clearly and concisely, in plain language a patient can understand:
+  const prompt = `You're looking at a patient-uploaded prescription or lab report. Write a summary an average patient — not a medical professional — can genuinely understand at a glance. This same text will be shown on their dashboard AND sent to them as a WhatsApp message, so use WhatsApp's formatting: *asterisks* for bold section headers, plain short lines, no markdown tables or nested bullets.
 
-- Medicines mentioned: name, dosage, and frequency if visible
-- Any lab values present: the value, whether it's in/out of the normal range, and what that generally means
-- Anything that stands out as worth discussing with a doctor
+Structure it exactly like this, skipping any section that doesn't apply:
 
-Keep it factual and based only on what's actually in the document — don't guess at anything illegible. End with a brief reminder that this is a summary to discuss with their doctor, not a diagnosis. Keep the whole thing under 250 words.`;
+*💊 Medicines*
+For each one: name, dosage, and what it's generally used for in one short plain-language phrase (e.g. "Metformin 500mg — helps manage blood sugar").
+
+*🔬 Lab Values*
+For each one: the value, and a plain-language flag like "normal", "a bit high", or "low" — never just the raw number alone. Briefly say in everyday words what that value relates to (e.g. "HbA1c 7.2% — a bit high; this reflects average blood sugar over ~3 months").
+
+*💡 Worth Discussing*
+One or two short, concrete points on what stands out — only if something genuinely does.
+
+Rules: base this only on what's actually in the document — never guess at anything illegible or invent a value. Avoid medical jargon; if a technical term is unavoidable, explain it in a few plain words right there. End with one line reminding them this is a summary to discuss with their doctor, not a diagnosis. Keep the whole thing under 220 words so it reads well as a WhatsApp message.`;
 
   try {
     // Uses the x-goog-api-key header rather than the older ?key= URL query parameter — Google's
@@ -1317,6 +1331,29 @@ app.get('/api/patient/uploaded-reports', auth, async (req, res) => {
       .sort({ uploadedAt: -1 })
       .limit(20);
     res.json(docs);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Sends a previously-completed document analysis over WhatsApp — the prompt already formats
+// the analysis with WhatsApp-style *bold* headers, so this sends the exact same text shown on
+// the dashboard rather than reformatting or condensing it again.
+app.post('/api/patient/uploaded-reports/:id/send-whatsapp', auth, async (req, res) => {
+  try {
+    const doc = await UploadedDocument.findOne({ _id: req.params.id, patientPhone: req.user.phone });
+    if (!doc) return res.status(404).json({ message: 'Report not found.' });
+    if (doc.analysisStatus !== 'done' || !doc.analysis) {
+      return res.status(400).json({ message: 'This report doesn\'t have a completed analysis to send yet.' });
+    }
+
+    const msg = `📄 *Report Analysis: ${doc.fileName}*\n\n${doc.analysis}\n\n- Biomexa Team`;
+    const waResult = await sendWhatsAppFree(req.user.phone, msg);
+
+    res.json({
+      message: waResult.success ? 'Sent to your WhatsApp!' : 'Could not deliver to WhatsApp right now — you can still view it on your dashboard.',
+      whatsappSent: waResult.success
+    });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
