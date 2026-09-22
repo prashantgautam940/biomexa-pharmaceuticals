@@ -419,6 +419,54 @@ input[type="time"] { color-scheme: dark; }
       </div>
       <div id="waMsg" style="font-size:12.5px;margin-top:8px;"></div>
     </div>
+
+    <!-- My Profile — account details and password, kept at the end since health content matters more day-to-day -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">👤 My Profile</span>
+      </div>
+
+      <form id="profileForm">
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Full Name</label>
+            <input type="text" id="profName" placeholder="Your name">
+          </div>
+          <div class="form-group">
+            <label>Phone <span style="color:#475569;font-weight:400;">(used for login & WhatsApp — not editable here)</span></label>
+            <input type="text" id="profPhone" disabled style="opacity:0.6;cursor:not-allowed;">
+          </div>
+          <div class="form-group">
+            <label>Email <span style="color:#475569;font-weight:400;">(optional)</span></label>
+            <input type="email" id="profEmail" placeholder="you@example.com">
+          </div>
+          <div class="form-group">
+            <label>Member Since</label>
+            <input type="text" id="profSince" disabled style="opacity:0.6;cursor:not-allowed;">
+          </div>
+        </div>
+        <button type="submit" class="btn" id="profSaveBtn" style="width:auto;padding:9px 18px;">Save Profile</button>
+        <span id="profMsg" style="font-size:12.5px;margin-left:10px;"></span>
+      </form>
+
+      <div style="border-top:1px solid #1f2937;margin:20px 0 16px;padding-top:16px;">
+        <div style="color:#64748b;font-size:12px;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:12px;">🔒 Change Password</div>
+        <form id="passwordForm">
+          <div class="form-grid">
+            <div class="form-group">
+              <label>Current Password</label>
+              <input type="password" id="pwCurrent" required>
+            </div>
+            <div class="form-group">
+              <label>New Password <span style="color:#475569;font-weight:400;">(min 6 characters)</span></label>
+              <input type="password" id="pwNew" required minlength="6">
+            </div>
+          </div>
+          <button type="submit" class="btn" id="pwSaveBtn" style="width:auto;padding:9px 18px;">Change Password</button>
+          <span id="pwMsg" style="font-size:12.5px;margin-left:10px;"></span>
+        </form>
+      </div>
+    </div>
   </div>
 
   <script>
@@ -443,9 +491,80 @@ input[type="time"] { color-scheme: dark; }
         .then(profile => {
           localStorage.setItem('user', JSON.stringify({ name: profile.name, phone: profile.phone }));
           document.getElementById('welcomeName').textContent = `Welcome, ${profile.name}!`;
+
+          document.getElementById('profName').value = profile.name || '';
+          document.getElementById('profPhone').value = profile.phone || '';
+          document.getElementById('profEmail').value = profile.email || '';
+          if (profile.createdAt) {
+            document.getElementById('profSince').value = new Date(profile.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' });
+          }
         })
         .catch(() => {});
     }
+
+    document.getElementById('profileForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById('profSaveBtn');
+      const msg = document.getElementById('profMsg');
+      btn.disabled = true;
+      btn.textContent = 'Saving...';
+
+      try {
+        const res = await fetch(`${API_URL}/api/patient/profile`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({
+            name: document.getElementById('profName').value,
+            email: document.getElementById('profEmail').value
+          })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.message);
+
+        msg.style.color = '#34d399';
+        msg.textContent = 'Saved!';
+        document.getElementById('welcomeName').textContent = `Welcome, ${data.patient.name}!`;
+        const cachedUser = JSON.parse(localStorage.getItem('user') || '{}');
+        localStorage.setItem('user', JSON.stringify({ ...cachedUser, name: data.patient.name }));
+      } catch (err) {
+        msg.style.color = '#f87171';
+        msg.textContent = err.message;
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Save Profile';
+      }
+    });
+
+    document.getElementById('passwordForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById('pwSaveBtn');
+      const msg = document.getElementById('pwMsg');
+      btn.disabled = true;
+      btn.textContent = 'Changing...';
+
+      try {
+        const res = await fetch(`${API_URL}/api/patient/change-password`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({
+            currentPassword: document.getElementById('pwCurrent').value,
+            newPassword: document.getElementById('pwNew').value
+          })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.message);
+
+        msg.style.color = '#34d399';
+        msg.textContent = 'Password changed!';
+        document.getElementById('passwordForm').reset();
+      } catch (err) {
+        msg.style.color = '#f87171';
+        msg.textContent = err.message;
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Change Password';
+      }
+    });
 
     function logout() {
       localStorage.clear();

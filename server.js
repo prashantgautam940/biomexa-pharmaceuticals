@@ -1266,9 +1266,62 @@ app.post('/api/auth/reset-password', async (req, res) => {
 // Get Patient Profile
 app.get('/api/patient/profile', auth, async (req, res) => {
   try {
-    const patient = await Patient.findOne({ phone: req.user.phone });
+    // Excludes the password hash — it was being sent to the frontend on every profile load for
+    // no reason; the frontend never needed it and nothing should send a password hash to the
+    // client even when hashed.
+    const patient = await Patient.findOne({ phone: req.user.phone }).select('-password');
     if (!patient) return res.status(404).json({ message: 'Patient not found' });
     res.json(patient);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Lets a patient update their own editable profile fields — currently name and email.
+// Phone is intentionally not editable here since it's the account identifier used for login,
+// WhatsApp delivery, and every record tied to this patient; changing it needs its own
+// verification flow, not a plain profile edit.
+app.patch('/api/patient/profile', auth, async (req, res) => {
+  try {
+    const { name, email } = req.body;
+    const update = {};
+    if (name !== undefined) {
+      if (!name.trim()) return res.status(400).json({ message: 'Name cannot be empty.' });
+      update.name = name.trim();
+    }
+    if (email !== undefined) update.email = email.trim();
+    if (!Object.keys(update).length) return res.status(400).json({ message: 'Nothing to update.' });
+
+    const patient = await Patient.findOneAndUpdate({ phone: req.user.phone }, update, { new: true }).select('-password');
+    res.json({ message: 'Profile updated!', patient });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Lets a logged-in patient change their own password directly, given their current one —
+// the existing forgot-password flow is OTP-based and meant for when they can't log in at all;
+// this is the normal in-session path, same pattern as the admin's own change-password endpoint.
+app.post('/api/patient/change-password', loginLimiter, auth, async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ message: 'Current and new password are both required.' });
+    }
+    if (newPassword.length < 6) {
+      return res.status(400).json({ message: 'New password must be at least 6 characters.' });
+    }
+
+    const patient = await Patient.findOne({ phone: req.user.phone });
+    if (!patient) return res.status(404).json({ message: 'Patient not found' });
+
+    const match = await bcrypt.compare(currentPassword, patient.password);
+    if (!match) return res.status(400).json({ message: 'Current password is incorrect.' });
+
+    patient.password = await bcrypt.hash(newPassword, 10);
+    await patient.save();
+
+    res.json({ message: 'Password changed successfully!' });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
