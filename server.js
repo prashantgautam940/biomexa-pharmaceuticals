@@ -193,7 +193,7 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY || null;
 // capacity than 3.8 Flash during a demand spike on the newest release specifically.
 const GEMINI_MODELS = ['gemini-3.8-flash', 'gemini-3.5-flash-lite'];
 
-async function callGeminiModel(model, parts, attempt = 0) {
+async function callGeminiModel(model, parts, maxRetries, attempt = 0) {
   const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_API_KEY },
@@ -204,13 +204,16 @@ async function callGeminiModel(model, parts, attempt = 0) {
   if (!res.ok) {
     // 503/UNAVAILABLE means this specific model is temporarily overloaded — confirmed via real
     // "high demand" responses on live requests, a well-documented recurring pattern across the
-    // whole Gemini lineup. Worth retrying with backoff within the SAME model first (usually
-    // clears within a minute), before this function's caller moves on to the next model.
-    if (res.status === 503 && attempt < 2) {
+    // whole Gemini lineup, and specifically common on the newest model right after release
+    // (everyone tries it at once). Worth retrying with backoff within the SAME model first, but
+    // NOT models earlier in the fallback chain get fewer retries than the last one — the whole
+    // point of having a second, less-contended model is to reach it quickly rather than
+    // exhausting the busiest model's patience first.
+    if (res.status === 503 && attempt < maxRetries) {
       const waitMs = attempt === 0 ? 3000 : 8000;
-      console.log(`⏳ ${model} overloaded (503) — retry ${attempt + 1}/2 in ${waitMs / 1000}s...`);
+      console.log(`⏳ ${model} overloaded (503) — retry ${attempt + 1}/${maxRetries} in ${waitMs / 1000}s...`);
       await new Promise(r => setTimeout(r, waitMs));
-      return callGeminiModel(model, parts, attempt + 1);
+      return callGeminiModel(model, parts, maxRetries, attempt + 1);
     }
     return { ok: false, status: res.status, detail: data.error?.message || `HTTP ${res.status}`, data };
   }
@@ -228,11 +231,16 @@ async function analyzeDocumentWithGemini(files, language) {
   ];
 
   let lastFailure = null;
-  for (const model of GEMINI_MODELS) {
+  for (let i = 0; i < GEMINI_MODELS.length; i++) {
+    const model = GEMINI_MODELS[i];
+    const isLastModel = i === GEMINI_MODELS.length - 1;
+    // Non-final models get 1 retry (fail fast, move on) — the last model gets the full 2, since
+    // there's nothing left to fall through to on the Gemini side after it except Claude.
+    const maxRetries = isLastModel ? 2 : 1;
     try {
-      const result = await callGeminiModel(model, parts);
+      const result = await callGeminiModel(model, parts, maxRetries);
       if (result.ok) {
-        if (model !== GEMINI_MODELS[0]) console.log(`✅ Succeeded on fallback model ${model}`);
+        if (i > 0) console.log(`✅ Succeeded on fallback model ${model}`);
         return { ok: true, analysis: result.analysis };
       }
       lastFailure = result;
@@ -305,7 +313,7 @@ async function simplifyTreatmentReport(insights, recommendations, language) {
   if (GEMINI_API_KEY) {
     for (const model of GEMINI_MODELS) {
       try {
-        const result = await callGeminiModel(model, [{ text: prompt }]);
+        const result = await callGeminiModel(model, [{ text: prompt }], 1);
         if (result.ok) {
           const parsed = parseSimplifiedJson(result.analysis);
           if (parsed) return parsed;
