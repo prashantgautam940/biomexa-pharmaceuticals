@@ -260,6 +260,91 @@ async function analyzeDocument(files, language) {
   return analyzeDocumentWithClaude(files, language);
 }
 
+// ========== TREATMENT REPORT SIMPLIFICATION ==========
+// The AI engine's clinical_insights/treatment_recommendations were written for the doctor
+// dashboard ("LOW ADHERENCE (65%): May be masking true drug effectiveness. Address before
+// changing therapy.") and were being shown to patients completely unchanged — dense clinical
+// language nobody without medical training would find clear. This reuses the same Gemini/Claude
+// infrastructure already built for document analysis (same providers, same fallback chain,
+// text-only instead of vision) to rewrite them in plain language, in the patient's preferred
+// language, without losing any of the actual substance.
+function buildSimplifyPrompt(insights, recommendations, language) {
+  const languageInstruction = language && language !== 'English'
+    ? `Write your entire response in ${language}.`
+    : 'Write in clear, plain English.';
+
+  return `Rewrite these clinical treatment notes for a patient with no medical background — keep every real fact and number, just explain it in everyday words instead of clinical shorthand. ${languageInstruction}
+
+Rules: don't drop any point, don't add anything that isn't implied by the original, explain any medical term you have to keep (e.g. "ARB/ACE-i" → say "a type of blood pressure medicine"), keep each point to one short sentence. Respond with ONLY valid JSON in exactly this shape, nothing else — no markdown, no code fences:
+{"insights": ["...", "..."], "recommendations": ["...", "..."]}
+
+Clinical insights to rewrite:
+${insights.map((s, i) => `${i + 1}. ${s}`).join('\n') || '(none)'}
+
+Clinical recommendations to rewrite:
+${recommendations.map((s, i) => `${i + 1}. ${s}`).join('\n') || '(none)'}`;
+}
+
+function parseSimplifiedJson(text) {
+  try {
+    // Models occasionally wrap JSON in a code fence despite instructions not to — strip it
+    // before parsing rather than failing on something trivially recoverable.
+    const cleaned = text.replace(/```json\s*|```\s*/g, '').trim();
+    const parsed = JSON.parse(cleaned);
+    if (Array.isArray(parsed.insights) && Array.isArray(parsed.recommendations)) return parsed;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+async function simplifyTreatmentReport(insights, recommendations, language) {
+  if (!insights.length && !recommendations.length) return null;
+  const prompt = buildSimplifyPrompt(insights, recommendations, language);
+
+  if (GEMINI_API_KEY) {
+    for (const model of GEMINI_MODELS) {
+      try {
+        const result = await callGeminiModel(model, [{ text: prompt }]);
+        if (result.ok) {
+          const parsed = parseSimplifiedJson(result.analysis);
+          if (parsed) return parsed;
+          console.log(`⚠️ ${model} simplify response wasn't valid JSON, trying next option`);
+        }
+      } catch (err) {
+        console.log(`⚠️ ${model} simplify error:`, err.message);
+      }
+    }
+  }
+
+  if (ANTHROPIC_API_KEY) {
+    try {
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+        body: JSON.stringify({
+          model: 'claude-sonnet-5',
+          max_tokens: 800,
+          messages: [{ role: 'user', content: prompt }]
+        }),
+        signal: AbortSignal.timeout(45000)
+      });
+      const data = await res.json();
+      if (res.ok) {
+        const text = data.content?.find(b => b.type === 'text')?.text || '';
+        const parsed = parseSimplifiedJson(text);
+        if (parsed) return parsed;
+      }
+    } catch (err) {
+      console.log('⚠️ Claude simplify error:', err.message);
+    }
+  }
+
+  // Neither provider produced usable output — caller falls back to the original clinical text
+  // rather than showing nothing.
+  return null;
+}
+
 // ========== MSG91 WHATSAPP — TWO-WAY DOSE CONFIRMATION & VITALS CAPTURE ==========
 // MSG91 is Biomexa's sole WhatsApp provider: one real business number, real webhooks for
 // inbound replies, and quick-reply buttons — which is what makes "patient taps Taken/Not Taken,
@@ -1585,6 +1670,20 @@ async function buildPatientTreatmentReport(phone) {
   // code was reading these fields off the top level, where they never existed, which is exactly
   // why every one of them came through as undefined on both the portal and WhatsApp.
   const report = result.data.full_report || {};
+
+  // The engine's insights/recommendations were written for the doctor dashboard ("LOW ADHERENCE
+  // (65%): May be masking true drug effectiveness.") — rewritten here in plain language, in the
+  // patient's preferred language, before ever reaching the portal or WhatsApp. Falls back to the
+  // original clinical text if simplification fails for any reason, rather than showing nothing.
+  const language = patient.preferredLanguage || 'English';
+  const simplified = await simplifyTreatmentReport(report.clinical_insights || [], report.treatment_recommendations || [], language);
+  if (simplified) {
+    report.clinical_insights = simplified.insights;
+    report.treatment_recommendations = simplified.recommendations;
+  } else {
+    console.log(`ℹ️ Treatment report simplification unavailable for ${phone}, using original clinical text`);
+  }
+
   return { data: { ...report, usedRealVitals, patientName: patient.name, dailyBreakdown } };
 }
 
