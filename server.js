@@ -776,6 +776,77 @@ async function sendTreatmentReportMessage(phone, patientName, drugName, adherenc
   return sendWhatsAppFree(phone, fallbackMsg);
 }
 
+// ===== UPLOADED REPORT/PRESCRIPTION ANALYSIS TEMPLATE — same 131047 gap, this time on the
+// "Send to WhatsApp" button for an uploaded document's AI analysis (prescription, lab report, or
+// imaging). Reported directly: a patient uploaded a blood report, the platform generated the
+// analysis fine, but tapping "Send to WhatsApp" never delivered it — identical root cause to
+// treatment_report and every other template above: sendWhatsAppFree() succeeds at the MSG91 API
+// level but is silently rejected by Meta (131047) for anyone outside the 24-hour session window.
+// =====
+// Setup: create + get Meta approval for a sixth template in MSG91 (identical process to the
+// other five). Suggested template body: "📄 Biomexa Report Analysis — {{1}}\n\nDocument: {{2}}
+// \n\nSummary: {{3}}\n\nFull detailed analysis is on your Biomexa dashboard." — no buttons
+// needed. The full analysis (with all formatting) always stays on the dashboard; the WhatsApp
+// template gets a short, single-line-safe summary since template variables can't contain line
+// breaks. Until configured, falls back to the existing free-text send.
+const MSG91_REPORT_ANALYSIS_TEMPLATE_NAME = process.env.MSG91_REPORT_ANALYSIS_TEMPLATE_NAME || null;
+const MSG91_REPORT_ANALYSIS_TEMPLATE_NAMESPACE = process.env.MSG91_REPORT_ANALYSIS_TEMPLATE_NAMESPACE || '';
+
+async function sendReportAnalysisTemplate(phone, patientName, fileName, summary) {
+  if (!MSG91_CONFIGURED || !MSG91_REPORT_ANALYSIS_TEMPLATE_NAME) {
+    return { success: false, provider: 'msg91_report_analysis_template_not_configured' };
+  }
+  try {
+    const res = await fetch('https://api.msg91.com/api/v5/whatsapp/whatsapp-outbound-message/bulk/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'authkey': MSG91_AUTH_KEY },
+      body: JSON.stringify({
+        integrated_number: MSG91_INTEGRATED_NUMBER,
+        content_type: 'template',
+        payload: {
+          messaging_product: 'whatsapp',
+          type: 'template',
+          template: {
+            name: MSG91_REPORT_ANALYSIS_TEMPLATE_NAME,
+            language: { code: MSG91_TEMPLATE_LANG, policy: 'deterministic' },
+            namespace: MSG91_REPORT_ANALYSIS_TEMPLATE_NAMESPACE,
+            to_and_components: [{
+              to: [phone.replace(/\D/g, '')],
+              components: {
+                body_1: { type: 'text', value: sanitizeTemplateParam(patientName, 60), parameter_name: 'patient_name' },
+                body_2: { type: 'text', value: sanitizeTemplateParam(fileName, 80), parameter_name: 'file_name' },
+                body_3: { type: 'text', value: sanitizeTemplateParam(summary, 500), parameter_name: 'summary' }
+              }
+            }]
+          }
+        }
+      }),
+      signal: AbortSignal.timeout(10000)
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      console.log('⚠️ MSG91 report analysis template send failed:', JSON.stringify(data).substring(0, 500));
+      return { success: false, provider: 'msg91', detail: data };
+    }
+    console.log('✅ MSG91 report analysis template sent to', phone);
+    return { success: true, provider: 'msg91' };
+  } catch (err) {
+    console.log('⚠️ MSG91 report analysis template send error:', err.message);
+    return { success: false, provider: 'msg91', detail: err.message };
+  }
+}
+
+// Unified report-analysis sender — template first (reaches the patient regardless of session
+// state), falls back to the existing free-text message only if the template isn't configured yet.
+async function sendReportAnalysisMessage(phone, patientName, fileName, analysisText, fallbackMsg) {
+  // Strips WhatsApp's *bold* markers and collapses the analysis into a single-line summary
+  // that's safe as a template parameter — the fully-formatted version stays on the dashboard.
+  const plainSummary = (analysisText || '').replace(/\*/g, '');
+  const templateResult = await sendReportAnalysisTemplate(phone, patientName, fileName, plainSummary);
+  if (templateResult.success) return templateResult;
+  return sendWhatsAppFree(phone, fallbackMsg);
+}
+
 // Parses free-text vitals like "BP 120/80, temp 98.6, pulse 72" — deliberately permissive since
 // real patients won't format this consistently. Returns only the fields it actually found.
 // Two layers: first tries explicit labels (100% reliable, unchanged from before — anyone who
@@ -1746,7 +1817,12 @@ app.post('/api/patient/uploaded-reports/:id/send-whatsapp', auth, async (req, re
     }
 
     const msg = `📄 *Report Analysis: ${doc.fileName}*\n\n${doc.analysis}\n\n- Biomexa Team`;
-    const waResult = await sendWhatsAppFree(req.user.phone, msg);
+
+    // Uses the report-analysis template when configured (works regardless of session state) —
+    // fixes the same "generated fine, never arrived on WhatsApp" issue as the treatment report,
+    // for the same reason (Meta error 131047 on free-text sends outside the 24h session window).
+    const patient = await Patient.findOne({ phone: req.user.phone });
+    const waResult = await sendReportAnalysisMessage(req.user.phone, patient?.name || 'there', doc.fileName, doc.analysis, msg);
 
     res.json({
       message: waResult.success ? 'Sent to your WhatsApp!' : 'Could not deliver to WhatsApp right now — you can still view it on your dashboard.',
@@ -3341,7 +3417,8 @@ app.get('/api/whatsapp-status', (req, res) => {
     riskTemplateConfigured: !!MSG91_RISK_TEMPLATE_NAME,
     welcomeTemplateConfigured: !!MSG91_WELCOME_TEMPLATE_NAME,
     doctorAlertTemplateConfigured: !!MSG91_DOCTOR_ALERT_TEMPLATE_NAME,
-    treatmentReportTemplateConfigured: !!MSG91_TREATMENT_REPORT_TEMPLATE_NAME
+    treatmentReportTemplateConfigured: !!MSG91_TREATMENT_REPORT_TEMPLATE_NAME,
+    reportAnalysisTemplateConfigured: !!MSG91_REPORT_ANALYSIS_TEMPLATE_NAME
   });
 });
 
