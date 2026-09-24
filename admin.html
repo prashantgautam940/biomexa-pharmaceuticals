@@ -212,6 +212,37 @@ tr:hover { background: rgba(13,115,119,0.05); }
     <div id="aiMsg" class="ai-msg"></div>
   </div>
 
+  <div class="ai-panel" id="clinicalLibraryPanel">
+    <div class="ai-panel-head">
+      <div>
+        <h2><i class="fas fa-book-medical"></i> Clinical Reference Library</h2>
+        <p>Add clinically-verified notes here to steer future AI document analyses — this is retrieval context injected into the AI's prompt, not literal model retraining. Doctor corrections (from the Review Queue) are added here automatically. Visible read-only to patients and doctors too.</p>
+      </div>
+    </div>
+    <form id="clinicalDataForm" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:1.25rem;">
+      <div style="flex:1;min-width:160px;">
+        <label style="font-size:0.8rem;color:var(--text-muted);display:block;margin-bottom:4px;">Title (optional)</label>
+        <input type="text" id="clinicalTitle" placeholder="e.g. Metformin dosing note" style="width:100%;padding:10px 12px;background:var(--bg-light);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:0.88rem;">
+      </div>
+      <div style="min-width:160px;">
+        <label style="font-size:0.8rem;color:var(--text-muted);display:block;margin-bottom:4px;">Category</label>
+        <select id="clinicalCategory" style="width:100%;padding:10px 12px;background:var(--bg-light);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:0.88rem;">
+          <option value="general">General</option>
+          <option value="prescription">Prescription / Lab Report</option>
+          <option value="imaging">Imaging / X-ray</option>
+          <option value="lab_reference">Lab Reference Range</option>
+        </select>
+      </div>
+      <div style="flex:2;min-width:220px;">
+        <label style="font-size:0.8rem;color:var(--text-muted);display:block;margin-bottom:4px;">Clinical content</label>
+        <textarea id="clinicalContent" required rows="2" placeholder="e.g. For this patient population, HbA1c above 7% should be flagged as a bit high, not just 'elevated'." style="width:100%;padding:10px 12px;background:var(--bg-light);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:0.88rem;resize:vertical;"></textarea>
+      </div>
+      <button type="submit" class="btn" style="width:auto;"><i class="fas fa-plus"></i> Add</button>
+    </form>
+    <div id="clinicalDataMsg" class="ai-msg"></div>
+    <div id="clinicalDataList" style="display:flex;flex-direction:column;gap:10px;"></div>
+  </div>
+
   <div class="stats-row">
     <div class="stat-card">
       <h3><i class="fas fa-users"></i> Total Patients</h3>
@@ -308,6 +339,7 @@ function enterDashboard() {
   loadModelStatus();
   loadData();
   loadWaSystemStatus();
+  loadClinicalData();
 }
 
 function loadWaSystemStatus() {
@@ -488,6 +520,85 @@ function trainModel() {
       btn.disabled = false;
       btn.innerHTML = '<i class="fas fa-play"></i> Train Model Now';
     });
+}
+
+const CATEGORY_LABELS = { prescription: 'Prescription / Lab Report', imaging: 'Imaging / X-ray', lab_reference: 'Lab Reference Range', general: 'General' };
+
+function loadClinicalData() {
+  authFetch('/api/admin/clinical-data')
+    .then(r => r.json())
+    .then(entries => renderClinicalData(entries))
+    .catch(() => {
+      document.getElementById('clinicalDataList').innerHTML = '<p style="color:var(--text-muted);font-size:0.85rem;">Failed to load clinical reference library.</p>';
+    });
+}
+
+function renderClinicalData(entries) {
+  const list = document.getElementById('clinicalDataList');
+  if (!entries || entries.length === 0) {
+    list.innerHTML = '<p style="color:var(--text-muted);font-size:0.85rem;">No entries yet — add clinical notes above to steer future AI analyses.</p>';
+    return;
+  }
+  list.innerHTML = entries.map(e => `
+    <div style="background:var(--bg-light);border:1px solid var(--border);border-radius:10px;padding:12px 14px;display:flex;justify-content:space-between;gap:12px;align-items:flex-start;">
+      <div style="flex:1;">
+        <div style="font-size:0.78rem;color:var(--primary-light);margin-bottom:4px;">
+          ${CATEGORY_LABELS[e.category] || e.category}
+          ${e.source === 'doctor_correction' ? '<span style="color:#f59e0b;margin-left:8px;"><i class="fas fa-user-md"></i> from doctor correction</span>' : ''}
+        </div>
+        ${e.title ? `<div style="font-weight:600;margin-bottom:4px;">${escapeHtml(e.title)}</div>` : ''}
+        <div style="font-size:0.85rem;color:var(--text-muted);">${escapeHtml(e.content)}</div>
+      </div>
+      <button onclick="deleteClinicalData('${e._id}')" title="Delete" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:0.95rem;"><i class="fas fa-trash"></i></button>
+    </div>
+  `).join('');
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str || '';
+  return div.innerHTML;
+}
+
+document.getElementById('clinicalDataForm')?.addEventListener('submit', function(e) {
+  e.preventDefault();
+  const msg = document.getElementById('clinicalDataMsg');
+  const content = document.getElementById('clinicalContent').value.trim();
+  if (!content) return;
+  msg.className = 'ai-msg';
+
+  authFetch('/api/admin/clinical-data', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      title: document.getElementById('clinicalTitle').value.trim(),
+      category: document.getElementById('clinicalCategory').value,
+      content
+    })
+  })
+    .then(r => r.json().then(data => ({ ok: r.ok, data })))
+    .then(({ ok, data }) => {
+      if (!ok) throw new Error(data.message);
+      msg.className = 'ai-msg ok';
+      msg.textContent = data.message;
+      document.getElementById('clinicalDataForm').reset();
+      loadClinicalData();
+    })
+    .catch(e2 => {
+      msg.className = 'ai-msg err';
+      msg.textContent = e2.message;
+    });
+});
+
+function deleteClinicalData(id) {
+  if (!confirm('Delete this clinical reference entry?')) return;
+  authFetch('/api/admin/clinical-data/' + id, { method: 'DELETE' })
+    .then(r => r.json().then(data => ({ ok: r.ok, data })))
+    .then(({ ok, data }) => {
+      if (!ok) throw new Error(data.message);
+      loadClinicalData();
+    })
+    .catch(e => alert(e.message));
 }
 
 function loadData() {

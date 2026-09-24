@@ -251,6 +251,23 @@ tr:hover { background: rgba(13,115,119,0.05); }
       <div id="imagingHistory"></div>
     </div>
 
+    <!-- AI Review Queue — every completed AI analysis (prescription or imaging) sits here until a
+         doctor confirms it's accurate or corrects it. Confirmed corrections feed the clinical
+         reference library so similar future documents benefit from the fix. -->
+    <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px; padding: 1.5rem; margin-bottom: 1.5rem;">
+      <h3 style="margin-bottom: 0.5rem; display:flex; align-items:center; gap:8px;"><i class="fas fa-clipboard-check"></i> AI Review Queue</h3>
+      <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 1rem;">AI-generated analyses waiting for a doctor's confirmation. Confirming or correcting these helps keep patients safe and improves future AI output for similar cases.</p>
+
+      <div style="display:flex; gap:0.75rem; margin-bottom:1rem;">
+        <button class="review-tab-btn active" id="reviewTabQueue" onclick="switchReviewTab('queue')" style="padding:8px 16px; border-radius:8px; border:1px solid var(--border); background:var(--primary); color:white; font-size:0.85rem; cursor:pointer;">Pending Review</button>
+        <button class="review-tab-btn" id="reviewTabHistory" onclick="switchReviewTab('history')" style="padding:8px 16px; border-radius:8px; border:1px solid var(--border); background:transparent; color:var(--text-muted); font-size:0.85rem; cursor:pointer;">My Reviewed History</button>
+      </div>
+
+      <div id="reviewQueueMsg" style="font-size:0.82rem; margin-bottom:0.75rem;"></div>
+      <div id="reviewQueueList"></div>
+      <div id="reviewHistoryList" class="hidden"></div>
+    </div>
+
     <div class="stats-row">
       <div class="stat-card">
         <h3>Total Patients</h3>
@@ -829,6 +846,129 @@ function loadImagingHistory() {
     .catch(() => {});
 }
 loadImagingHistory();
+
+// ===== AI Review Queue (doctor confirm/correct workflow) =====
+function escapeReviewHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str || '';
+  return div.innerHTML;
+}
+
+function switchReviewTab(tab) {
+  const queueBtn = document.getElementById('reviewTabQueue');
+  const historyBtn = document.getElementById('reviewTabHistory');
+  const queueList = document.getElementById('reviewQueueList');
+  const historyList = document.getElementById('reviewHistoryList');
+  if (tab === 'queue') {
+    queueBtn.style.background = 'var(--primary)'; queueBtn.style.color = 'white';
+    historyBtn.style.background = 'transparent'; historyBtn.style.color = 'var(--text-muted)';
+    queueList.classList.remove('hidden');
+    historyList.classList.add('hidden');
+    loadReviewQueue();
+  } else {
+    historyBtn.style.background = 'var(--primary)'; historyBtn.style.color = 'white';
+    queueBtn.style.background = 'transparent'; queueBtn.style.color = 'var(--text-muted)';
+    historyList.classList.remove('hidden');
+    queueList.classList.add('hidden');
+    loadReviewedHistory();
+  }
+}
+
+function loadReviewQueue() {
+  const el = document.getElementById('reviewQueueList');
+  el.innerHTML = '<p style="color:var(--text-muted); font-size:0.85rem;">Loading...</p>';
+  fetch(API_BASE + '/api/doctors/review-queue', { headers: { 'Authorization': 'Bearer ' + doctorToken } })
+    .then(r => r.json())
+    .then(docs => {
+      if (!docs || !docs.length) {
+        el.innerHTML = '<p style="color:var(--text-muted); font-size:0.85rem;">Nothing waiting for review right now.</p>';
+        return;
+      }
+      el.innerHTML = docs.map(d => renderReviewCard(d, false)).join('');
+    })
+    .catch(() => { el.innerHTML = '<p style="color:var(--danger); font-size:0.85rem;">Failed to load review queue.</p>'; });
+}
+
+function loadReviewedHistory() {
+  const el = document.getElementById('reviewHistoryList');
+  el.innerHTML = '<p style="color:var(--text-muted); font-size:0.85rem;">Loading...</p>';
+  fetch(API_BASE + '/api/doctors/reviewed-history', { headers: { 'Authorization': 'Bearer ' + doctorToken } })
+    .then(r => r.json())
+    .then(docs => {
+      if (!docs || !docs.length) {
+        el.innerHTML = '<p style="color:var(--text-muted); font-size:0.85rem;">You haven\'t reviewed any analyses yet.</p>';
+        return;
+      }
+      el.innerHTML = docs.map(d => renderReviewCard(d, true)).join('');
+    })
+    .catch(() => { el.innerHTML = '<p style="color:var(--danger); font-size:0.85rem;">Failed to load reviewed history.</p>'; });
+}
+
+function renderReviewCard(d, isHistory) {
+  const date = new Date(d.uploadedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+  const analysisHtml = escapeReviewHtml(d.analysis || '').replace(/\*([^*\n]+)\*/g, '<strong>$1</strong>');
+  const typeLabel = d.documentType === 'imaging' ? '🩻 Imaging' : '💊 Prescription/Lab';
+  let statusHtml = '';
+  if (isHistory) {
+    statusHtml = d.reviewStatus === 'confirmed'
+      ? '<span style="color:var(--success);">✅ Confirmed</span>'
+      : `<span style="color:#f59e0b;">✏️ Corrected</span>`;
+  }
+  return `
+    <div style="background: var(--bg-light); border-radius: 8px; padding: 14px; margin-bottom: 10px;" id="reviewCard_${d._id}">
+      <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.78rem; color:var(--text-muted); margin-bottom:8px;">
+        <span>${typeLabel} · Patient: ${escapeReviewHtml(d.patientPhone || 'unknown')}</span>
+        <span>${date} ${statusHtml}</span>
+      </div>
+      <div style="font-size:0.82rem; color:var(--text); white-space:pre-wrap; line-height:1.5; margin-bottom:10px;">${analysisHtml}</div>
+      ${d.doctorCorrection ? `<div style="background:rgba(245,158,11,0.1); border:1px solid rgba(245,158,11,0.3); border-radius:6px; padding:10px; font-size:0.82rem; margin-bottom:10px;"><strong>Correction:</strong> ${escapeReviewHtml(d.doctorCorrection)}</div>` : ''}
+      ${!isHistory ? `
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+          <button onclick="confirmReview('${d._id}')" style="padding:8px 14px; border:none; border-radius:6px; background:var(--success); color:white; font-size:0.8rem; cursor:pointer;"><i class="fas fa-check"></i> Confirm Accurate</button>
+          <button onclick="showCorrectionBox('${d._id}')" style="padding:8px 14px; border:1px solid var(--border); border-radius:6px; background:transparent; color:var(--text); font-size:0.8rem; cursor:pointer;"><i class="fas fa-edit"></i> Correct</button>
+        </div>
+        <div id="correctionBox_${d._id}" class="hidden" style="margin-top:10px;">
+          <textarea id="correctionText_${d._id}" rows="3" placeholder="Enter the corrected analysis..." style="width:100%; padding:10px; background:var(--bg-card); border:1px solid var(--border); border-radius:8px; color:var(--text); font-size:0.85rem; resize:vertical;"></textarea>
+          <button onclick="submitCorrection('${d._id}')" style="margin-top:8px; padding:8px 14px; border:none; border-radius:6px; background:var(--primary); color:white; font-size:0.8rem; cursor:pointer;"><i class="fas fa-save"></i> Save Correction</button>
+        </div>
+      ` : ''}
+    </div>
+  `;
+}
+
+function showCorrectionBox(id) {
+  document.getElementById(`correctionBox_${id}`).classList.remove('hidden');
+}
+
+function submitReview(id, action, correction) {
+  return fetch(API_BASE + `/api/doctors/uploaded-reports/${id}/review`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + doctorToken },
+    body: JSON.stringify({ action, correction })
+  }).then(r => r.json().then(data => ({ ok: r.ok, data })));
+}
+
+function confirmReview(id) {
+  submitReview(id, 'confirm')
+    .then(({ ok, data }) => {
+      if (!ok) throw new Error(data.message);
+      loadReviewQueue();
+    })
+    .catch(err => alert(err.message));
+}
+
+function submitCorrection(id) {
+  const correction = document.getElementById(`correctionText_${id}`).value.trim();
+  if (!correction) { alert('Please enter a correction.'); return; }
+  submitReview(id, 'correct', correction)
+    .then(({ ok, data }) => {
+      if (!ok) throw new Error(data.message);
+      loadReviewQueue();
+    })
+    .catch(err => alert(err.message));
+}
+
+loadReviewQueue();
 
 function paintToggle(on) {
   document.getElementById('toggleTrack').style.background = on ? 'var(--success)' : 'var(--border)';

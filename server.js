@@ -102,7 +102,7 @@ const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || null;
 // safety risk. This prompt is built specifically to keep the AI in a "describe and flag for a
 // professional" role — it never states a diagnosis, never names a disease as confirmed, and
 // always routes the person back to a qualified doctor or radiologist for anything that matters.
-function buildImagingPrompt(language, fileCount, audience) {
+function buildImagingPrompt(language, fileCount, audience, referenceContext = '') {
   const languageInstruction = language && language !== 'English'
     ? `Write your entire response in ${language} — including section headers, translated naturally. Keep the emojis.`
     : 'Write in clear language.';
@@ -125,7 +125,7 @@ Describe what's visible in neutral, descriptive terms (e.g. "increased opacity i
 *⚠️ Worth a Closer Look*
 Anything that stands out as worth the doctor's specific attention or a formal radiology read — only if something genuinely does.
 
-Rules: you are a general-purpose vision model, not a validated radiology AI — state this limitation explicitly once, near the top. Never state a diagnosis as confirmed or rule one out with certainty. Never suggest this replaces a formal radiologist report for anything ambiguous or significant. Base observations only on what's actually visible — don't guess at poor-quality or ambiguous regions, say the image quality limits assessment there instead. Keep the whole thing under 280 words.`;
+Rules: you are a general-purpose vision model, not a validated radiology AI — state this limitation explicitly once, near the top. Never state a diagnosis as confirmed or rule one out with certainty. Never suggest this replaces a formal radiologist report for anything ambiguous or significant. Base observations only on what's actually visible — don't guess at poor-quality or ambiguous regions, say the image quality limits assessment there instead. Keep the whole thing under 280 words.${referenceContext}`;
   }
 
   return `${multiFileNote} Write for a patient with no medical training. This will be shown on their dashboard and can be sent to them on WhatsApp, so use WhatsApp's formatting: *asterisks* for bold headers, plain short lines. ${languageInstruction}
@@ -141,13 +141,13 @@ Describe what's visible in plain, neutral language — no diagnosis, no disease 
 *💡 Worth Mentioning to Your Doctor*
 Only if something genuinely stands out — phrase it as "worth asking your doctor about," never as a finding to be worried about on its own.
 
-CRITICAL rules: you are NOT a diagnostic tool and must never state or imply a diagnosis, a disease name, or a "you have X" conclusion — that requires a qualified doctor or radiologist actually reviewing this. Always end with a clear, unmissable line: "This is not a diagnosis. Please share this image with your doctor for a proper reading — especially if you have any symptoms or concerns right now." If the image suggests anything that could be urgent, add: "If you're experiencing symptoms, please don't wait — contact a doctor promptly." Keep the whole thing under 220 words.`;
+CRITICAL rules: you are NOT a diagnostic tool and must never state or imply a diagnosis, a disease name, or a "you have X" conclusion — that requires a qualified doctor or radiologist actually reviewing this. Always end with a clear, unmissable line: "This is not a diagnosis. Please share this image with your doctor for a proper reading — especially if you have any symptoms or concerns right now." If the image suggests anything that could be urgent, add: "If you're experiencing symptoms, please don't wait — contact a doctor promptly." Keep the whole thing under 220 words.${referenceContext}`;
 }
 
 // Builds the shared analysis prompt — same structure and rules for both providers, just the
 // language changes. Kept as one function so improving the extraction quality only needs to
 // happen in one place.
-function buildAnalysisPrompt(language, fileCount) {
+function buildAnalysisPrompt(language, fileCount, referenceContext = '') {
   const languageInstruction = language && language !== 'English'
     ? `Write your ENTIRE response in ${language} — every word, including the section headers themselves (translate "Medicines", "Lab Values", "Worth Discussing" naturally into ${language}, keep the emojis). Do not mix in English except for the actual medicine/drug names, which should stay as printed on the document.`
     : 'Write your response in clear, plain English.';
@@ -172,10 +172,33 @@ Any diagnosis, instructions, or follow-up advice written on the document (e.g. "
 *💡 Worth Discussing*
 One or two short, concrete points on what stands out — only if something genuinely does.
 
-Rules: base this only on what's actually in the document — never guess at anything illegible or invent a value. If handwriting is genuinely hard to read, say so plainly for that specific item rather than skipping it silently (e.g. "Medicine name unclear — please confirm with your pharmacist") rather than guessing. Avoid medical jargon; if a technical term is unavoidable, explain it in a few plain words right there. End with one line reminding them this is a summary to discuss with their doctor, not a diagnosis. Keep the whole thing under 280 words so it reads well as a WhatsApp message.`;
+Rules: base this only on what's actually in the document — never guess at anything illegible or invent a value. If handwriting is genuinely hard to read, say so plainly for that specific item rather than skipping it silently (e.g. "Medicine name unclear — please confirm with your pharmacist") rather than guessing. Avoid medical jargon; if a technical term is unavoidable, explain it in a few plain words right there. End with one line reminding them this is a summary to discuss with their doctor, not a diagnosis. Keep the whole thing under 280 words so it reads well as a WhatsApp message.${referenceContext}`;
 }
 
-async function analyzeDocumentWithClaude(files, language, documentType = 'prescription', audience = 'patient') {
+// Pulls a handful of relevant clinical-reference entries (added by admins, or auto-generated
+// from a doctor's correction of a past AI analysis) and formats them as extra context appended
+// to the analysis prompt. This is retrieval-augmented context injection, NOT literal model
+// retraining/fine-tuning — there's no way to actually retrain Gemini/Claude from a web app, and
+// nobody should be told that's happening. What this DOES do: it lets doctor corrections and
+// admin-curated clinical notes steer future AI output for similar documents, without ever
+// touching the underlying model. Fails safe — any error or empty result just returns '', so a
+// broken reference lookup never blocks a document analysis.
+async function getReferenceContext(category) {
+  try {
+    const entries = await ClinicalReference.find({ category })
+      .sort({ createdAt: -1 })
+      .limit(5)
+      .lean();
+    if (!entries || entries.length === 0) return '';
+    const formatted = entries.map(e => `- ${e.title ? e.title + ': ' : ''}${e.content}`).join('\n');
+    return `\n\nAdditional clinical context curated by this platform's medical team for similar cases (use this to sharpen your response where relevant, but still base findings only on what's actually in the uploaded document):\n${formatted}`;
+  } catch (err) {
+    console.log('⚠️ getReferenceContext failed (non-fatal):', err.message);
+    return '';
+  }
+}
+
+async function analyzeDocumentWithClaude(files, language, documentType = 'prescription', audience = 'patient', referenceContext = '') {
   if (!ANTHROPIC_API_KEY) return { ok: false, reason: 'not_configured' };
 
   const contentBlocks = files.map(f => {
@@ -186,8 +209,8 @@ async function analyzeDocumentWithClaude(files, language, documentType = 'prescr
   });
 
   const prompt = documentType === 'imaging'
-    ? buildImagingPrompt(language, files.length, audience)
-    : buildAnalysisPrompt(language, files.length);
+    ? buildImagingPrompt(language, files.length, audience, referenceContext)
+    : buildAnalysisPrompt(language, files.length, referenceContext);
 
   try {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -271,12 +294,12 @@ async function callGeminiModel(model, parts, maxRetries, attempt = 0) {
   return { ok: true, analysis: text };
 }
 
-async function analyzeDocumentWithGemini(files, language, documentType = 'prescription', audience = 'patient') {
+async function analyzeDocumentWithGemini(files, language, documentType = 'prescription', audience = 'patient', referenceContext = '') {
   if (!GEMINI_API_KEY) return { ok: false, reason: 'not_configured' };
 
   const prompt = documentType === 'imaging'
-    ? buildImagingPrompt(language, files.length, audience)
-    : buildAnalysisPrompt(language, files.length);
+    ? buildImagingPrompt(language, files.length, audience, referenceContext)
+    : buildAnalysisPrompt(language, files.length, referenceContext);
   const parts = [
     { text: prompt },
     ...files.map(f => ({ inline_data: { mime_type: f.fileType, data: f.fileData } }))
@@ -315,11 +338,14 @@ async function analyzeDocumentWithGemini(files, language, documentType = 'prescr
 // 'prescription' (default) or 'imaging' — picks which prompt is used. `audience` is 'patient'
 // (default) or 'doctor' — only affects the imaging prompt's tone/depth.
 async function analyzeDocument(files, language, documentType = 'prescription', audience = 'patient') {
-  const geminiResult = await analyzeDocumentWithGemini(files, language, documentType, audience);
+  // Fetched once and reused for both providers so a Gemini→Claude fallback doesn't double up
+  // on database reads for the same analysis.
+  const referenceContext = await getReferenceContext(documentType === 'imaging' ? 'imaging' : 'prescription');
+  const geminiResult = await analyzeDocumentWithGemini(files, language, documentType, audience, referenceContext);
   if (geminiResult.ok) return geminiResult;
   if (!ANTHROPIC_API_KEY) return geminiResult;
   console.log(`ℹ️ Gemini failed (${geminiResult.reason}), falling back to Claude...`);
-  return analyzeDocumentWithClaude(files, language, documentType, audience);
+  return analyzeDocumentWithClaude(files, language, documentType, audience, referenceContext);
 }
 
 
@@ -958,7 +984,28 @@ const uploadedDocumentSchema = new mongoose.Schema({
   uploadedByRole: { type: String, default: 'patient' }, // 'patient' | 'doctor' — doctors can upload imaging for a patient too
   analysis: String, // AI-extracted key factors, filled in after analysis completes
   analysisStatus: { type: String, default: 'pending' }, // pending | done | failed | not_configured
+  // Doctor review/correction safety net — the AI's output isn't treated as final until a real
+  // doctor either confirms it or corrects it. A correction also feeds the clinical reference
+  // library below, so similar future documents benefit from the fix.
+  reviewStatus: { type: String, default: 'unreviewed' }, // unreviewed | confirmed | corrected
+  doctorCorrection: String,
+  reviewedBy: String,
+  reviewedByPhone: String,
+  reviewedAt: Date,
   uploadedAt: { type: Date, default: Date.now }
+});
+
+// Clinical reference entries — admin-curated notes, or auto-generated from a doctor correcting
+// a past AI analysis. Injected as extra context into future analysis prompts for the same
+// category (see getReferenceContext above). This is retrieval-augmented context, not literal
+// model retraining.
+const clinicalReferenceSchema = new mongoose.Schema({
+  title: String,
+  category: { type: String, default: 'general' }, // 'prescription' | 'imaging' | 'lab_reference' | 'general'
+  content: String,
+  source: { type: String, default: 'admin' }, // 'admin' | 'doctor_correction'
+  addedBy: String,
+  createdAt: { type: Date, default: Date.now }
 });
 
 // Tracks what we're waiting for next from a patient on WhatsApp — dose confirmation, then vitals,
@@ -1009,6 +1056,7 @@ const Doctor = mongoose.model('Doctor', doctorSchema);
 const ConnectRequest = mongoose.model('ConnectRequest', connectRequestSchema);
 const VitalsLog = mongoose.model('VitalsLog', vitalsLogSchema);
 const UploadedDocument = mongoose.model('UploadedDocument', uploadedDocumentSchema);
+const ClinicalReference = mongoose.model('ClinicalReference', clinicalReferenceSchema);
 const ConversationState = mongoose.model('ConversationState', conversationStateSchema);
 const RiskAlert = mongoose.model('RiskAlert', riskAlertSchema);
 const Admin = mongoose.model('Admin', adminSchema);
@@ -2432,6 +2480,83 @@ app.delete('/api/doctors/imaging-history/:id', doctorAuth, async (req, res) => {
   }
 });
 
+// ========== DOCTOR REVIEW / CORRECTION WORKFLOW ==========
+// The AI's document analysis is a helpful first pass, not a final answer — this is the safety
+// net that keeps a human doctor in the loop. Any completed analysis (prescription or imaging,
+// from any patient) shows up here until a doctor either confirms it's accurate or corrects it.
+// A correction also gets folded into the clinical reference library so similar future documents
+// benefit from the fix — see getReferenceContext.
+app.get('/api/doctors/review-queue', doctorAuth, async (req, res) => {
+  try {
+    const docs = await UploadedDocument.find({ analysisStatus: 'done', reviewStatus: 'unreviewed' })
+      .select('-files -fileData')
+      .sort({ uploadedAt: -1 })
+      .limit(50);
+    res.json(docs);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+app.get('/api/doctors/reviewed-history', doctorAuth, async (req, res) => {
+  try {
+    const doctor = await Doctor.findById(req.doctor.id);
+    if (!doctor) return res.status(404).json({ message: 'Doctor not found' });
+    const docs = await UploadedDocument.find({ reviewedByPhone: doctor.phone })
+      .select('-files -fileData')
+      .sort({ reviewedAt: -1 })
+      .limit(50);
+    res.json(docs);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+app.patch('/api/doctors/uploaded-reports/:id/review', doctorAuth, async (req, res) => {
+  try {
+    const { action, correction } = req.body;
+    if (!['confirm', 'correct'].includes(action)) {
+      return res.status(400).json({ message: 'action must be "confirm" or "correct".' });
+    }
+    if (action === 'correct' && (!correction || !correction.trim())) {
+      return res.status(400).json({ message: 'A correction is required when correcting an analysis.' });
+    }
+
+    const doc = await UploadedDocument.findById(req.params.id);
+    if (!doc) return res.status(404).json({ message: 'Report not found.' });
+
+    const doctor = await Doctor.findById(req.doctor.id);
+    if (!doctor) return res.status(404).json({ message: 'Doctor not found' });
+
+    doc.reviewStatus = action === 'confirm' ? 'confirmed' : 'corrected';
+    if (action === 'correct') doc.doctorCorrection = correction.trim();
+    doc.reviewedBy = doctor.name;
+    doc.reviewedByPhone = doctor.phone;
+    doc.reviewedAt = new Date();
+    await doc.save();
+
+    // A correction is a real, doctor-verified signal — feed it into the clinical reference
+    // library so future AI analyses of similar documents are steered by it.
+    if (action === 'correct') {
+      try {
+        await ClinicalReference.create({
+          title: `Doctor correction — ${doc.documentType}`,
+          category: doc.documentType === 'imaging' ? 'imaging' : 'prescription',
+          content: `Original AI analysis was corrected by a doctor. Corrected version: ${correction.trim()}`,
+          source: 'doctor_correction',
+          addedBy: doctor.name
+        });
+      } catch (refErr) {
+        console.log('⚠️ Failed to save clinical reference from correction (non-fatal):', refErr.message);
+      }
+    }
+
+    res.json({ message: action === 'confirm' ? 'Analysis confirmed.' : 'Correction saved — this will help improve future AI analyses.', document: doc });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 app.post('/api/doctors/test-whatsapp', doctorAuth, async (req, res) => {
   try {
     const doctor = await Doctor.findById(req.doctor.id);
@@ -2874,6 +2999,72 @@ app.get('/api/admin/model', adminAuth, async (req, res) => {
   const model = await TrainedModel.findOne().sort({ trainedAt: -1 });
   if (!model) return res.json({ trained: false });
   res.json({ trained: true, accuracy: (model.accuracy * 100).toFixed(1) + '%', sampleSize: model.sampleSize, trainedAt: model.trainedAt });
+});
+
+// ========== CLINICAL REFERENCE LIBRARY ==========
+// Lets an admin (or a doctor's correction, automatically) add curated clinical notes that get
+// injected as extra context into future AI document analyses — see getReferenceContext above.
+// This is NOT literal model retraining (there's no way to retrain Gemini/Claude from a web app);
+// it's retrieval-augmented context that steers future prompts toward what's actually been
+// verified correct for this platform's patient population.
+app.post('/api/admin/clinical-data', adminAuth, async (req, res) => {
+  try {
+    const { title, category, content } = req.body;
+    if (!content || !content.trim()) return res.status(400).json({ message: 'content is required.' });
+    const validCategories = ['prescription', 'imaging', 'lab_reference', 'general'];
+    const cat = validCategories.includes(category) ? category : 'general';
+
+    const entry = await ClinicalReference.create({
+      title: title?.trim() || '',
+      category: cat,
+      content: content.trim(),
+      source: 'admin',
+      addedBy: req.admin?.email || req.admin?.username || 'admin'
+    });
+    res.json({ message: 'Clinical reference added — future AI analyses will take this into account.', entry });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+app.get('/api/admin/clinical-data', adminAuth, async (req, res) => {
+  try {
+    const entries = await ClinicalReference.find().sort({ createdAt: -1 }).limit(200);
+    res.json(entries);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+app.delete('/api/admin/clinical-data/:id', adminAuth, async (req, res) => {
+  try {
+    const entry = await ClinicalReference.findByIdAndDelete(req.params.id);
+    if (!entry) return res.status(404).json({ message: 'Not found.' });
+    res.json({ message: 'Deleted.' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Read-only views so patients and doctors can see what clinical context is guiding the AI —
+// transparency into what's shaping their analyses, per the request to let all three portals
+// fetch this data.
+app.get('/api/patient/clinical-data', auth, async (req, res) => {
+  try {
+    const entries = await ClinicalReference.find().sort({ createdAt: -1 }).limit(100).select('-addedBy');
+    res.json(entries);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+app.get('/api/doctors/clinical-data', doctorAuth, async (req, res) => {
+  try {
+    const entries = await ClinicalReference.find().sort({ createdAt: -1 }).limit(100);
+    res.json(entries);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
 });
 
 // Admin's patient view — risk scores come from the trained model when one exists,
