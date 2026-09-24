@@ -272,12 +272,21 @@ input[type="time"] { color-scheme: dark; }
       </div>
     </div>
 
-    <!-- Upload Report / Prescription — real AI analysis via Claude's vision API -->
+    <!-- Upload Report / Prescription / Imaging — real AI analysis via Gemini/Claude vision -->
     <div class="card">
       <div class="card-header">
         <span class="card-title">📄 Upload Report or Prescription</span>
       </div>
       <p style="color:#64748b;font-size:12.5px;margin:-4px 0 14px;">Upload up to 3 photos or PDFs (e.g. front & back, or multiple pages) — AI reads them together and pulls out the key factors, ready to discuss with your doctor. Written in your <a href="#" onclick="document.getElementById('profLanguage').scrollIntoView({behavior:'smooth'}); return false;" style="color:#5eead4;">preferred language</a>.</p>
+
+      <div style="display:flex;gap:8px;margin-bottom:14px;">
+        <button type="button" id="docTypePrescriptionBtn" onclick="setDocumentType('prescription')" class="btn" style="width:auto;padding:8px 14px;font-size:12.5px;">📄 Prescription / Lab Report</button>
+        <button type="button" id="docTypeImagingBtn" onclick="setDocumentType('imaging')" style="width:auto;padding:8px 14px;font-size:12.5px;background:#1e293b;border:1px solid #334155;border-radius:8px;color:#94a3b8;cursor:pointer;">🩻 X-Ray / Medical Imaging</button>
+      </div>
+
+      <div id="imagingDisclaimer" style="display:none;background:rgba(251,191,36,0.08);border:1px solid rgba(251,191,36,0.3);border-radius:8px;padding:12px 14px;font-size:12.5px;color:#fde68a;line-height:1.6;margin-bottom:14px;">
+        ⚠️ <strong>This is not a diagnosis.</strong> AI can describe what's visible in an X-ray or scan, but it isn't a substitute for a radiologist or doctor's professional reading. Always share the actual image with your doctor — especially if you have any symptoms right now.
+      </div>
 
       <form id="uploadForm" style="margin-bottom:14px;">
         <input type="file" id="reportFile" accept="image/jpeg,image/png,image/webp,application/pdf" multiple style="display:none;" onchange="handleFileSelected()">
@@ -973,6 +982,39 @@ input[type="time"] { color-scheme: dark; }
     // ===== Upload Report / Prescription =====
     const MAX_UPLOAD_FILES = 3;
     let selectedFiles = []; // [{ fileName, fileType, fileData }]
+    let currentDocumentType = 'prescription';
+
+    function setDocumentType(type) {
+      currentDocumentType = type;
+      const rxBtn = document.getElementById('docTypePrescriptionBtn');
+      const imgBtn = document.getElementById('docTypeImagingBtn');
+      const disclaimer = document.getElementById('imagingDisclaimer');
+      const fileInput = document.getElementById('reportFile');
+      const dropzone = document.getElementById('uploadDropzone');
+
+      if (type === 'imaging') {
+        imgBtn.className = 'btn';
+        imgBtn.style.cssText = 'width:auto;padding:8px 14px;font-size:12.5px;';
+        rxBtn.className = '';
+        rxBtn.style.cssText = 'width:auto;padding:8px 14px;font-size:12.5px;background:#1e293b;border:1px solid #334155;border-radius:8px;color:#94a3b8;cursor:pointer;';
+        disclaimer.style.display = 'block';
+        fileInput.accept = 'image/jpeg,image/png,image/webp'; // no PDF for imaging
+        dropzone.textContent = '📎 Click to choose up to 3 X-ray/scan photos — JPG, PNG, or WEBP, up to 5MB each';
+      } else {
+        rxBtn.className = 'btn';
+        rxBtn.style.cssText = 'width:auto;padding:8px 14px;font-size:12.5px;';
+        imgBtn.className = '';
+        imgBtn.style.cssText = 'width:auto;padding:8px 14px;font-size:12.5px;background:#1e293b;border:1px solid #334155;border-radius:8px;color:#94a3b8;cursor:pointer;';
+        disclaimer.style.display = 'none';
+        fileInput.accept = 'image/jpeg,image/png,image/webp,application/pdf';
+        dropzone.textContent = '📎 Click to choose up to 3 files — JPG, PNG, or PDF, up to 5MB each';
+      }
+      // Reset any in-progress selection when switching modes, since the accepted file types changed.
+      selectedFiles = [];
+      fileInput.value = '';
+      document.getElementById('selectedFileName').style.display = 'none';
+      document.getElementById('uploadBtn').style.display = 'none';
+    }
 
     function handleFileSelected() {
       const input = document.getElementById('reportFile');
@@ -988,11 +1030,15 @@ input[type="time"] { color-scheme: dark; }
         return;
       }
 
-      const allowed = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
+      const allowed = currentDocumentType === 'imaging'
+        ? ['image/jpeg', 'image/png', 'image/webp']
+        : ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
       for (const file of files) {
         if (!allowed.includes(file.type)) {
           msg.style.color = '#f87171';
-          msg.textContent = `"${file.name}" — only JPG, PNG, WEBP, or PDF files are supported.`;
+          msg.textContent = currentDocumentType === 'imaging'
+            ? `"${file.name}" — X-rays/imaging should be JPG, PNG, or WEBP photos, not PDF.`
+            : `"${file.name}" — only JPG, PNG, WEBP, or PDF files are supported.`;
           input.value = '';
           return;
         }
@@ -1038,7 +1084,7 @@ input[type="time"] { color-scheme: dark; }
         const res = await fetch(`${API_URL}/api/patient/upload-report`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-          body: JSON.stringify({ files: selectedFiles })
+          body: JSON.stringify({ files: selectedFiles, documentType: currentDocumentType })
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.message);

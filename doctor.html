@@ -227,6 +227,30 @@ tr:hover { background: rgba(13,115,119,0.05); }
       <div id="riskAlertsList"></div>
     </div>
 
+    <!-- AI Imaging Analysis — X-rays and scans, a second pair of eyes, never a replacement for a real radiology read -->
+    <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px; padding: 1.5rem; margin-bottom: 1.5rem;">
+      <h3 style="margin-bottom: 0.5rem; display:flex; align-items:center; gap:8px;"><i class="fas fa-x-ray"></i> AI Imaging Analysis</h3>
+      <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 1rem;">Upload an X-ray or scan for an AI-assisted second look — describes what's visible and flags anything worth a closer look. Not a diagnostic tool; always confirm with a formal radiology read for anything significant.</p>
+
+      <div style="background: rgba(243,156,18,0.08); border: 1px solid rgba(243,156,18,0.3); border-radius: 8px; padding: 10px 14px; font-size: 0.82rem; color: #fcd34d; line-height: 1.6; margin-bottom: 1rem;">
+        ⚠️ General-purpose vision AI, not a validated radiology system. Treat this as a preliminary observation aid alongside your own clinical judgment, not a confirmed read.
+      </div>
+
+      <form id="imagingUploadForm" style="margin-bottom: 0.75rem;">
+        <div style="display:flex; gap:0.75rem; flex-wrap:wrap; margin-bottom:0.75rem;">
+          <input type="text" id="imagingPatientPhone" placeholder="Patient phone (optional)" style="flex:1; min-width:200px; padding:10px 12px; background:var(--bg-light); border:1px solid var(--border); border-radius:8px; color:var(--text); font-size:0.88rem;">
+        </div>
+        <input type="file" id="imagingFile" accept="image/jpeg,image/png,image/webp" multiple style="display:none;" onchange="handleImagingFileSelected()">
+        <div id="imagingDropzone" onclick="document.getElementById('imagingFile').click()" style="border:1px dashed var(--border); border-radius:10px; padding:18px; text-align:center; cursor:pointer; font-size:0.85rem; color:var(--text-muted);">
+          📎 Click to choose up to 3 X-ray/scan photos — JPG, PNG, or WEBP, up to 5MB each
+        </div>
+        <div id="imagingSelectedName" style="font-size:0.8rem; color: var(--primary-light); margin-top:8px; display:none;"></div>
+        <button type="submit" id="imagingUploadBtn" style="display:none; margin-top:10px; width:100%; padding:12px; border:none; border-radius:8px; background:linear-gradient(135deg,var(--primary),var(--primary-light)); color:white; font-weight:600; font-size:0.9rem; cursor:pointer;">Upload & Analyze</button>
+      </form>
+      <div id="imagingUploadMsg" style="font-size:0.82rem; margin-bottom:0.75rem;"></div>
+      <div id="imagingHistory"></div>
+    </div>
+
     <div class="stats-row">
       <div class="stat-card">
         <h3>Total Patients</h3>
@@ -670,6 +694,141 @@ function testDocWhatsapp() {
     })
     .catch(() => { msg.style.color = 'var(--danger)'; msg.textContent = 'Test failed — check your connection.'; });
 }
+
+// ===== AI Imaging Analysis =====
+const MAX_IMAGING_FILES = 3;
+let imagingSelectedFiles = [];
+
+function handleImagingFileSelected() {
+  const input = document.getElementById('imagingFile');
+  const files = Array.from(input.files || []);
+  const msg = document.getElementById('imagingUploadMsg');
+  msg.textContent = '';
+  if (!files.length) return;
+
+  if (files.length > MAX_IMAGING_FILES) {
+    msg.style.color = 'var(--danger)';
+    msg.textContent = `Please choose up to ${MAX_IMAGING_FILES} files at once.`;
+    input.value = '';
+    return;
+  }
+
+  const allowed = ['image/jpeg', 'image/png', 'image/webp'];
+  for (const file of files) {
+    if (!allowed.includes(file.type)) {
+      msg.style.color = 'var(--danger)';
+      msg.textContent = `"${file.name}" — X-rays/imaging should be JPG, PNG, or WEBP photos.`;
+      input.value = '';
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      msg.style.color = 'var(--danger)';
+      msg.textContent = `"${file.name}" is too large — please choose something under 5MB.`;
+      input.value = '';
+      return;
+    }
+  }
+
+  imagingSelectedFiles = [];
+  let loadedCount = 0;
+  files.forEach(file => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      imagingSelectedFiles.push({ fileName: file.name, fileType: file.type, fileData: reader.result.split(',')[1] });
+      loadedCount++;
+      if (loadedCount === files.length) {
+        const names = files.map(f => f.name).join(', ');
+        document.getElementById('imagingSelectedName').textContent = `✓ ${files.length} file${files.length > 1 ? 's' : ''} ready: ${names}`;
+        document.getElementById('imagingSelectedName').style.display = 'block';
+        document.getElementById('imagingUploadBtn').style.display = 'block';
+      }
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+document.getElementById('imagingUploadForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  if (!imagingSelectedFiles.length) return;
+
+  const btn = document.getElementById('imagingUploadBtn');
+  const msg = document.getElementById('imagingUploadMsg');
+  btn.disabled = true;
+  btn.textContent = 'Analyzing... (can take up to a minute)';
+  msg.textContent = '';
+
+  try {
+    const res = await fetch(API_BASE + '/api/doctors/upload-imaging', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + doctorToken },
+      body: JSON.stringify({
+        files: imagingSelectedFiles,
+        patientPhone: document.getElementById('imagingPatientPhone').value.trim() || undefined
+      })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message);
+
+    msg.style.color = data.document.analysisStatus === 'done' ? 'var(--success)' : 'var(--accent)';
+    msg.textContent = data.message;
+
+    document.getElementById('imagingUploadForm').reset();
+    document.getElementById('imagingSelectedName').style.display = 'none';
+    document.getElementById('imagingUploadBtn').style.display = 'none';
+    imagingSelectedFiles = [];
+    loadImagingHistory();
+  } catch (err) {
+    msg.style.color = 'var(--danger)';
+    msg.textContent = err.message;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Upload & Analyze';
+  }
+});
+
+async function deleteImagingReport(id) {
+  if (!confirm('Delete this imaging analysis? This cannot be undone.')) return;
+  try {
+    const res = await fetch(API_BASE + `/api/doctors/imaging-history/${id}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': 'Bearer ' + doctorToken }
+    });
+    if (!res.ok) throw new Error();
+    loadImagingHistory();
+  } catch (err) {
+    alert('Failed to delete');
+  }
+}
+
+function loadImagingHistory() {
+  fetch(API_BASE + '/api/doctors/imaging-history', { headers: { 'Authorization': 'Bearer ' + doctorToken } })
+    .then(r => r.json())
+    .then(docs => {
+      const el = document.getElementById('imagingHistory');
+      if (!docs || !docs.length) { el.innerHTML = ''; return; }
+
+      el.innerHTML = '<div style="font-size:0.75rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.04em; margin:1rem 0 0.5rem;">Recent Analyses</div>' +
+        docs.map(d => {
+          const date = new Date(d.uploadedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+          const statusBadge = d.analysisStatus === 'done' ? '✅' : d.analysisStatus === 'failed' ? '❌' : '⏳';
+          const analysisHtml = (d.analysis || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\*([^*\n]+)\*/g, '<strong>$1</strong>');
+          return `
+            <div style="background: var(--bg-light); border-radius: 8px; padding: 12px 14px; margin-bottom: 8px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.78rem; color:var(--text-muted); margin-bottom:6px;">
+                <span>${statusBadge} ${d.fileName}</span>
+                <span style="display:flex; align-items:center; gap:10px;">
+                  ${date}
+                  <button onclick="deleteImagingReport('${d._id}')" title="Delete" style="background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:0.85rem;">🗑️</button>
+                </span>
+              </div>
+              ${d.analysis ? `<div style="font-size:0.82rem; color:var(--text); white-space:pre-wrap; line-height:1.5;">${analysisHtml}</div>` : ''}
+            </div>
+          `;
+        }).join('');
+    })
+    .catch(() => {});
+}
+loadImagingHistory();
 
 function paintToggle(on) {
   document.getElementById('toggleTrack').style.background = on ? 'var(--success)' : 'var(--border)';

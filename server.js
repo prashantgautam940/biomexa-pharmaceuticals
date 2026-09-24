@@ -96,6 +96,54 @@ async function callAiEngine(path, payload, isRetry = false) {
 // says plainly that it isn't configured yet rather than pretending to have read the document.
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || null;
 
+// Builds the prompt for X-rays and other medical imaging — deliberately different, and more
+// carefully worded, than the prescription/lab-report prompt. A general-purpose vision model is
+// NOT a validated diagnostic radiology tool, and treating its output as one would be a real
+// safety risk. This prompt is built specifically to keep the AI in a "describe and flag for a
+// professional" role — it never states a diagnosis, never names a disease as confirmed, and
+// always routes the person back to a qualified doctor or radiologist for anything that matters.
+function buildImagingPrompt(language, fileCount, audience) {
+  const languageInstruction = language && language !== 'English'
+    ? `Write your entire response in ${language} — including section headers, translated naturally. Keep the emojis.`
+    : 'Write in clear language.';
+
+  const multiFileNote = fileCount > 1
+    ? `You're looking at ${fileCount} images that are part of the same scan or study (e.g. different views/angles) — consider them together.`
+    : `You're looking at a medical image — an X-ray, scan, or similar.`;
+
+  if (audience === 'doctor') {
+    return `${multiFileNote} You're assisting a licensed doctor as a second pair of eyes, not replacing their read. ${languageInstruction}
+
+Structure your response exactly like this:
+
+*🩻 Image Type & Quality*
+What kind of image this appears to be (e.g. chest X-ray, PA view) and whether image quality/positioning is adequate for assessment.
+
+*🔍 Observations*
+Describe what's visible in neutral, descriptive terms (e.g. "increased opacity in the right lower lobe", "no obvious fracture line visible") — describe findings, don't name a diagnosis as confirmed. If something looks genuinely unremarkable, say so plainly rather than manufacturing a finding.
+
+*⚠️ Worth a Closer Look*
+Anything that stands out as worth the doctor's specific attention or a formal radiology read — only if something genuinely does.
+
+Rules: you are a general-purpose vision model, not a validated radiology AI — state this limitation explicitly once, near the top. Never state a diagnosis as confirmed or rule one out with certainty. Never suggest this replaces a formal radiologist report for anything ambiguous or significant. Base observations only on what's actually visible — don't guess at poor-quality or ambiguous regions, say the image quality limits assessment there instead. Keep the whole thing under 280 words.`;
+  }
+
+  return `${multiFileNote} Write for a patient with no medical training. This will be shown on their dashboard and can be sent to them on WhatsApp, so use WhatsApp's formatting: *asterisks* for bold headers, plain short lines. ${languageInstruction}
+
+Structure your response exactly like this:
+
+*🩻 What This Image Shows*
+Plainly say what kind of scan this looks like, in one line.
+
+*🔍 What I Can See*
+Describe what's visible in plain, neutral language — no diagnosis, no disease names stated as fact. If something looks different from the surrounding area, describe it factually (e.g. "there's an area that looks different from the tissue around it") without naming what it is.
+
+*💡 Worth Mentioning to Your Doctor*
+Only if something genuinely stands out — phrase it as "worth asking your doctor about," never as a finding to be worried about on its own.
+
+CRITICAL rules: you are NOT a diagnostic tool and must never state or imply a diagnosis, a disease name, or a "you have X" conclusion — that requires a qualified doctor or radiologist actually reviewing this. Always end with a clear, unmissable line: "This is not a diagnosis. Please share this image with your doctor for a proper reading — especially if you have any symptoms or concerns right now." If the image suggests anything that could be urgent, add: "If you're experiencing symptoms, please don't wait — contact a doctor promptly." Keep the whole thing under 220 words.`;
+}
+
 // Builds the shared analysis prompt — same structure and rules for both providers, just the
 // language changes. Kept as one function so improving the extraction quality only needs to
 // happen in one place.
@@ -127,7 +175,7 @@ One or two short, concrete points on what stands out — only if something genui
 Rules: base this only on what's actually in the document — never guess at anything illegible or invent a value. If handwriting is genuinely hard to read, say so plainly for that specific item rather than skipping it silently (e.g. "Medicine name unclear — please confirm with your pharmacist") rather than guessing. Avoid medical jargon; if a technical term is unavoidable, explain it in a few plain words right there. End with one line reminding them this is a summary to discuss with their doctor, not a diagnosis. Keep the whole thing under 280 words so it reads well as a WhatsApp message.`;
 }
 
-async function analyzeDocumentWithClaude(files, language) {
+async function analyzeDocumentWithClaude(files, language, documentType = 'prescription', audience = 'patient') {
   if (!ANTHROPIC_API_KEY) return { ok: false, reason: 'not_configured' };
 
   const contentBlocks = files.map(f => {
@@ -137,7 +185,9 @@ async function analyzeDocumentWithClaude(files, language) {
       : { type: 'image', source: { type: 'base64', media_type: f.fileType, data: f.fileData } };
   });
 
-  const prompt = buildAnalysisPrompt(language, files.length);
+  const prompt = documentType === 'imaging'
+    ? buildImagingPrompt(language, files.length, audience)
+    : buildAnalysisPrompt(language, files.length);
 
   try {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -221,10 +271,12 @@ async function callGeminiModel(model, parts, maxRetries, attempt = 0) {
   return { ok: true, analysis: text };
 }
 
-async function analyzeDocumentWithGemini(files, language) {
+async function analyzeDocumentWithGemini(files, language, documentType = 'prescription', audience = 'patient') {
   if (!GEMINI_API_KEY) return { ok: false, reason: 'not_configured' };
 
-  const prompt = buildAnalysisPrompt(language, files.length);
+  const prompt = documentType === 'imaging'
+    ? buildImagingPrompt(language, files.length, audience)
+    : buildAnalysisPrompt(language, files.length);
   const parts = [
     { text: prompt },
     ...files.map(f => ({ inline_data: { mime_type: f.fileType, data: f.fileData } }))
@@ -259,14 +311,17 @@ async function analyzeDocumentWithGemini(files, language) {
 // incurs cost the person hasn't already opted into by setting up both keys — it just means a
 // temporary Gemini outage doesn't leave the feature broken when a working backup is right there.
 // `files` is an array of {fileType, fileData} — 1 to 3 pages/images analyzed together as one
-// document. `language` is the patient's preferred language for the written-out analysis.
-async function analyzeDocument(files, language) {
-  const geminiResult = await analyzeDocumentWithGemini(files, language);
+// document. `language` is the preferred language for the written-out analysis. `documentType` is
+// 'prescription' (default) or 'imaging' — picks which prompt is used. `audience` is 'patient'
+// (default) or 'doctor' — only affects the imaging prompt's tone/depth.
+async function analyzeDocument(files, language, documentType = 'prescription', audience = 'patient') {
+  const geminiResult = await analyzeDocumentWithGemini(files, language, documentType, audience);
   if (geminiResult.ok) return geminiResult;
   if (!ANTHROPIC_API_KEY) return geminiResult;
   console.log(`ℹ️ Gemini failed (${geminiResult.reason}), falling back to Claude...`);
-  return analyzeDocumentWithClaude(files, language);
+  return analyzeDocumentWithClaude(files, language, documentType, audience);
 }
+
 
 // ========== TREATMENT REPORT SIMPLIFICATION ==========
 // The AI engine's clinical_insights/treatment_recommendations were written for the doctor
@@ -899,6 +954,8 @@ const uploadedDocumentSchema = new mongoose.Schema({
   fileType: String,
   fileData: String,
   language: { type: String, default: 'English' }, // language this analysis was generated in
+  documentType: { type: String, default: 'prescription' }, // 'prescription' | 'imaging' — which prompt/framing was used
+  uploadedByRole: { type: String, default: 'patient' }, // 'patient' | 'doctor' — doctors can upload imaging for a patient too
   analysis: String, // AI-extracted key factors, filled in after analysis completes
   analysisStatus: { type: String, default: 'pending' }, // pending | done | failed | not_configured
   uploadedAt: { type: Date, default: Date.now }
@@ -1468,12 +1525,16 @@ app.post('/api/patient/upload-report', auth, async (req, res) => {
     const rawFiles = Array.isArray(req.body.files) ? req.body.files
       : (req.body.fileName ? [{ fileName: req.body.fileName, fileType: req.body.fileType, fileData: req.body.fileData }] : []);
     const files = rawFiles.filter(f => f && f.fileName && f.fileType && f.fileData);
+    const documentType = req.body.documentType === 'imaging' ? 'imaging' : 'prescription';
 
     if (!files.length) {
       return res.status(400).json({ message: 'At least one file (name, type, and data) is required.' });
     }
     if (files.length > MAX_FILES_PER_UPLOAD) {
       return res.status(400).json({ message: `Up to ${MAX_FILES_PER_UPLOAD} files are supported per upload.` });
+    }
+    if (documentType === 'imaging' && files.some(f => f.fileType === 'application/pdf')) {
+      return res.status(400).json({ message: 'X-rays and imaging should be uploaded as photos (JPG/PNG/WEBP), not PDF.' });
     }
     for (const f of files) {
       if (!ALLOWED_DOCUMENT_TYPES.includes(f.fileType)) {
@@ -1494,10 +1555,12 @@ app.post('/api/patient/upload-report', auth, async (req, res) => {
       fileName: displayName,
       fileType: files[0].fileType,
       language,
+      documentType,
+      uploadedByRole: 'patient',
       analysisStatus: 'pending'
     });
 
-    const result = await analyzeDocument(files, language);
+    const result = await analyzeDocument(files, language, documentType, 'patient');
     if (result.ok) {
       doc.analysis = result.analysis;
       doc.analysisStatus = 'done';
@@ -2278,6 +2341,92 @@ app.get('/api/doctors/me', doctorAuth, async (req, res) => {
   try {
     const doctor = await Doctor.findById(req.doctor.id).select('-password');
     res.json(doctor);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Same imaging analysis feature as the patient portal, for a doctor to use directly — e.g. a
+// quick AI-assisted second look at an X-ray while reviewing a patient. Optionally tagged with a
+// patientPhone if the doctor wants to associate it with a specific patient's record; otherwise
+// it's just saved under the doctor's own history. Uses the doctor-audience prompt (more
+// clinical tone) rather than the patient one, but with the exact same safety framing — never a
+// confirmed diagnosis, always recommends formal radiology review for anything significant.
+app.post('/api/doctors/upload-imaging', doctorAuth, async (req, res) => {
+  try {
+    const rawFiles = Array.isArray(req.body.files) ? req.body.files : [];
+    const files = rawFiles.filter(f => f && f.fileName && f.fileType && f.fileData);
+    const patientPhone = req.body.patientPhone || null;
+
+    if (!files.length) {
+      return res.status(400).json({ message: 'At least one file (name, type, and data) is required.' });
+    }
+    if (files.length > MAX_FILES_PER_UPLOAD) {
+      return res.status(400).json({ message: `Up to ${MAX_FILES_PER_UPLOAD} files are supported per upload.` });
+    }
+    if (files.some(f => f.fileType === 'application/pdf')) {
+      return res.status(400).json({ message: 'X-rays and imaging should be uploaded as photos (JPG/PNG/WEBP), not PDF.' });
+    }
+    for (const f of files) {
+      if (!ALLOWED_DOCUMENT_TYPES.includes(f.fileType)) {
+        return res.status(400).json({ message: `"${f.fileName}" — only JPG, PNG, or WEBP files are supported.` });
+      }
+      if (f.fileData.length > MAX_DOCUMENT_BASE64_LENGTH) {
+        return res.status(400).json({ message: `"${f.fileName}" is too large — please upload something under 5MB.` });
+      }
+    }
+
+    const displayName = files.length > 1 ? `${files[0].fileName} (+${files.length - 1} more)` : files[0].fileName;
+
+    const doc = await UploadedDocument.create({
+      patientPhone: patientPhone || req.doctor.phone, // falls back to the doctor's own phone so this still shows in their own history when no patient is specified
+      files: files.map(f => ({ fileName: f.fileName, fileType: f.fileType, fileData: f.fileData })),
+      fileName: displayName,
+      fileType: files[0].fileType,
+      language: 'English',
+      documentType: 'imaging',
+      uploadedByRole: 'doctor',
+      analysisStatus: 'pending'
+    });
+
+    const result = await analyzeDocument(files, 'English', 'imaging', 'doctor');
+    if (result.ok) {
+      doc.analysis = result.analysis;
+      doc.analysisStatus = 'done';
+    } else if (result.reason === 'not_configured') {
+      doc.analysisStatus = 'not_configured';
+    } else {
+      doc.analysisStatus = 'failed';
+      doc.analysis = 'Analysis failed — please try re-uploading.';
+    }
+    await doc.save();
+
+    res.json({
+      message: result.ok ? 'Uploaded and analyzed!' : result.reason === 'not_configured' ? 'Uploaded — AI analysis isn\'t configured yet.' : 'Uploaded, but analysis failed.',
+      document: { _id: doc._id, fileName: doc.fileName, analysis: doc.analysis, analysisStatus: doc.analysisStatus, uploadedAt: doc.uploadedAt }
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+app.get('/api/doctors/imaging-history', doctorAuth, async (req, res) => {
+  try {
+    const docs = await UploadedDocument.find({ patientPhone: req.doctor.phone, uploadedByRole: 'doctor', documentType: 'imaging' })
+      .select('-files')
+      .sort({ uploadedAt: -1 })
+      .limit(20);
+    res.json(docs);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+app.delete('/api/doctors/imaging-history/:id', doctorAuth, async (req, res) => {
+  try {
+    const doc = await UploadedDocument.findOneAndDelete({ _id: req.params.id, patientPhone: req.doctor.phone, uploadedByRole: 'doctor' });
+    if (!doc) return res.status(404).json({ message: 'Not found.' });
+    res.json({ message: 'Deleted.' });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
