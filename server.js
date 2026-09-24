@@ -2242,7 +2242,7 @@ async function generateTodaysDoses(todayStr) {
   const currentTime = `${String(today.getHours()).padStart(2, '0')}:${String(today.getMinutes()).padStart(2, '0')}`;
   try {
     const patients = await Patient.find({ 'medicines.active': true });
-    let created = 0, expired = 0, skippedPassed = 0;
+    let created = 0, expired = 0, createdLate = 0;
 
     for (const patient of patients) {
       for (const med of patient.medicines) {
@@ -2257,14 +2257,19 @@ async function generateTodaysDoses(todayStr) {
         const existing = await Dose.findOne({ patientPhone: patient.phone, medicineName: med.name, scheduledTime: med.time, scheduledDate: todayStr });
         if (existing) continue;
 
-        // Same protection as /api/medicines: if this is the first regeneration run of the day
-        // and it happens to occur after this medicine's time has already passed (Render's free
-        // tier can wake up late after sleeping), creating a "today" dose here would leave it
-        // permanently stuck as Pending — the exact-time-match reminder cron can never catch up
-        // on a minute that's already gone by. Skip it; tomorrow's regeneration creates a real one.
+        // Previously this SKIPPED creating today's dose entirely when the medicine's time had
+        // already passed by the time the server (re)started — e.g. after a Render free-tier
+        // sleep/wake, or after any deploy restarts the process. That left patients silently
+        // never reminded for the rest of the day, with no way to catch up, because the reminder
+        // cron below used to match scheduledTime to the exact current minute. Confirmed as a
+        // real regression: three deploys in one evening caused three restarts, and the logs
+        // showed doses being skipped each time ("skipped: time already passed today") with no
+        // reminder ever going out for those. Still created now — the cron below has been changed
+        // to catch up on anything with scheduledTime <= now, not just an exact-minute match, so
+        // a late-created dose gets its reminder sent on the very next minute tick instead of
+        // being silently lost for the whole day.
         if (med.time <= currentTime) {
-          skippedPassed++;
-          continue;
+          createdLate++;
         }
 
         await Dose.create({
@@ -2280,7 +2285,7 @@ async function generateTodaysDoses(todayStr) {
       }
       if (patient.isModified('medicines')) await patient.save();
     }
-    console.log(`🌅 Daily dose generation done: ${created} created, ${expired} medicine(s) ended their course, ${skippedPassed} skipped (time already passed today).`);
+    console.log(`🌅 Daily dose generation done: ${created} created (${createdLate} of those already past their time — will be reminded on the next check instead of skipped), ${expired} medicine(s) ended their course.`);
   } catch (err) {
     console.error('❌ Daily dose generation error:', err.message);
   }
@@ -2299,14 +2304,19 @@ cron.schedule('* * * * *', async () => {
   console.log(`⏰ [${currentTime}] Checking for pending doses...`);
 
   try {
+    // Was an exact match on scheduledTime === currentTime — meant any dose whose minute got
+    // missed (server asleep/restarting right at that exact minute, which a deploy causes) was
+    // silently never reminded for the rest of the day, since the clock only moves forward and
+    // that exact minute never comes again. Now catches up on anything still pending at or before
+    // now, so a missed minute gets its reminder on the very next tick instead of being lost.
     const pendingDoses = await Dose.find({
       scheduledDate: today,
-      scheduledTime: currentTime,
+      scheduledTime: { $lte: currentTime },
       status: 'pending',
       sentReminder: false
     });
 
-    console.log(`📋 Found ${pendingDoses.length} doses scheduled for ${currentTime}`);
+    console.log(`📋 Found ${pendingDoses.length} dose(s) due at or before ${currentTime}`);
 
     for (const dose of pendingDoses) {
       const patient = await Patient.findOne({ phone: dose.patientPhone });
