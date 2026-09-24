@@ -2319,6 +2319,18 @@ cron.schedule('* * * * *', async () => {
     console.log(`📋 Found ${pendingDoses.length} dose(s) due at or before ${currentTime}`);
 
     for (const dose of pendingDoses) {
+      // Atomically claim this dose before doing anything else — Render's zero-downtime deploys
+      // briefly run the old and new instance side by side, and both would otherwise run this
+      // same cron tick a few seconds apart, find the same pending dose, and send it twice. This
+      // findOneAndUpdate is atomic at the database level: only one instance's update can match
+      // sentReminder: false and flip it, so only one instance proceeds to actually send.
+      const claimed = await Dose.findOneAndUpdate(
+        { _id: dose._id, sentReminder: false },
+        { sentReminder: true },
+        { new: true }
+      );
+      if (!claimed) continue; // another instance already claimed and is sending this one
+
       const patient = await Patient.findOne({ phone: dose.patientPhone });
       if (!patient) {
         console.log(`⚠️ Patient not found for ${dose.patientPhone}`);
@@ -2348,10 +2360,13 @@ cron.schedule('* * * * *', async () => {
       }
 
       if (sentVia) {
-        await Dose.findByIdAndUpdate(dose._id, { sentReminder: true });
         console.log(`✅ Reminder sent to ${dose.patientPhone} for ${dose.medicineName} at ${currentTime} via ${sentVia}`);
       } else {
-        console.log(`❌ Failed to send reminder to ${dose.patientPhone}`);
+        // Both the template and free-text fallback failed (e.g. MSG91 itself down) — release
+        // the claim so the next minute's tick retries it, instead of silently giving up on a
+        // dose forever just because this one attempt hit a transient failure.
+        await Dose.findByIdAndUpdate(dose._id, { sentReminder: false });
+        console.log(`❌ Failed to send reminder to ${dose.patientPhone} — will retry next check`);
       }
     }
   } catch (err) {
@@ -3431,6 +3446,15 @@ app.get('/api/whatsapp-status', (req, res) => {
     reportAnalysisTemplateConfigured: !!MSG91_REPORT_ANALYSIS_TEMPLATE_NAME
   });
 });
+
+// Lightweight, dependency-free liveness check — deliberately does NOT touch the database, so it
+// stays accurate (and fast) even during a Mongo hiccup. This exists specifically to be pinged by
+// an external uptime monitor every few minutes: Render's free tier puts the service to sleep
+// after ~15 minutes of no incoming traffic, and every sleep/wake cycle is exactly what caused
+// dose reminders to be missed or delayed. A regular external ping is the real, permanent fix —
+// it keeps the process (and its once-a-minute reminder cron) running continuously instead of
+// depending on patient/doctor traffic to wake it back up.
+app.get('/health', (req, res) => res.status(200).json({ status: 'ok', time: new Date().toISOString() }));
 
 // ========== START SERVER ==========
 const PORT = process.env.PORT || 3000;
