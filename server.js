@@ -47,6 +47,10 @@ setInterval(() => {
 const loginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 8, message: 'Too many login attempts. Please wait 15 minutes and try again.' });
 const otpLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 5, message: 'Too many reset requests. Please wait 15 minutes and try again.' });
 const signupLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 10, message: 'Too many signup attempts from this connection. Please try again in an hour.' });
+const orderLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 10, message: 'Too many orders from this connection. Please try again in an hour, or contact us directly.' });
+// Product chat calls a real AI model per message, so it needs its own, more generous-but-bounded
+// limit — a real Q&A conversation is several messages, unlike a one-shot signup/order form.
+const productChatLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 25, message: 'Too many questions in a short time — please wait a few minutes and try again.' });
 
 // ========== CONFIG ==========
 const JWT_SECRET = process.env.JWT_SECRET || 'biomexasecret';
@@ -927,6 +931,35 @@ if (process.env.EMAIL_USER && process.env.EMAIL_APP_PASSWORD) {
   console.log('ℹ️ Email fallback not configured — set EMAIL_USER and EMAIL_APP_PASSWORD to enable it');
 }
 
+// Notifies the pharmacy (not the customer) that a new order came in via the public product
+// pages — this is order-intake, not a receipt, so it always goes to ADMIN_EMAIL, never the
+// customer's own address (an order form doesn't collect one).
+async function sendOrderNotificationEmail(order) {
+  const adminEmail = process.env.ADMIN_EMAIL || 'biomexapharmaceuticals@gmail.com';
+  if (!emailTransport) return { success: false };
+  try {
+    await emailTransport.sendMail({
+      from: `"Biomexa Pharmaceuticals" <${process.env.EMAIL_USER}>`,
+      to: adminEmail,
+      subject: `🛒 New order — ${order.productName} (${order.quantity}x)`,
+      html: `<div style="font-family:sans-serif;max-width:480px;margin:0 auto;">
+        <h2 style="color:#0d7377;">New Order Received</h2>
+        <p><strong>Product:</strong> ${order.productName} × ${order.quantity}</p>
+        <p><strong>Customer:</strong> ${order.customerName}</p>
+        <p><strong>Phone:</strong> ${order.phone}</p>
+        <p><strong>Address:</strong> ${order.address}</p>
+        ${order.notes ? `<p><strong>Notes:</strong> ${order.notes}</p>` : ''}
+        <p style="color:#888;font-size:13px;">View and manage this order in the admin portal.</p>
+      </div>`
+    });
+    console.log('✅ Order notification email sent to', adminEmail);
+    return { success: true };
+  } catch (err) {
+    console.log('⚠️ Order notification email failed:', err.message);
+    return { success: false };
+  }
+}
+
 async function sendResetEmail(toEmail, otp, name) {
   if (!emailTransport || !toEmail) return { success: false };
   try {
@@ -1158,6 +1191,22 @@ const clinicalReferenceSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now }
 });
 
+// Orders placed from the public product pages — a plain order-intake record, not a payment
+// transaction (no payment gateway is wired up). An admin follows up manually (call, WhatsApp,
+// generate an invoice, arrange delivery) using the Orders panel in the admin portal, which is
+// notified by email/WhatsApp the moment a new one comes in.
+const orderSchema = new mongoose.Schema({
+  productName: String,
+  productSlug: String,
+  customerName: String,
+  phone: String,
+  address: String,
+  quantity: { type: Number, default: 1 },
+  notes: String,
+  status: { type: String, default: 'new' }, // new | confirmed | shipped | cancelled
+  createdAt: { type: Date, default: Date.now }
+});
+
 // Tracks what we're waiting for next from a patient on WhatsApp — dose confirmation, then vitals,
 // then nothing. This is what lets the inbound webhook interpret a short reply like "Taken" or
 // "120/80" correctly, based on where the conversation currently is.
@@ -1207,6 +1256,7 @@ const ConnectRequest = mongoose.model('ConnectRequest', connectRequestSchema);
 const VitalsLog = mongoose.model('VitalsLog', vitalsLogSchema);
 const UploadedDocument = mongoose.model('UploadedDocument', uploadedDocumentSchema);
 const ClinicalReference = mongoose.model('ClinicalReference', clinicalReferenceSchema);
+const Order = mongoose.model('Order', orderSchema);
 const ConversationState = mongoose.model('ConversationState', conversationStateSchema);
 const RiskAlert = mongoose.model('RiskAlert', riskAlertSchema);
 const Admin = mongoose.model('Admin', adminSchema);
@@ -1453,6 +1503,148 @@ app.post('/api/quick-vitals', signupLimiter, async (req, res) => {
     const alert = await triggerRiskAlert(patient, vitals);
 
     res.json({ message: 'Vitals saved to your Biomexa record.', riskFlagged: !!alert });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// ========== PRODUCT ORDERS (public product pages) ==========
+// Plain order-intake, not a payment transaction — no payment gateway is wired up. Saves the
+// order, then notifies the pharmacy by email and (if configured) WhatsApp so someone can follow
+// up manually. Both notifications are fire-and-forget: a notification failing never blocks the
+// order itself from being saved and confirmed to the customer.
+app.post('/api/orders', orderLimiter, async (req, res) => {
+  try {
+    const { productName, productSlug, customerName, phone, address, quantity, notes } = req.body;
+    if (!productName || !customerName || !phone || !address) {
+      return res.status(400).json({ message: 'Name, phone, and address are required.' });
+    }
+
+    const order = await Order.create({
+      productName,
+      productSlug: productSlug || '',
+      customerName,
+      phone,
+      address,
+      quantity: quantity ? Math.max(1, parseInt(quantity, 10) || 1) : 1,
+      notes: notes || ''
+    });
+
+    sendOrderNotificationEmail(order).catch(() => {});
+    if (process.env.ADMIN_NOTIFY_PHONE) {
+      sendWhatsAppFree(
+        process.env.ADMIN_NOTIFY_PHONE,
+        `🛒 *New Order*\n\n${order.productName} × ${order.quantity}\n${order.customerName} — ${order.phone}\n${order.address}${order.notes ? '\n\nNotes: ' + order.notes : ''}\n\n- Biomexa Team`
+      ).catch(() => {});
+    }
+
+    res.json({ message: 'Order received! Our team will contact you shortly to confirm and arrange delivery.', orderId: order._id });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+app.get('/api/admin/orders', adminAuth, async (req, res) => {
+  try {
+    const orders = await Order.find().sort({ createdAt: -1 }).limit(200);
+    res.json(orders);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+app.patch('/api/admin/orders/:id', adminAuth, async (req, res) => {
+  try {
+    const { status } = req.body;
+    const validStatuses = ['new', 'confirmed', 'shipped', 'cancelled'];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({ message: `status must be one of: ${validStatuses.join(', ')}` });
+    }
+    const order = await Order.findByIdAndUpdate(req.params.id, { status }, { new: true });
+    if (!order) return res.status(404).json({ message: 'Order not found.' });
+    res.json({ message: 'Order updated.', order });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// ========== PRODUCT AI CHAT (public product pages) ==========
+// Replaces the old hardcoded canned-response "AI Guide" chat with a real answer from the same
+// Gemini/Claude infrastructure already powering document analysis elsewhere on the platform.
+// Public and unauthenticated (it's on a public marketing page), so it's rate-limited and scoped
+// to a fixed, small set of known products — never a free-form system prompt the caller controls.
+const PRODUCT_INFO = {
+  'Telmexa AM': `Telmexa AM (Telmisartan 40mg + Amlodipine Besylate 5mg) is a once-daily combination antihypertensive (ARB + calcium channel blocker) for blood pressure management. Take one tablet each morning, 6-8 AM, with a light breakfast. Avoid grapefruit/grapefruit juice entirely (raises amlodipine levels). Limit high-sodium foods and alcohol. High-potassium foods (bananas, spinach, supplements) should be limited and potassium monitored periodically. DASH-diet foods, beetroot, and pomegranate are beneficial. Never take a second dose in the evening. Common side effects: mild dizziness, ankle swelling, headache — usually resolve in ~2 weeks. Seek urgent care for severe dizziness/fainting, facial swelling, or difficulty breathing.`,
+  'Diabmexa M 500': `Diabmexa M 500 (Metformin Hydrochloride IP 500mg) is a first-line oral medicine for Type 2 Diabetes, typically taken twice daily with meals to reduce GI side effects and support the dawn-phenomenon (elevated morning blood sugar). Avoid excessive alcohol (raises lactic acidosis risk). Take consistently at the same times daily. Common side effects: GI upset, metallic taste — usually improve over the first few weeks. Regular blood sugar monitoring is recommended.`
+};
+
+function buildProductChatPrompt(productName, question, history) {
+  const productInfo = PRODUCT_INFO[productName];
+  const historyText = (history || []).slice(-6).map(h => `${h.role === 'user' ? 'Patient' : 'Assistant'}: ${h.text}`).join('\n');
+  return `You are Biomexa Pharmaceuticals' AI medicine guide for ${productName}. Reference information about this product:\n${productInfo}\n\nAnswer the patient's question in clear, plain, reassuring language — short paragraphs, WhatsApp-safe formatting (*asterisks* for bold, no markdown tables or headers with #). Base your answer only on the reference information above plus general, widely-known medication-safety knowledge — never invent specifics not given here. Never state a diagnosis or tell them to change their dose. Always close by reminding them to confirm anything before changing their treatment with their doctor. If the question describes symptoms that could be a medical emergency, tell them to seek care immediately instead of continuing the chat. Keep the answer under 150 words.\n${historyText ? '\nRecent conversation:\n' + historyText + '\n' : ''}\nPatient's question: "${question}"`;
+}
+
+async function answerProductQuestionWithGemini(productName, question, history) {
+  if (!GEMINI_API_KEY) return { ok: false, reason: 'not_configured' };
+  const parts = [{ text: buildProductChatPrompt(productName, question, history) }];
+  let lastFailure = null;
+  for (let i = 0; i < GEMINI_MODELS.length; i++) {
+    const model = GEMINI_MODELS[i];
+    const isLastModel = i === GEMINI_MODELS.length - 1;
+    try {
+      const result = await callGeminiModel(model, parts, isLastModel ? 1 : 0);
+      if (result.ok) return { ok: true, answer: result.analysis };
+      lastFailure = result;
+    } catch (err) {
+      lastFailure = { detail: err.message };
+    }
+  }
+  return { ok: false, reason: 'api_error', detail: lastFailure?.detail || 'All Gemini models unavailable' };
+}
+
+async function answerProductQuestionWithClaude(productName, question, history) {
+  if (!ANTHROPIC_API_KEY) return { ok: false, reason: 'not_configured' };
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-5',
+        max_tokens: 400,
+        messages: [{ role: 'user', content: buildProductChatPrompt(productName, question, history) }]
+      }),
+      signal: AbortSignal.timeout(30000)
+    });
+    const data = await res.json();
+    if (!res.ok) return { ok: false, reason: 'api_error', detail: data.error?.message || `HTTP ${res.status}` };
+    const text = data.content?.find(b => b.type === 'text')?.text || 'No answer returned.';
+    return { ok: true, answer: text };
+  } catch (err) {
+    return { ok: false, reason: 'unreachable', detail: err.message };
+  }
+}
+
+app.post('/api/product-chat', productChatLimiter, async (req, res) => {
+  try {
+    const { productName, question, history } = req.body;
+    if (!productName || !PRODUCT_INFO[productName]) {
+      return res.status(400).json({ message: 'Unknown product.' });
+    }
+    if (!question || !question.trim()) {
+      return res.status(400).json({ message: 'Question is required.' });
+    }
+
+    const geminiResult = await answerProductQuestionWithGemini(productName, question.trim(), history);
+    const result = geminiResult.ok ? geminiResult : (ANTHROPIC_API_KEY ? await answerProductQuestionWithClaude(productName, question.trim(), history) : geminiResult);
+
+    if (!result.ok) {
+      return res.status(result.reason === 'not_configured' ? 503 : 502).json({
+        message: result.reason === 'not_configured'
+          ? 'The AI guide isn\'t configured yet — please check the product page for dosing and food-interaction details, or contact us directly.'
+          : 'Could not get an answer right now — please try again in a moment.'
+      });
+    }
+    res.json({ answer: result.answer });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

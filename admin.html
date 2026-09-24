@@ -243,6 +243,33 @@ tr:hover { background: rgba(13,115,119,0.05); }
     <div id="clinicalDataList" style="display:flex;flex-direction:column;gap:10px;"></div>
   </div>
 
+  <div class="ai-panel" id="ordersPanel">
+    <div class="ai-panel-head">
+      <div>
+        <h2><i class="fas fa-shopping-cart"></i> Product Orders</h2>
+        <p>Orders placed from the public product pages. This is order-intake only — no payment is processed here — follow up with the customer directly (call, WhatsApp, invoice, delivery) and update the status below.</p>
+      </div>
+      <button class="train-btn" onclick="loadOrders()" style="background:linear-gradient(135deg,#374151,#4b5563);"><i class="fas fa-sync-alt"></i> Refresh</button>
+    </div>
+    <div id="ordersMsg" class="ai-msg"></div>
+    <div style="overflow-x:auto;">
+      <table style="width:100%;border-collapse:collapse;">
+        <thead>
+          <tr style="text-align:left;font-size:0.78rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.04em;">
+            <th style="padding:8px 10px;border-bottom:1px solid var(--border);">Date</th>
+            <th style="padding:8px 10px;border-bottom:1px solid var(--border);">Product</th>
+            <th style="padding:8px 10px;border-bottom:1px solid var(--border);">Customer</th>
+            <th style="padding:8px 10px;border-bottom:1px solid var(--border);">Phone</th>
+            <th style="padding:8px 10px;border-bottom:1px solid var(--border);">Address</th>
+            <th style="padding:8px 10px;border-bottom:1px solid var(--border);">Qty</th>
+            <th style="padding:8px 10px;border-bottom:1px solid var(--border);">Status</th>
+          </tr>
+        </thead>
+        <tbody id="ordersTable"></tbody>
+      </table>
+    </div>
+  </div>
+
   <div class="stats-row">
     <div class="stat-card">
       <h3><i class="fas fa-users"></i> Total Patients</h3>
@@ -340,6 +367,7 @@ function enterDashboard() {
   loadData();
   loadWaSystemStatus();
   loadClinicalData();
+  loadOrders();
 }
 
 function loadWaSystemStatus() {
@@ -597,6 +625,63 @@ function deleteClinicalData(id) {
     .then(({ ok, data }) => {
       if (!ok) throw new Error(data.message);
       loadClinicalData();
+    })
+    .catch(e => alert(e.message));
+}
+
+const ORDER_STATUS_COLORS = { new: '#f59e0b', confirmed: '#3b82f6', shipped: 'var(--success)', cancelled: 'var(--danger)' };
+
+function loadOrders() {
+  const msg = document.getElementById('ordersMsg');
+  authFetch('/api/admin/orders')
+    .then(r => r.json())
+    .then(orders => renderOrders(orders))
+    .catch(() => {
+      msg.className = 'ai-msg err';
+      msg.textContent = 'Failed to load orders.';
+    });
+}
+
+function renderOrders(orders) {
+  const tbody = document.getElementById('ordersTable');
+  if (!orders || orders.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7" style="padding:16px;color:var(--text-muted);font-size:0.85rem;">No orders yet.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = orders.map(o => {
+    const date = new Date(o.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+    const color = ORDER_STATUS_COLORS[o.status] || 'var(--text-muted)';
+    return `
+      <tr style="border-bottom:1px solid var(--border);font-size:0.85rem;">
+        <td style="padding:10px;white-space:nowrap;">${date}</td>
+        <td style="padding:10px;">${escapeHtml(o.productName)}</td>
+        <td style="padding:10px;">${escapeHtml(o.customerName)}</td>
+        <td style="padding:10px;white-space:nowrap;">${escapeHtml(o.phone)}</td>
+        <td style="padding:10px;max-width:220px;">${escapeHtml(o.address)}</td>
+        <td style="padding:10px;text-align:center;">${o.quantity}</td>
+        <td style="padding:10px;">
+          <select onchange="updateOrderStatus('${o._id}', this.value)" style="background:var(--bg-light);border:1px solid var(--border);border-radius:6px;color:${color};font-weight:600;padding:6px 8px;font-size:0.8rem;">
+            <option value="new" ${o.status === 'new' ? 'selected' : ''}>New</option>
+            <option value="confirmed" ${o.status === 'confirmed' ? 'selected' : ''}>Confirmed</option>
+            <option value="shipped" ${o.status === 'shipped' ? 'selected' : ''}>Shipped</option>
+            <option value="cancelled" ${o.status === 'cancelled' ? 'selected' : ''}>Cancelled</option>
+          </select>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function updateOrderStatus(id, status) {
+  authFetch('/api/admin/orders/' + id, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status })
+  })
+    .then(r => r.json().then(data => ({ ok: r.ok, data })))
+    .then(({ ok, data }) => {
+      if (!ok) throw new Error(data.message);
+      loadOrders();
     })
     .catch(e => alert(e.message));
 }

@@ -764,6 +764,10 @@
     </footer>
 
     <script>
+        const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+            ? 'http://localhost:3000'
+            : 'https://biomexa-api-f9f6.onrender.com';
+
         setTimeout(() => {
             document.getElementById('scanOverlay').classList.add('hidden');
             setTimeout(() => {
@@ -1069,7 +1073,11 @@
             document.getElementById('chatWidget').classList.toggle('collapsed');
         }
 
+        let productChatHistory = [];
+        let productChatBusy = false;
+
         function sendChatMessage() {
+            if (productChatBusy) return;
             const input = document.getElementById('chatInput');
             const text = input.value.trim();
             if (!text) return;
@@ -1079,34 +1087,38 @@
             input.value = '';
             messages.scrollTop = messages.scrollHeight;
 
-            setTimeout(() => {
-                const response = getAIResponse(text.toLowerCase());
-                messages.innerHTML += `<div class="message ai">${response}</div>`;
-                messages.scrollTop = messages.scrollHeight;
-                speakText(response.replace(/<[^>]*>/g, '').substring(0, 200));
-            }, 600);
-        }
+            const typingId = 'typing-' + Date.now();
+            messages.innerHTML += `<div class="message ai" id="${typingId}"><em>Typing…</em></div>`;
+            messages.scrollTop = messages.scrollHeight;
+            productChatBusy = true;
 
-        function getAIResponse(text) {
-            if (text.includes('dose') || text.includes('when') || text.includes('time') || text.includes('take')) {
-                return `<strong>Dosing Guide:</strong><br>Take <strong>1 tablet of Telmexa AM every morning between 6-8 AM</strong> with breakfast. The combination of Telmisartan and Amlodipine provides 24-hour blood pressure control. Consistency is key — try to take it within the same 1-hour window daily.`;
-            }
-            if (text.includes('food') || text.includes('eat') || text.includes('grapefruit') || text.includes('diet')) {
-                return `<strong>Food Interactions:</strong><br>🚫 <strong>AVOID:</strong> Grapefruit, grapefruit juice, high-sodium foods<br>⚠️ <strong>LIMIT:</strong> Alcohol, excessive high-potassium foods<br>✅ <strong>RECOMMENDED:</strong> DASH diet, beetroot, pomegranate, leafy greens, oats<br><br>Always take with food to reduce dizziness risk.`;
-            }
-            if (text.includes('side') || text.includes('effect') || text.includes('dizzy') || text.includes('swelling')) {
-                return `<strong>Side Effects:</strong><br>Common (usually resolve in 2 weeks):<br>• Mild dizziness — rise slowly from sitting/lying<br>• Ankle swelling — elevate legs, reduce salt<br>• Headache, fatigue<br><br>🚨 <strong>Seek urgent care if:</strong> Severe dizziness/fainting, facial swelling, difficulty breathing, rapid heartbeat.`;
-            }
-            if (text.includes('miss') || text.includes('forgot') || text.includes('skip')) {
-                return `<strong>Missed Dose Protocol:</strong><br>• If you remember <strong>before bedtime</strong> — take it as soon as you remember<br>• If you remember <strong>the next morning</strong> — skip the missed dose, take your regular dose at the usual time<br>• <strong>Never double-dose</strong><br><br>Tip: Set a daily alarm or enable WhatsApp reminders on this page.`;
-            }
-            if (text.includes('bp') || text.includes('blood pressure') || text.includes('reading') || text.includes('vital')) {
-                return `<strong>BP Monitoring:</strong><br>Target BP on Telmexa AM: <strong>&lt;130/80 mmHg</strong><br><br>Check your BP:<br>• Same time daily (morning before meds, evening)<br>• Sit quietly 5 minutes before measuring<br>• Log readings in the Daily Vitals section above<br><br>If BP consistently &gt;140/90, contact your doctor.`;
-            }
-            if (text.includes('interaction') || text.includes('medicine') || text.includes('drug') || text.includes('other')) {
-                return `<strong>Drug Interactions:</strong><br>Telmexa AM may interact with:<br>• Other BP medications (additive hypotension)<br>• NSAIDs like ibuprofen (reduce effectiveness)<br>• Lithium (increased toxicity risk)<br>• Potassium supplements/sparing diuretics (hyperkalemia)<br><br>Always inform your doctor about ALL medications you take.`;
-            }
-            return `<strong>I am here to help!</strong><br><br>I can assist you with:<br>• Dosing schedule & timing<br>• Food & drug interactions<br>• Side effect management<br>• Blood pressure monitoring<br>• Missed dose protocols<br><br>Try asking: "When should I take it?", "What foods to avoid?", "What are side effects?", or "What if I miss a dose?"`;
+            fetch(`${API_URL}/api/product-chat`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ productName: 'Telmexa AM', question: text, history: productChatHistory })
+            })
+                .then(res => res.json().then(data => ({ ok: res.ok, data })))
+                .then(({ ok, data }) => {
+                    const bubble = document.getElementById(typingId);
+                    if (!ok || !data.answer) {
+                        if (bubble) bubble.outerHTML = `<div class="message ai">${escapeHtml(data.message || 'Sorry, I could not get an answer right now — please try again in a moment.')}</div>`;
+                        return;
+                    }
+                    const answerHtml = escapeHtml(data.answer).replace(/\n/g, '<br>');
+                    if (bubble) bubble.outerHTML = `<div class="message ai">${answerHtml}</div>`;
+                    productChatHistory.push({ role: 'user', content: text });
+                    productChatHistory.push({ role: 'assistant', content: data.answer });
+                    if (productChatHistory.length > 12) productChatHistory = productChatHistory.slice(-12);
+                    speakText(data.answer.substring(0, 200));
+                })
+                .catch(() => {
+                    const bubble = document.getElementById(typingId);
+                    if (bubble) bubble.outerHTML = `<div class="message ai">Sorry, I couldn't reach the AI assistant right now — please check your connection and try again.</div>`;
+                })
+                .finally(() => {
+                    productChatBusy = false;
+                    messages.scrollTop = messages.scrollHeight;
+                });
         }
 
         function escapeHtml(text) {

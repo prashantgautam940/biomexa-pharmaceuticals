@@ -116,6 +116,49 @@
             .hero h1 { font-size: 2rem; }
             .product-grid { grid-template-columns: 1fr; }
         }
+
+        .feature-pill {
+            display: inline-flex; align-items: center; gap: 0.5rem;
+            background: var(--bg-card); border: 1px solid var(--border);
+            padding: 0.6rem 1.1rem; border-radius: 50px; font-size: 0.85rem; color: var(--text-muted);
+        }
+        .feature-pill i { color: var(--primary-light); }
+
+        .portal-cta { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1.5rem; margin-bottom: 3rem; }
+        .portal-cta-card {
+            background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px;
+            padding: 1.75rem; text-align: center;
+        }
+        .portal-cta-card i { font-size: 1.75rem; color: var(--primary-light); margin-bottom: 0.75rem; }
+        .portal-cta-card h4 { font-size: 1.1rem; margin-bottom: 0.4rem; }
+        .portal-cta-card p { color: var(--text-muted); font-size: 0.88rem; margin-bottom: 0; }
+
+        .btn-order { background: linear-gradient(135deg, var(--accent), #fbbf24); color: #1a1206; }
+        .btn-order:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(243,156,18,0.3); }
+
+        .modal-overlay {
+            display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+            z-index: 200; align-items: center; justify-content: center; padding: 1rem;
+        }
+        .modal-overlay.open { display: flex; }
+        .modal-box {
+            background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px;
+            padding: 2rem; max-width: 440px; width: 100%; max-height: 90vh; overflow-y: auto;
+        }
+        .modal-box h3 { color: var(--primary-light); margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem; }
+        .modal-box label { display: block; font-size: 0.8rem; color: var(--text-muted); margin-bottom: 4px; margin-top: 0.9rem; }
+        .modal-box input, .modal-box textarea {
+            width: 100%; padding: 10px 12px; background: var(--bg-light); border: 1px solid var(--border);
+            border-radius: 8px; color: var(--text); font-size: 0.9rem; font-family: inherit;
+        }
+        .modal-box textarea { resize: vertical; }
+        .modal-close { float: right; background: none; border: none; color: var(--text-muted); font-size: 1.2rem; cursor: pointer; }
+        .modal-submit {
+            width: 100%; margin-top: 1.25rem; padding: 12px; border: none; border-radius: 10px;
+            background: linear-gradient(135deg, var(--primary), var(--primary-light)); color: white;
+            font-weight: 600; font-size: 0.95rem; cursor: pointer;
+        }
+        #orderResultMsg { font-size: 0.85rem; margin-top: 0.75rem; }
     </style>
 <base target="_blank">
 </head>
@@ -140,7 +183,31 @@
     <div class="container">
         <div class="engine-banner">
             <h3><i class="fas fa-robot"></i> Adaptive Adherence Intelligence Engine</h3>
-            <p>Every Biomexa product connects to a personalized AI voice guide via QR code. Scan your packaging to unlock circadian dosing, food interaction alerts, WhatsApp reminders, and daily vitals tracking.</p>
+            <p>Every Biomexa product connects to a real, working care platform — not just packaging. Scan your QR code for circadian dosing guidance and a real AI Q&A chat, get WhatsApp dose reminders and treatment reports on your phone, upload a prescription or lab report for AI analysis, and have every AI-generated report reviewed or corrected by a real doctor before it's treated as final.</p>
+        </div>
+
+        <div class="feature-strip" style="display:flex;flex-wrap:wrap;gap:1rem;justify-content:center;margin-bottom:3rem;">
+            <div class="feature-pill"><i class="fas fa-comment-medical"></i> Real AI medicine Q&A</div>
+            <div class="feature-pill"><i class="fab fa-whatsapp"></i> WhatsApp dose reminders</div>
+            <div class="feature-pill"><i class="fas fa-file-medical"></i> Prescription/lab report analysis</div>
+            <div class="feature-pill"><i class="fas fa-x-ray"></i> AI-assisted imaging review</div>
+            <div class="feature-pill"><i class="fas fa-user-md"></i> Doctor-reviewed AI reports</div>
+            <div class="feature-pill"><i class="fas fa-chart-line"></i> Treatment adherence reports</div>
+        </div>
+
+        <div class="portal-cta">
+            <div class="portal-cta-card">
+                <i class="fas fa-user-injured"></i>
+                <h4>Are you a patient?</h4>
+                <p>Track your medicines, doses, vitals, and AI-reviewed reports in one place.</p>
+                <a href="../signup.html" class="btn btn-primary" style="margin-top:0.75rem;">Sign up as a Patient</a>
+            </div>
+            <div class="portal-cta-card">
+                <i class="fas fa-user-md"></i>
+                <h4>Are you a doctor?</h4>
+                <p>Prescribe Biomexa products and review your patients' AI-generated reports.</p>
+                <a href="../doctor-signup.html" class="btn btn-outline" style="margin-top:0.75rem;">Join as a Doctor</a>
+            </div>
         </div>
 
         <div class="product-grid">
@@ -160,6 +227,7 @@
                     <div class="btn-group">
                         <a href="telmexa-am.html" class="btn btn-primary"><i class="fas fa-info-circle"></i> View Details</a>
                         <a href="ai/telmexa-am-ai.html" class="btn btn-ai"><i class="fas fa-robot"></i> AI Guide</a>
+                        <button class="btn btn-order" onclick="openOrderModal('Telmexa AM', 'telmexa-am')"><i class="fas fa-shopping-cart"></i> Place Order</button>
                     </div>
                 </div>
             </div>
@@ -180,6 +248,7 @@
                     <div class="btn-group">
                         <a href="diabmexa-m-500.html" class="btn btn-primary"><i class="fas fa-info-circle"></i> View Details</a>
                         <a href="ai/diabmexa-m-500-ai.html" class="btn btn-ai"><i class="fas fa-robot"></i> AI Guide</a>
+                        <button class="btn btn-order" onclick="openOrderModal('Diabmexa M 500', 'diabmexa-m-500')"><i class="fas fa-shopping-cart"></i> Place Order</button>
                     </div>
                 </div>
             </div>
@@ -206,5 +275,91 @@
     <footer>
         <p><img src="../images/logo-full-white.png" alt="Biomexa" style="height:14px;width:auto;vertical-align:middle;margin-right:6px;opacity:0.8;">Biomexa Pharmaceuticals — Adaptive Adherence Intelligence Engine</p>
     </footer>
+
+    <div class="modal-overlay" id="orderModal">
+        <div class="modal-box">
+            <button class="modal-close" onclick="closeOrderModal()"><i class="fas fa-times"></i></button>
+            <h3><i class="fas fa-shopping-cart"></i> Place Order — <span id="orderProductName"></span></h3>
+            <p style="color:var(--text-muted);font-size:0.85rem;">This is an order request, not a payment — our team will contact you to confirm and arrange delivery.</p>
+            <form id="orderForm">
+                <label>Full name</label>
+                <input type="text" id="orderName" required>
+                <label>WhatsApp / phone number</label>
+                <input type="tel" id="orderPhone" placeholder="+91 98765 43210" required>
+                <label>Delivery address</label>
+                <textarea id="orderAddress" rows="2" required></textarea>
+                <label>Quantity</label>
+                <input type="number" id="orderQuantity" min="1" value="1" required>
+                <label>Notes (optional)</label>
+                <textarea id="orderNotes" rows="2" placeholder="e.g. preferred delivery time"></textarea>
+                <button type="submit" class="modal-submit" id="orderSubmitBtn">Submit Order</button>
+                <div id="orderResultMsg"></div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+            ? 'http://localhost:3000'
+            : 'https://biomexa-api-f9f6.onrender.com';
+
+        let currentOrderProduct = { name: '', slug: '' };
+
+        function openOrderModal(productName, productSlug) {
+            currentOrderProduct = { name: productName, slug: productSlug };
+            document.getElementById('orderProductName').textContent = productName;
+            document.getElementById('orderResultMsg').textContent = '';
+            document.getElementById('orderModal').classList.add('open');
+        }
+
+        function closeOrderModal() {
+            document.getElementById('orderModal').classList.remove('open');
+        }
+
+        document.getElementById('orderModal').addEventListener('click', (e) => {
+            if (e.target.id === 'orderModal') closeOrderModal();
+        });
+
+        document.getElementById('orderForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const btn = document.getElementById('orderSubmitBtn');
+            const msg = document.getElementById('orderResultMsg');
+            btn.disabled = true;
+            btn.textContent = 'Submitting...';
+            msg.style.color = '';
+            msg.textContent = '';
+
+            const payload = {
+                productName: currentOrderProduct.name,
+                productSlug: currentOrderProduct.slug,
+                customerName: document.getElementById('orderName').value.trim(),
+                phone: document.getElementById('orderPhone').value.trim(),
+                address: document.getElementById('orderAddress').value.trim(),
+                quantity: document.getElementById('orderQuantity').value,
+                notes: document.getElementById('orderNotes').value.trim()
+            };
+
+            try {
+                const res = await fetch(`${API_URL}/api/orders`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.message || 'Something went wrong');
+
+                msg.style.color = 'var(--success)';
+                msg.textContent = '✅ ' + data.message;
+                document.getElementById('orderForm').reset();
+                setTimeout(closeOrderModal, 2500);
+            } catch (err) {
+                msg.style.color = 'var(--danger)';
+                msg.textContent = err.message;
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Submit Order';
+            }
+        });
+    </script>
 </body>
 </html>

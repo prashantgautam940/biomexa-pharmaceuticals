@@ -275,6 +275,34 @@
                         <div id="remResultMsg" style="font-size:0.8rem;margin-top:10px;"></div>
                     </form>
                 </div>
+
+                <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px; padding: 1.5rem; margin-top: 1.5rem; text-align: left;">
+                    <h3 style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; font-size: 1.05rem;"><i class="fas fa-shopping-cart" style="color: var(--accent);"></i> Place an Order</h3>
+                    <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 1rem;">Order request only — no payment here. Our team will contact you to confirm and arrange delivery.</p>
+                    <form id="orderForm">
+                        <div style="margin-bottom: 0.75rem;">
+                            <input type="text" id="orderName" placeholder="Your name" required style="width:100%;padding:10px 12px;background:var(--bg-light);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:0.88rem;">
+                        </div>
+                        <div style="margin-bottom: 0.75rem;">
+                            <input type="tel" id="orderPhone" placeholder="Phone number, e.g. +919876543210" required style="width:100%;padding:10px 12px;background:var(--bg-light);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:0.88rem;">
+                        </div>
+                        <div style="margin-bottom: 0.75rem;">
+                            <textarea id="orderAddress" placeholder="Delivery address" required rows="2" style="width:100%;padding:10px 12px;background:var(--bg-light);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:0.88rem;resize:vertical;"></textarea>
+                        </div>
+                        <div style="margin-bottom: 1rem;">
+                            <label style="display:block;font-size:0.78rem;color:var(--text-muted);margin-bottom:4px;">Quantity</label>
+                            <input type="number" id="orderQuantity" min="1" value="1" required style="width:100%;padding:10px 12px;background:var(--bg-light);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:0.88rem;">
+                        </div>
+                        <button type="submit" id="orderSubmitBtn" style="width:100%;padding:12px;border:none;border-radius:8px;background:linear-gradient(135deg,var(--accent),#fbbf24);color:#1a1206;font-weight:600;font-size:0.9rem;cursor:pointer;">Submit Order</button>
+                        <div id="orderResultMsg" style="font-size:0.8rem;margin-top:10px;"></div>
+                    </form>
+                </div>
+
+                <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px; padding: 1.25rem; margin-top: 1.5rem; text-align: center;">
+                    <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 0.75rem;">Already taking Diabmexa M 500?</p>
+                    <a href="../signup.html" style="display:inline-block;padding:10px 20px;background:linear-gradient(135deg,var(--primary),var(--primary-light));color:white;border-radius:8px;text-decoration:none;font-weight:600;font-size:0.88rem;margin-bottom:0.5rem;">Sign up as a Patient →</a>
+                    <p style="color: var(--text-muted); font-size: 0.78rem; margin-top:0.5rem;">Doctor? <a href="../doctor-signup.html" style="color:var(--primary-light);">Join to prescribe & review reports</a></p>
+                </div>
             </div>
 
             <div>
@@ -470,6 +498,45 @@
             } finally {
                 btn.disabled = false;
                 btn.textContent = 'Set My Reminder';
+            }
+        });
+
+        document.getElementById('orderForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const btn = document.getElementById('orderSubmitBtn');
+            const msg = document.getElementById('orderResultMsg');
+            btn.disabled = true;
+            btn.textContent = 'Submitting...';
+            msg.textContent = '';
+
+            const payload = {
+                productName: 'Diabmexa M 500',
+                productSlug: 'diabmexa-m-500',
+                customerName: document.getElementById('orderName').value.trim(),
+                phone: document.getElementById('orderPhone').value.trim(),
+                address: document.getElementById('orderAddress').value.trim(),
+                quantity: document.getElementById('orderQuantity').value
+            };
+
+            try {
+                const res = await fetch(`${API_URL}/api/orders`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.message || 'Something went wrong');
+
+                msg.style.color = 'var(--success)';
+                msg.textContent = '✅ ' + data.message;
+                document.getElementById('orderForm').reset();
+                document.getElementById('orderQuantity').value = 1;
+            } catch (err) {
+                msg.style.color = 'var(--danger)';
+                msg.textContent = err.message;
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Submit Order';
             }
         });
     </script>
