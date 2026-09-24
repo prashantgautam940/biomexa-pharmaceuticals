@@ -697,6 +697,85 @@ async function sendWelcomeMessage(phone, patientName, fallbackMsg) {
   return sendWhatsAppFree(phone, fallbackMsg);
 }
 
+// ===== TREATMENT REPORT TEMPLATE — closes the same 131047 gap for the one message a patient
+// actively taps a button to request. Confirmed via real logs: "✅ MSG91 WhatsApp text sent to
+// +91XXXXXXXXXX" for a treatment-report request that the patient never actually received on
+// WhatsApp — success at the MSG91 API level, but this was always a free-text send via
+// sendWhatsAppFree(), which silently fails at Meta's level (error 131047, "re-engagement
+// message") for anyone outside the 24-hour session window. Same root cause and same fix pattern
+// as risk_alert/welcome/doctor_alert above. =====
+// Setup: create + get Meta approval for a fifth template in MSG91 (identical process to the
+// other four). A WhatsApp template variable can't contain line breaks, so this uses short,
+// single-line values only — the full report with every data point still lives on the dashboard.
+// Suggested template body: "📊 Biomexa Treatment Report — {{1}}\n\nMedicine: {{2}}\nAdherence:
+// {{3}}\nEffectiveness: {{4}}\n\nKey insight: {{5}}\n\nFull report with all details is on your
+// Biomexa dashboard." — no buttons needed. Until configured, this falls back to the existing
+// free-text send, which still works for anyone who has messaged Biomexa's WhatsApp number
+// within the last 24 hours.
+const MSG91_TREATMENT_REPORT_TEMPLATE_NAME = process.env.MSG91_TREATMENT_REPORT_TEMPLATE_NAME || null;
+const MSG91_TREATMENT_REPORT_TEMPLATE_NAMESPACE = process.env.MSG91_TREATMENT_REPORT_TEMPLATE_NAMESPACE || '';
+
+// Template params can't contain newlines and read best kept short — collapses whitespace and
+// caps length rather than silently truncating mid-word.
+function sanitizeTemplateParam(text, maxLen = 300) {
+  const collapsed = (text || '').replace(/\s+/g, ' ').trim();
+  return collapsed.length > maxLen ? collapsed.slice(0, maxLen - 1).trim() + '…' : collapsed;
+}
+
+async function sendTreatmentReportTemplate(phone, patientName, drugName, adherenceRate, effectivenessLabel, topInsight) {
+  if (!MSG91_CONFIGURED || !MSG91_TREATMENT_REPORT_TEMPLATE_NAME) {
+    return { success: false, provider: 'msg91_treatment_report_template_not_configured' };
+  }
+  try {
+    const res = await fetch('https://api.msg91.com/api/v5/whatsapp/whatsapp-outbound-message/bulk/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'authkey': MSG91_AUTH_KEY },
+      body: JSON.stringify({
+        integrated_number: MSG91_INTEGRATED_NUMBER,
+        content_type: 'template',
+        payload: {
+          messaging_product: 'whatsapp',
+          type: 'template',
+          template: {
+            name: MSG91_TREATMENT_REPORT_TEMPLATE_NAME,
+            language: { code: MSG91_TEMPLATE_LANG, policy: 'deterministic' },
+            namespace: MSG91_TREATMENT_REPORT_TEMPLATE_NAMESPACE,
+            to_and_components: [{
+              to: [phone.replace(/\D/g, '')],
+              components: {
+                body_1: { type: 'text', value: sanitizeTemplateParam(patientName, 60), parameter_name: 'patient_name' },
+                body_2: { type: 'text', value: sanitizeTemplateParam(drugName, 60), parameter_name: 'drug_name' },
+                body_3: { type: 'text', value: sanitizeTemplateParam(adherenceRate, 20), parameter_name: 'adherence_rate' },
+                body_4: { type: 'text', value: sanitizeTemplateParam(effectivenessLabel, 40), parameter_name: 'effectiveness' },
+                body_5: { type: 'text', value: sanitizeTemplateParam(topInsight, 300), parameter_name: 'key_insight' }
+              }
+            }]
+          }
+        }
+      }),
+      signal: AbortSignal.timeout(10000)
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      console.log('⚠️ MSG91 treatment report template send failed:', JSON.stringify(data).substring(0, 500));
+      return { success: false, provider: 'msg91', detail: data };
+    }
+    console.log('✅ MSG91 treatment report template sent to', phone);
+    return { success: true, provider: 'msg91' };
+  } catch (err) {
+    console.log('⚠️ MSG91 treatment report template send error:', err.message);
+    return { success: false, provider: 'msg91', detail: err.message };
+  }
+}
+
+// Unified treatment-report sender — template first (reaches the patient regardless of session
+// state), falls back to the existing free-text message only if the template isn't configured yet.
+async function sendTreatmentReportMessage(phone, patientName, drugName, adherenceRate, effectivenessLabel, topInsight, fallbackMsg) {
+  const templateResult = await sendTreatmentReportTemplate(phone, patientName, drugName, adherenceRate, effectivenessLabel, topInsight);
+  if (templateResult.success) return templateResult;
+  return sendWhatsAppFree(phone, fallbackMsg);
+}
+
 // Parses free-text vitals like "BP 120/80, temp 98.6, pulse 72" — deliberately permissive since
 // real patients won't format this consistently. Returns only the fields it actually found.
 // Two layers: first tries explicit labels (100% reliable, unchanged from before — anyone who
@@ -1807,29 +1886,55 @@ async function buildPatientTreatmentReport(phone) {
 }
 
 app.get('/api/patient/treatment-report', auth, async (req, res) => {
-  const result = await buildPatientTreatmentReport(req.user.phone);
-  if (result.error) {
-    console.log(`❌ Treatment report failed for ${req.user.phone}: ${result.error}`);
-    return res.status(result.status).json({ message: result.error });
+  try {
+    const result = await buildPatientTreatmentReport(req.user.phone);
+    if (result.error) {
+      console.log(`❌ Treatment report failed for ${req.user.phone}: ${result.error}`);
+      return res.status(result.status).json({ message: result.error });
+    }
+    res.json(result.data);
+  } catch (err) {
+    // Was previously unguarded — a transient DB hiccup here would crash the whole Node process,
+    // taking the API down for every patient, not just this request. Caught explicitly now.
+    console.log(`❌ Treatment report crashed for ${req.user.phone}:`, err.message);
+    res.status(500).json({ message: 'Could not generate your treatment report right now — please try again.' });
   }
-  res.json(result.data);
 });
 
 // Sends a condensed, readable version of the same report over WhatsApp — the full report with
 // every data point stays on the portal, WhatsApp gets the score, adherence, and the top
 // insight/recommendation so it's genuinely readable as a chat message, not a wall of JSON.
 app.post('/api/patient/treatment-report/send-whatsapp', auth, async (req, res) => {
-  const result = await buildPatientTreatmentReport(req.user.phone);
-  if (result.error) return res.status(result.status).json({ message: result.error });
+  try {
+    const result = await buildPatientTreatmentReport(req.user.phone);
+    if (result.error) return res.status(result.status).json({ message: result.error });
 
-  const r = result.data;
-  const topInsight = r.clinical_insights?.[0] || 'No specific concerns flagged.';
-  const topRecommendation = r.treatment_recommendations?.[0] || 'Continue as prescribed.';
+    const r = result.data;
+    const topInsight = r.clinical_insights?.[0] || 'No specific concerns flagged.';
+    const topRecommendation = r.treatment_recommendations?.[0] || 'Continue as prescribed.';
 
-  const msg = `📊 *Your Treatment Report*\n\n💊 ${r.drug_name}\n📅 ${r.course_duration_days} day(s) tracked\n✅ Adherence: ${r.adherence_summary?.adherence_rate}%\n⭐ Effectiveness: ${r.effectiveness_category} (${r.effectiveness_score}/100)\n\n🔍 *Key insight:*\n${topInsight}\n\n💡 *Advice:*\n${topRecommendation}\n\nFull report with all details is on your Biomexa dashboard.\n\n- Biomexa Team`;
+    const msg = `📊 *Your Treatment Report*\n\n💊 ${r.drug_name}\n📅 ${r.course_duration_days} day(s) tracked\n✅ Adherence: ${r.adherence_summary?.adherence_rate}%\n⭐ Effectiveness: ${r.effectiveness_category} (${r.effectiveness_score}/100)\n\n🔍 *Key insight:*\n${topInsight}\n\n💡 *Advice:*\n${topRecommendation}\n\nFull report with all details is on your Biomexa dashboard.\n\n- Biomexa Team`;
 
-  const waResult = await sendWhatsAppFree(req.user.phone, msg);
-  res.json({ message: waResult.success ? 'Report sent to your WhatsApp!' : 'Could not deliver to WhatsApp right now, but your full report is ready on the dashboard.', whatsappSent: waResult.success });
+    // Uses the treatment-report template when configured (works regardless of session state) —
+    // this is what fixes "sent" but never-delivered reports (Meta error 131047: the patient
+    // hadn't messaged Biomexa's WhatsApp number within the last 24 hours, so the old free-text
+    // send was silently rejected at Meta's level even though MSG91's own API returned success).
+    // patientName comes from the report itself (buildPatientTreatmentReport already looked the
+    // patient up) rather than a second DB call.
+    const waResult = await sendTreatmentReportMessage(
+      req.user.phone,
+      r.patientName || 'there',
+      r.drug_name,
+      `${r.adherence_summary?.adherence_rate}%`,
+      `${r.effectiveness_category} (${r.effectiveness_score}/100)`,
+      topInsight,
+      msg
+    );
+    res.json({ message: waResult.success ? 'Report sent to your WhatsApp!' : 'Could not deliver to WhatsApp right now, but your full report is ready on the dashboard.', whatsappSent: waResult.success });
+  } catch (err) {
+    console.log(`❌ Send-to-WhatsApp crashed for ${req.user.phone}:`, err.message);
+    res.status(500).json({ message: 'Could not send your report to WhatsApp right now — please try again.' });
+  }
 });
 
 // Lets a logged-in patient log vitals directly from their own dashboard — same underlying save
@@ -3235,7 +3340,8 @@ app.get('/api/whatsapp-status', (req, res) => {
     msg91Configured: MSG91_CONFIGURED,
     riskTemplateConfigured: !!MSG91_RISK_TEMPLATE_NAME,
     welcomeTemplateConfigured: !!MSG91_WELCOME_TEMPLATE_NAME,
-    doctorAlertTemplateConfigured: !!MSG91_DOCTOR_ALERT_TEMPLATE_NAME
+    doctorAlertTemplateConfigured: !!MSG91_DOCTOR_ALERT_TEMPLATE_NAME,
+    treatmentReportTemplateConfigured: !!MSG91_TREATMENT_REPORT_TEMPLATE_NAME
   });
 });
 
