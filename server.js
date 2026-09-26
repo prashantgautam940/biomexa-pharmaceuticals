@@ -352,6 +352,94 @@ async function analyzeDocument(files, language, documentType = 'prescription', a
   return analyzeDocumentWithClaude(files, language, documentType, audience, referenceContext);
 }
 
+// ========== CLINICAL REFERENCE IMAGE ANALYSIS (admin-curated teaching examples) ==========
+// Lets an admin upload a REFERENCE image (e.g. a labeled example X-ray) with their own note on
+// what it demonstrates. The AI describes the visual findings in plain language; that description,
+// combined with the admin's note, becomes a ClinicalReference entry for the chosen category
+// (usually 'imaging'). getReferenceContext() then injects up to 5 recent entries per category into
+// every FUTURE real patient document analysis of that category — so this is how an admin actually
+// "teaches" the engine to recognize things better over time.
+//
+// Important: this is retrieval-augmented context, NOT literal model retraining — there is no way
+// to fine-tune Gemini or Claude from a web app, and nobody should be told that's happening. What
+// this genuinely does: it gives the AI concrete, admin-verified examples of what to look for,
+// which measurably sharpens its output on similar future images without ever touching the
+// underlying model weights.
+function buildReferenceImagePrompt(adminNote) {
+  return `You are helping build a clinical reference library for a medication-adherence platform. An admin has uploaded a REFERENCE medical image (e.g. an example X-ray or scan) specifically to teach the AI what to look for in similar images in the future — this is NOT a real patient case, so describe it as a teaching example, not a diagnosis.
+
+${adminNote ? `The admin's note on this image: "${adminNote}"` : 'The admin did not provide an additional note.'}
+
+Describe, in plain factual language:
+1. What type of image this is, and the view/angle if identifiable.
+2. The key visual findings present — be specific and descriptive. Since this is reference/teaching material curated by the platform's medical team (not output shown to a patient), describing findings plainly is the whole point.
+3. Any subtle or easy-to-miss visual details worth flagging as a teaching point for recognizing similar images in the future.
+
+Keep it factual and descriptive rather than hedged. Plain text, no markdown headers. Keep it under 200 words.`;
+}
+
+async function analyzeReferenceImageWithGemini(fileType, fileData, adminNote) {
+  if (!GEMINI_API_KEY) return { ok: false, reason: 'not_configured' };
+  const prompt = buildReferenceImagePrompt(adminNote);
+  const parts = [{ text: prompt }, { inline_data: { mime_type: fileType, data: fileData } }];
+
+  let lastFailure = null;
+  for (let i = 0; i < GEMINI_MODELS.length; i++) {
+    const model = GEMINI_MODELS[i];
+    const isLastModel = i === GEMINI_MODELS.length - 1;
+    const maxRetries = isLastModel ? 2 : 1;
+    try {
+      const result = await callGeminiModel(model, parts, maxRetries);
+      if (result.ok) return result;
+      lastFailure = result;
+    } catch (err) {
+      lastFailure = { detail: err.message };
+    }
+  }
+  return { ok: false, reason: 'api_error', detail: lastFailure?.detail || 'All Gemini models unavailable' };
+}
+
+async function analyzeReferenceImageWithClaude(fileType, fileData, adminNote) {
+  if (!ANTHROPIC_API_KEY) return { ok: false, reason: 'not_configured' };
+  const prompt = buildReferenceImagePrompt(adminNote);
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-5',
+        max_tokens: 500,
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'image', source: { type: 'base64', media_type: fileType, data: fileData } },
+            { type: 'text', text: prompt }
+          ]
+        }]
+      }),
+      signal: AbortSignal.timeout(70000)
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      console.log('⚠️ Claude reference image analysis failed:', JSON.stringify(data).substring(0, 300));
+      return { ok: false, reason: 'api_error', detail: data.error?.message || `HTTP ${res.status}` };
+    }
+    const text = data.content?.find(b => b.type === 'text')?.text || 'No description returned.';
+    return { ok: true, analysis: text };
+  } catch (err) {
+    console.log('⚠️ Claude reference image analysis error:', err.message);
+    return { ok: false, reason: 'unreachable', detail: err.message };
+  }
+}
+
+// Tries Gemini first (free), falls back to Claude — same pattern as analyzeDocument above.
+async function analyzeReferenceImage(fileType, fileData, adminNote) {
+  const geminiResult = await analyzeReferenceImageWithGemini(fileType, fileData, adminNote);
+  if (geminiResult.ok) return geminiResult;
+  if (!ANTHROPIC_API_KEY) return geminiResult;
+  console.log(`ℹ️ Gemini failed (${geminiResult.reason}) on reference image, falling back to Claude...`);
+  return analyzeReferenceImageWithClaude(fileType, fileData, adminNote);
+}
 
 // ========== TREATMENT REPORT SIMPLIFICATION ==========
 // The AI engine's clinical_insights/treatment_recommendations were written for the doctor
@@ -1256,8 +1344,15 @@ const clinicalReferenceSchema = new mongoose.Schema({
   title: String,
   category: { type: String, default: 'general' }, // 'prescription' | 'imaging' | 'lab_reference' | 'general'
   content: String,
-  source: { type: String, default: 'admin' }, // 'admin' | 'doctor_correction'
+  source: { type: String, default: 'admin' }, // 'admin' | 'doctor_correction' | 'admin_image'
   addedBy: String,
+  // Set when this entry came from an admin-uploaded reference image (e.g. a labeled example
+  // X-ray) rather than typed text — see the image-analysis endpoint below. The image itself is
+  // kept for admin review/audit but excluded from every list response (imageFileData is large).
+  hasImage: { type: Boolean, default: false },
+  imageFileName: String,
+  imageFileType: String,
+  imageFileData: String,
   createdAt: { type: Date, default: Date.now }
 });
 
@@ -3499,8 +3594,67 @@ app.post('/api/admin/clinical-data', adminAuth, async (req, res) => {
 
 app.get('/api/admin/clinical-data', adminAuth, async (req, res) => {
   try {
-    const entries = await ClinicalReference.find().sort({ createdAt: -1 }).limit(200);
+    const entries = await ClinicalReference.find().sort({ createdAt: -1 }).limit(200).select('-imageFileData');
     res.json(entries);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Upload a REFERENCE image (e.g. a labeled example X-ray) so the AI can extract a plain-language
+// description of it and add that to the clinical reference library — see analyzeReferenceImage
+// above for what this does and doesn't do (retrieval context, not model retraining). Sent as
+// base64 JSON, same pattern as patient document uploads (no multipart handling needed).
+app.post('/api/admin/clinical-data/image', adminAuth, async (req, res) => {
+  try {
+    const { title, category, note, fileName, fileType, fileData } = req.body;
+    if (!fileData || !fileType) {
+      return res.status(400).json({ message: 'An image file is required.' });
+    }
+    if (fileData.length > MAX_DOCUMENT_BASE64_LENGTH) {
+      return res.status(400).json({ message: 'Image is too large — please upload a file under ~5MB.' });
+    }
+    const validCategories = ['prescription', 'imaging', 'lab_reference', 'general'];
+    const cat = validCategories.includes(category) ? category : 'imaging';
+
+    const result = await analyzeReferenceImage(fileType, fileData, note);
+    if (!result.ok) {
+      return res.status(result.reason === 'not_configured' ? 503 : 502).json({
+        message: result.reason === 'not_configured'
+          ? 'Image analysis isn\'t configured yet — set GEMINI_API_KEY or ANTHROPIC_API_KEY on the server.'
+          : 'Could not analyze this image right now — please try again in a moment.'
+      });
+    }
+
+    const content = `${note ? note.trim() + '\n\n' : ''}AI-extracted teaching points: ${result.analysis.trim()}`;
+    const entry = await ClinicalReference.create({
+      title: title?.trim() || fileName || 'Reference image',
+      category: cat,
+      content,
+      source: 'admin_image',
+      addedBy: req.admin?.email || req.admin?.username || 'admin',
+      hasImage: true,
+      imageFileName: fileName || '',
+      imageFileType: fileType,
+      imageFileData: fileData
+    });
+
+    const entryObj = entry.toObject();
+    delete entryObj.imageFileData;
+    res.json({ message: 'Reference image analyzed and added to the clinical library — future imaging analyses will take this into account.', entry: entryObj });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Fetches a reference entry's original uploaded image, for admin review — deliberately separate
+// from the list endpoint above so the (potentially large) base64 blob is only ever sent when
+// actually needed.
+app.get('/api/admin/clinical-data/:id/image', adminAuth, async (req, res) => {
+  try {
+    const entry = await ClinicalReference.findById(req.params.id).select('imageFileType imageFileData hasImage');
+    if (!entry || !entry.hasImage) return res.status(404).json({ message: 'No image on this entry.' });
+    res.json({ fileType: entry.imageFileType, fileData: entry.imageFileData });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -3521,7 +3675,7 @@ app.delete('/api/admin/clinical-data/:id', adminAuth, async (req, res) => {
 // fetch this data.
 app.get('/api/patient/clinical-data', auth, async (req, res) => {
   try {
-    const entries = await ClinicalReference.find().sort({ createdAt: -1 }).limit(100).select('-addedBy');
+    const entries = await ClinicalReference.find().sort({ createdAt: -1 }).limit(100).select('-addedBy -imageFileData');
     res.json(entries);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -3530,7 +3684,7 @@ app.get('/api/patient/clinical-data', auth, async (req, res) => {
 
 app.get('/api/doctors/clinical-data', doctorAuth, async (req, res) => {
   try {
-    const entries = await ClinicalReference.find().sort({ createdAt: -1 }).limit(100);
+    const entries = await ClinicalReference.find().sort({ createdAt: -1 }).limit(100).select('-imageFileData');
     res.json(entries);
   } catch (err) {
     res.status(500).json({ message: err.message });

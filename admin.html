@@ -234,11 +234,16 @@ tr:hover { background: rgba(13,115,119,0.05); }
         </select>
       </div>
       <div style="flex:2;min-width:220px;">
-        <label style="font-size:0.8rem;color:var(--text-muted);display:block;margin-bottom:4px;">Clinical content</label>
-        <textarea id="clinicalContent" required rows="2" placeholder="e.g. For this patient population, HbA1c above 7% should be flagged as a bit high, not just 'elevated'." style="width:100%;padding:10px 12px;background:var(--bg-light);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:0.88rem;resize:vertical;"></textarea>
+        <label style="font-size:0.8rem;color:var(--text-muted);display:block;margin-bottom:4px;">Clinical content <span id="clinicalContentHint" style="color:var(--text-muted);font-weight:400;">(or a note about the image below)</span></label>
+        <textarea id="clinicalContent" rows="2" placeholder="e.g. For this patient population, HbA1c above 7% should be flagged as a bit high, not just 'elevated'." style="width:100%;padding:10px 12px;background:var(--bg-light);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:0.88rem;resize:vertical;"></textarea>
       </div>
       <button type="submit" class="btn" style="width:auto;"><i class="fas fa-plus"></i> Add</button>
     </form>
+    <div style="margin:-0.75rem 0 1.25rem;padding:12px 14px;background:var(--bg-light);border:1px dashed var(--border);border-radius:10px;">
+      <label style="font-size:0.8rem;color:var(--text-muted);display:block;margin-bottom:6px;"><i class="fas fa-image"></i> Or upload a reference image (e.g. a labeled example X-ray) — the AI will describe what it shows and add that description to the library for the category selected above. This teaches the engine what to look for in similar future images; it doesn't retrain the underlying model.</label>
+      <input type="file" id="clinicalImageFile" accept="image/*,application/pdf" style="font-size:0.85rem;color:var(--text);">
+      <span id="clinicalImageFileName" style="font-size:0.8rem;color:var(--text-muted);margin-left:8px;"></span>
+    </div>
     <div id="clinicalDataMsg" class="ai-msg"></div>
     <div id="clinicalDataList" style="display:flex;flex-direction:column;gap:10px;"></div>
   </div>
@@ -573,13 +578,38 @@ function renderClinicalData(entries) {
         <div style="font-size:0.78rem;color:var(--primary-light);margin-bottom:4px;">
           ${CATEGORY_LABELS[e.category] || e.category}
           ${e.source === 'doctor_correction' ? '<span style="color:#f59e0b;margin-left:8px;"><i class="fas fa-user-md"></i> from doctor correction</span>' : ''}
+          ${e.hasImage ? `<span style="color:var(--primary-light);margin-left:8px;cursor:pointer;text-decoration:underline;" onclick="viewClinicalImage('${e._id}')"><i class="fas fa-image"></i> view reference image</span>` : ''}
         </div>
         ${e.title ? `<div style="font-weight:600;margin-bottom:4px;">${escapeHtml(e.title)}</div>` : ''}
-        <div style="font-size:0.85rem;color:var(--text-muted);">${escapeHtml(e.content)}</div>
+        <div style="font-size:0.85rem;color:var(--text-muted);white-space:pre-wrap;">${escapeHtml(e.content)}</div>
       </div>
       <button onclick="deleteClinicalData('${e._id}')" title="Delete" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:0.95rem;"><i class="fas fa-trash"></i></button>
     </div>
   `).join('');
+}
+
+function viewClinicalImage(id) {
+  authFetch('/api/admin/clinical-data/' + id + '/image')
+    .then(r => r.json().then(data => ({ ok: r.ok, data })))
+    .then(({ ok, data }) => {
+      if (!ok) throw new Error(data.message);
+      const win = window.open('', '_blank');
+      if (data.fileType === 'application/pdf') {
+        win.document.write(`<embed src="data:${data.fileType};base64,${data.fileData}" style="width:100%;height:100vh;">`);
+      } else {
+        win.document.write(`<img src="data:${data.fileType};base64,${data.fileData}" style="max-width:100%;">`);
+      }
+    })
+    .catch(e => alert(e.message));
+}
+
+function readFileAsBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result.split(',')[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
 }
 
 function escapeHtml(str) {
@@ -588,34 +618,63 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
-document.getElementById('clinicalDataForm')?.addEventListener('submit', function(e) {
+document.getElementById('clinicalImageFile')?.addEventListener('change', function() {
+  const f = this.files[0];
+  document.getElementById('clinicalImageFileName').textContent = f ? f.name : '';
+});
+
+document.getElementById('clinicalDataForm')?.addEventListener('submit', async function(e) {
   e.preventDefault();
   const msg = document.getElementById('clinicalDataMsg');
   const content = document.getElementById('clinicalContent').value.trim();
-  if (!content) return;
-  msg.className = 'ai-msg';
+  const title = document.getElementById('clinicalTitle').value.trim();
+  const category = document.getElementById('clinicalCategory').value;
+  const imageInput = document.getElementById('clinicalImageFile');
+  const imageFile = imageInput.files[0];
 
-  authFetch('/api/admin/clinical-data', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      title: document.getElementById('clinicalTitle').value.trim(),
-      category: document.getElementById('clinicalCategory').value,
-      content
-    })
-  })
-    .then(r => r.json().then(data => ({ ok: r.ok, data })))
-    .then(({ ok, data }) => {
-      if (!ok) throw new Error(data.message);
-      msg.className = 'ai-msg ok';
-      msg.textContent = data.message;
-      document.getElementById('clinicalDataForm').reset();
-      loadClinicalData();
-    })
-    .catch(e2 => {
-      msg.className = 'ai-msg err';
-      msg.textContent = e2.message;
-    });
+  if (!content && !imageFile) {
+    msg.className = 'ai-msg err';
+    msg.textContent = 'Add some clinical content, or upload a reference image, before submitting.';
+    return;
+  }
+  msg.className = 'ai-msg';
+  msg.textContent = imageFile ? 'Analyzing image — this can take up to a minute...' : '';
+
+  const submitBtn = e.target.querySelector('button[type="submit"]');
+  submitBtn.disabled = true;
+
+  try {
+    let res, data;
+    if (imageFile) {
+      const fileData = await readFileAsBase64(imageFile);
+      res = await authFetch('/api/admin/clinical-data/image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title, category, note: content,
+          fileName: imageFile.name, fileType: imageFile.type, fileData
+        })
+      });
+    } else {
+      res = await authFetch('/api/admin/clinical-data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, category, content })
+      });
+    }
+    data = await res.json();
+    if (!res.ok) throw new Error(data.message);
+    msg.className = 'ai-msg ok';
+    msg.textContent = data.message;
+    document.getElementById('clinicalDataForm').reset();
+    document.getElementById('clinicalImageFileName').textContent = '';
+    loadClinicalData();
+  } catch (e2) {
+    msg.className = 'ai-msg err';
+    msg.textContent = e2.message;
+  } finally {
+    submitBtn.disabled = false;
+  }
 });
 
 function deleteClinicalData(id) {
