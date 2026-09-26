@@ -106,7 +106,7 @@ const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || null;
 // safety risk. This prompt is built specifically to keep the AI in a "describe and flag for a
 // professional" role — it never states a diagnosis, never names a disease as confirmed, and
 // always routes the person back to a qualified doctor or radiologist for anything that matters.
-function buildImagingPrompt(language, fileCount, audience, referenceContext = '') {
+function buildImagingPrompt(language, fileCount, audience, referenceContext = '', patientContext = '') {
   const languageInstruction = language && language !== 'English'
     ? `Write your entire response in ${language} — including section headers, translated naturally. Keep the emojis.`
     : 'Write in clear language.';
@@ -114,6 +114,8 @@ function buildImagingPrompt(language, fileCount, audience, referenceContext = ''
   const multiFileNote = fileCount > 1
     ? `You're looking at ${fileCount} images that are part of the same scan or study (e.g. different views/angles) — consider them together.`
     : `You're looking at a medical image — an X-ray, scan, or similar.`;
+
+  const selfCheckInstruction = `\n\nBefore finalizing, re-check each specific observation against the image once more — if you're not genuinely confident a described feature is actually visible, soften it to "possible" or drop it rather than stating it plainly. Precision matters more than sounding thorough.`;
 
   if (audience === 'doctor') {
     return `${multiFileNote} You're assisting a licensed doctor as a second pair of eyes, not replacing their read. ${languageInstruction}
@@ -129,7 +131,7 @@ Describe what's visible in neutral, descriptive terms (e.g. "increased opacity i
 *⚠️ Worth a Closer Look*
 Anything that stands out as worth the doctor's specific attention or a formal radiology read — only if something genuinely does.
 
-Rules: you are a general-purpose vision model, not a validated radiology AI — state this limitation explicitly once, near the top. Never state a diagnosis as confirmed or rule one out with certainty. Never suggest this replaces a formal radiologist report for anything ambiguous or significant. Base observations only on what's actually visible — don't guess at poor-quality or ambiguous regions, say the image quality limits assessment there instead. Keep the whole thing under 280 words.${referenceContext}`;
+Rules: you are a general-purpose vision model, not a validated radiology AI — state this limitation explicitly once, near the top. Never state a diagnosis as confirmed or rule one out with certainty. Never suggest this replaces a formal radiologist report for anything ambiguous or significant. Base observations only on what's actually visible — don't guess at poor-quality or ambiguous regions, say the image quality limits assessment there instead. Keep the whole thing under 280 words.${patientContext}${referenceContext}${selfCheckInstruction}`;
   }
 
   return `${multiFileNote} Write for a patient with no medical training. This will be shown on their dashboard and can be sent to them on WhatsApp, so use WhatsApp's formatting: *asterisks* for bold headers, plain short lines. ${languageInstruction}
@@ -145,13 +147,13 @@ Describe what's visible in plain, neutral language — no diagnosis, no disease 
 *💡 Worth Mentioning to Your Doctor*
 Only if something genuinely stands out — phrase it as "worth asking your doctor about," never as a finding to be worried about on its own.
 
-CRITICAL rules: you are NOT a diagnostic tool and must never state or imply a diagnosis, a disease name, or a "you have X" conclusion — that requires a qualified doctor or radiologist actually reviewing this. Always end with a clear, unmissable line: "This is not a diagnosis. Please share this image with your doctor for a proper reading — especially if you have any symptoms or concerns right now." If the image suggests anything that could be urgent, add: "If you're experiencing symptoms, please don't wait — contact a doctor promptly." Keep the whole thing under 220 words.${referenceContext}`;
+CRITICAL rules: you are NOT a diagnostic tool and must never state or imply a diagnosis, a disease name, or a "you have X" conclusion — that requires a qualified doctor or radiologist actually reviewing this. Always end with a clear, unmissable line: "This is not a diagnosis. Please share this image with your doctor for a proper reading — especially if you have any symptoms or concerns right now." If the image suggests anything that could be urgent, add: "If you're experiencing symptoms, please don't wait — contact a doctor promptly." Keep the whole thing under 220 words.${patientContext}${referenceContext}${selfCheckInstruction}`;
 }
 
 // Builds the shared analysis prompt — same structure and rules for both providers, just the
 // language changes. Kept as one function so improving the extraction quality only needs to
 // happen in one place.
-function buildAnalysisPrompt(language, fileCount, referenceContext = '') {
+function buildAnalysisPrompt(language, fileCount, referenceContext = '', patientContext = '') {
   const languageInstruction = language && language !== 'English'
     ? `Write your ENTIRE response in ${language} — every word, including the section headers themselves (translate "Medicines", "Lab Values", "Worth Discussing" naturally into ${language}, keep the emojis). Do not mix in English except for the actual medicine/drug names, which should stay as printed on the document.`
     : 'Write your response in clear, plain English.';
@@ -159,6 +161,8 @@ function buildAnalysisPrompt(language, fileCount, referenceContext = '') {
   const multiFileNote = fileCount > 1
     ? `You're looking at ${fileCount} images/pages that are all part of the SAME prescription or report (e.g. front and back, or multiple pages) — read them together as one document, not separately, and don't repeat information that appears on more than one page.`
     : `You're looking at a patient-uploaded prescription or lab report.`;
+
+  const selfCheckInstruction = `\n\nBefore finalizing, re-check every number, dosage, and name you've written against the document once more — a transposed digit or misread drug name is a real safety risk. If anything is genuinely ambiguous, flag it as unclear rather than guessing a plausible-looking value.`;
 
   return `${multiFileNote} Write a summary an average patient — not a medical professional — can genuinely understand at a glance. This same text will be shown on their dashboard AND sent to them as a WhatsApp message, so use WhatsApp's formatting: *asterisks* for bold section headers, plain short lines, no markdown tables or nested bullets. ${languageInstruction}
 
@@ -176,7 +180,26 @@ Any diagnosis, instructions, or follow-up advice written on the document (e.g. "
 *💡 Worth Discussing*
 One or two short, concrete points on what stands out — only if something genuinely does.
 
-Rules: base this only on what's actually in the document — never guess at anything illegible or invent a value. If handwriting is genuinely hard to read, say so plainly for that specific item rather than skipping it silently (e.g. "Medicine name unclear — please confirm with your pharmacist") rather than guessing. Avoid medical jargon; if a technical term is unavoidable, explain it in a few plain words right there. End with one line reminding them this is a summary to discuss with their doctor, not a diagnosis. Keep the whole thing under 280 words so it reads well as a WhatsApp message.${referenceContext}`;
+Rules: base this only on what's actually in the document — never guess at anything illegible or invent a value. If handwriting is genuinely hard to read, say so plainly for that specific item rather than skipping it silently (e.g. "Medicine name unclear — please confirm with your pharmacist") rather than guessing. Avoid medical jargon; if a technical term is unavoidable, explain it in a few plain words right there. End with one line reminding them this is a summary to discuss with their doctor, not a diagnosis. Keep the whole thing under 280 words so it reads well as a WhatsApp message.${patientContext}${referenceContext}${selfCheckInstruction}`;
+}
+
+// Builds a short, factual line of the patient's own known context (existing conditions, current
+// medicines) to append to the analysis prompt — this is what lets the AI interpret a value
+// correctly for THIS patient (e.g. a glucose reading reads differently for someone with known
+// diabetes) instead of treating every document in a vacuum. Deliberately short and factual, never
+// speculative, and skipped entirely when there's nothing on file rather than inventing filler.
+function buildPatientContext(patient) {
+  if (!patient) return '';
+  const parts = [];
+  if (patient.medicalHistory && patient.medicalHistory.length) {
+    parts.push(`Known conditions/history: ${patient.medicalHistory.join(', ')}.`);
+  }
+  const activeMeds = (patient.medicines || []).filter(m => m.active).map(m => m.name).filter(Boolean);
+  if (activeMeds.length) {
+    parts.push(`Currently prescribed: ${[...new Set(activeMeds)].join(', ')}.`);
+  }
+  if (!parts.length) return '';
+  return `\n\nThis patient's own known context on file (use this to interpret findings more accurately for THIS specific patient, but still base every finding only on what's actually in the uploaded document/image — never invent something not shown just because it fits their history): ${parts.join(' ')}`;
 }
 
 // Pulls a handful of relevant clinical-reference entries (added by admins, or auto-generated
@@ -191,7 +214,7 @@ async function getReferenceContext(category) {
   try {
     const entries = await ClinicalReference.find({ category })
       .sort({ createdAt: -1 })
-      .limit(5)
+      .limit(8)
       .lean();
     if (!entries || entries.length === 0) return '';
     const formatted = entries.map(e => `- ${e.title ? e.title + ': ' : ''}${e.content}`).join('\n');
@@ -202,7 +225,7 @@ async function getReferenceContext(category) {
   }
 }
 
-async function analyzeDocumentWithClaude(files, language, documentType = 'prescription', audience = 'patient', referenceContext = '') {
+async function analyzeDocumentWithClaude(files, language, documentType = 'prescription', audience = 'patient', referenceContext = '', patientContext = '') {
   if (!ANTHROPIC_API_KEY) return { ok: false, reason: 'not_configured' };
 
   const contentBlocks = files.map(f => {
@@ -213,8 +236,8 @@ async function analyzeDocumentWithClaude(files, language, documentType = 'prescr
   });
 
   const prompt = documentType === 'imaging'
-    ? buildImagingPrompt(language, files.length, audience, referenceContext)
-    : buildAnalysisPrompt(language, files.length, referenceContext);
+    ? buildImagingPrompt(language, files.length, audience, referenceContext, patientContext)
+    : buildAnalysisPrompt(language, files.length, referenceContext, patientContext);
 
   try {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -226,7 +249,7 @@ async function analyzeDocumentWithClaude(files, language, documentType = 'prescr
       },
       body: JSON.stringify({
         model: 'claude-sonnet-5',
-        max_tokens: 900,
+        max_tokens: 1300,
         messages: [{
           role: 'user',
           content: [...contentBlocks, { type: 'text', text: prompt }]
@@ -298,12 +321,12 @@ async function callGeminiModel(model, parts, maxRetries, attempt = 0) {
   return { ok: true, analysis: text };
 }
 
-async function analyzeDocumentWithGemini(files, language, documentType = 'prescription', audience = 'patient', referenceContext = '') {
+async function analyzeDocumentWithGemini(files, language, documentType = 'prescription', audience = 'patient', referenceContext = '', patientContext = '') {
   if (!GEMINI_API_KEY) return { ok: false, reason: 'not_configured' };
 
   const prompt = documentType === 'imaging'
-    ? buildImagingPrompt(language, files.length, audience, referenceContext)
-    : buildAnalysisPrompt(language, files.length, referenceContext);
+    ? buildImagingPrompt(language, files.length, audience, referenceContext, patientContext)
+    : buildAnalysisPrompt(language, files.length, referenceContext, patientContext);
   const parts = [
     { text: prompt },
     ...files.map(f => ({ inline_data: { mime_type: f.fileType, data: f.fileData } }))
@@ -341,15 +364,16 @@ async function analyzeDocumentWithGemini(files, language, documentType = 'prescr
 // document. `language` is the preferred language for the written-out analysis. `documentType` is
 // 'prescription' (default) or 'imaging' — picks which prompt is used. `audience` is 'patient'
 // (default) or 'doctor' — only affects the imaging prompt's tone/depth.
-async function analyzeDocument(files, language, documentType = 'prescription', audience = 'patient') {
+async function analyzeDocument(files, language, documentType = 'prescription', audience = 'patient', patient = null) {
   // Fetched once and reused for both providers so a Gemini→Claude fallback doesn't double up
   // on database reads for the same analysis.
   const referenceContext = await getReferenceContext(documentType === 'imaging' ? 'imaging' : 'prescription');
-  const geminiResult = await analyzeDocumentWithGemini(files, language, documentType, audience, referenceContext);
+  const patientContext = buildPatientContext(patient);
+  const geminiResult = await analyzeDocumentWithGemini(files, language, documentType, audience, referenceContext, patientContext);
   if (geminiResult.ok) return geminiResult;
   if (!ANTHROPIC_API_KEY) return geminiResult;
   console.log(`ℹ️ Gemini failed (${geminiResult.reason}), falling back to Claude...`);
-  return analyzeDocumentWithClaude(files, language, documentType, audience, referenceContext);
+  return analyzeDocumentWithClaude(files, language, documentType, audience, referenceContext, patientContext);
 }
 
 // ========== CLINICAL REFERENCE IMAGE ANALYSIS (admin-curated teaching examples) ==========
@@ -2117,7 +2141,7 @@ app.post('/api/patient/upload-report', auth, async (req, res) => {
       analysisStatus: 'pending'
     });
 
-    const result = await analyzeDocument(files, language, documentType, 'patient');
+    const result = await analyzeDocument(files, language, documentType, 'patient', patient);
     if (result.ok) {
       doc.analysis = result.analysis;
       doc.analysisStatus = 'done';
@@ -2990,6 +3014,9 @@ app.post('/api/doctors/upload-imaging', doctorAuth, async (req, res) => {
     }
 
     const displayName = files.length > 1 ? `${files[0].fileName} (+${files.length - 1} more)` : files[0].fileName;
+    // Looked up (when a patient is actually specified) so the AI can weigh known conditions/
+    // current medicines for this specific patient — see buildPatientContext.
+    const contextPatient = patientPhone ? await Patient.findOne({ phone: patientPhone }) : null;
 
     const doc = await UploadedDocument.create({
       patientPhone: patientPhone || req.doctor.phone, // falls back to the doctor's own phone so this still shows in their own history when no patient is specified
@@ -3002,7 +3029,7 @@ app.post('/api/doctors/upload-imaging', doctorAuth, async (req, res) => {
       analysisStatus: 'pending'
     });
 
-    const result = await analyzeDocument(files, 'English', 'imaging', 'doctor');
+    const result = await analyzeDocument(files, 'English', 'imaging', 'doctor', contextPatient);
     if (result.ok) {
       doc.analysis = result.analysis;
       doc.analysisStatus = 'done';
