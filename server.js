@@ -851,6 +851,76 @@ async function sendReportAnalysisMessage(phone, patientName, fileName, analysisT
   return sendWhatsAppFree(phone, fallbackMsg);
 }
 
+// ===== PASSWORD RESET OTP TEMPLATE — same 131047 gap, this time on the forgot-password flow.
+// Reported directly: a patient (Kunal) requested a password reset and never received the OTP on
+// WhatsApp. Root cause is identical to every fix above: /api/auth/forgot-password sent the OTP
+// with sendWhatsAppFree() only, which is silently rejected by Meta (131047, "re-engagement
+// message") for anyone outside the 24-hour session window — which is most people resetting a
+// password, since they're locked out precisely because they haven't been actively using the
+// account/WhatsApp. Email was already wired up as a fallback in an earlier fix, so this wasn't a
+// total outage for accounts with an email on file — but WhatsApp itself, which most patients
+// expect to actually work, silently failed. =====
+// Setup: create + get Meta approval for a seventh template in MSG91 (identical process to the
+// others). Suggested template body: "🔐 Biomexa Password Reset — {{1}}\n\nYour OTP code is:
+// {{2}}\n\nThis code expires in {{3}} minutes. If you didn't request this, please ignore this
+// message." — no buttons needed. Until configured, this falls back to the existing free-text
+// send, which still works for anyone who has messaged Biomexa's WhatsApp number within the last
+// 24 hours.
+const MSG91_OTP_TEMPLATE_NAME = process.env.MSG91_OTP_TEMPLATE_NAME || null;
+const MSG91_OTP_TEMPLATE_NAMESPACE = process.env.MSG91_OTP_TEMPLATE_NAMESPACE || '';
+
+async function sendPasswordResetOTPTemplate(phone, accountName, otp, expiryMinutes) {
+  if (!MSG91_CONFIGURED || !MSG91_OTP_TEMPLATE_NAME) {
+    return { success: false, provider: 'msg91_otp_template_not_configured' };
+  }
+  try {
+    const res = await fetch('https://api.msg91.com/api/v5/whatsapp/whatsapp-outbound-message/bulk/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'authkey': MSG91_AUTH_KEY },
+      body: JSON.stringify({
+        integrated_number: MSG91_INTEGRATED_NUMBER,
+        content_type: 'template',
+        payload: {
+          messaging_product: 'whatsapp',
+          type: 'template',
+          template: {
+            name: MSG91_OTP_TEMPLATE_NAME,
+            language: { code: MSG91_TEMPLATE_LANG, policy: 'deterministic' },
+            namespace: MSG91_OTP_TEMPLATE_NAMESPACE,
+            to_and_components: [{
+              to: [phone.replace(/\D/g, '')],
+              components: {
+                body_1: { type: 'text', value: sanitizeTemplateParam(accountName || 'there', 60), parameter_name: 'account_name' },
+                body_2: { type: 'text', value: sanitizeTemplateParam(String(otp), 20), parameter_name: 'otp' },
+                body_3: { type: 'text', value: sanitizeTemplateParam(String(expiryMinutes), 10), parameter_name: 'expiry_minutes' }
+              }
+            }]
+          }
+        }
+      }),
+      signal: AbortSignal.timeout(10000)
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      console.log('⚠️ MSG91 OTP template send failed:', JSON.stringify(data).substring(0, 500));
+      return { success: false, provider: 'msg91', detail: data };
+    }
+    console.log('✅ MSG91 OTP template sent to', phone);
+    return { success: true, provider: 'msg91' };
+  } catch (err) {
+    console.log('⚠️ MSG91 OTP template send error:', err.message);
+    return { success: false, provider: 'msg91', detail: err.message };
+  }
+}
+
+// Unified OTP sender — template first (reaches the patient/doctor regardless of session state),
+// falls back to the existing free-text message only if the template isn't configured yet.
+async function sendPasswordResetOTPMessage(phone, accountName, otp, expiryMinutes, fallbackMsg) {
+  const templateResult = await sendPasswordResetOTPTemplate(phone, accountName, otp, expiryMinutes);
+  if (templateResult.success) return templateResult;
+  return sendWhatsAppFree(phone, fallbackMsg);
+}
+
 // Parses free-text vitals like "BP 120/80, temp 98.6, pulse 72" — deliberately permissive since
 // real patients won't format this consistently. Returns only the fields it actually found.
 // Two layers: first tries explicit labels (100% reliable, unchanged from before — anyone who
@@ -1726,7 +1796,9 @@ app.post('/api/auth/forgot-password', otpLimiter, async (req, res) => {
     const otpMsg = `🔐 *Biomexa Password Reset*\n\nYour OTP code is: *${otp}*\n\nThis code will expire in ${OTP_EXPIRY_MINUTES} minutes.\n\nIf you didn't request this, please ignore this message.\n\n- Biomexa Team`;
 
     // Admin has no WhatsApp number tied to the account — email only.
-    const waResult = isAdmin ? { success: false } : await sendWhatsAppFree(phone, otpMsg);
+    const waResult = isAdmin
+      ? { success: false }
+      : await sendPasswordResetOTPMessage(phone, account.name || account.username, otp, OTP_EXPIRY_MINUTES, otpMsg);
     const emailResult = await sendResetEmail(account.email, otp, account.name || account.username);
 
     if (!waResult.success && !emailResult.success) {
@@ -3635,7 +3707,8 @@ app.get('/api/whatsapp-status', (req, res) => {
     welcomeTemplateConfigured: !!MSG91_WELCOME_TEMPLATE_NAME,
     doctorAlertTemplateConfigured: !!MSG91_DOCTOR_ALERT_TEMPLATE_NAME,
     treatmentReportTemplateConfigured: !!MSG91_TREATMENT_REPORT_TEMPLATE_NAME,
-    reportAnalysisTemplateConfigured: !!MSG91_REPORT_ANALYSIS_TEMPLATE_NAME
+    reportAnalysisTemplateConfigured: !!MSG91_REPORT_ANALYSIS_TEMPLATE_NAME,
+    otpTemplateConfigured: !!MSG91_OTP_TEMPLATE_NAME
   });
 });
 
