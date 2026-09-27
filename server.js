@@ -1033,6 +1033,75 @@ async function sendPasswordResetOTPMessage(phone, accountName, otp, expiryMinute
   return sendWhatsAppFree(phone, fallbackMsg);
 }
 
+// ===== POST-LOGIN "WELCOME BACK" TEMPLATE — same 131047 gap, this time on the message sent
+// right after a patient logs in. Reported directly: patients log in fine, but the "Welcome back"
+// WhatsApp notification with their next dose never arrives. Root cause is identical to every fix
+// above: /api/auth/login sent this with sendWhatsAppFree() only, which the MSG91 API accepts and
+// logs as "sent" but which Meta silently drops (131047) for anyone outside the 24-hour session
+// window — which is most patients logging into the website rather than actively chatting on
+// WhatsApp. That's also why earlier log checks found no failure lines for this: MSG91 reports the
+// send as accepted even when Meta discards it downstream, so "sent" in the logs never meant
+// "delivered". =====
+// Setup: create + get Meta approval for an eighth template in MSG91 (identical process to the
+// others). Suggested template body: "👋 Biomexa — Welcome back, {{1}}!\n\n{{2}}" — no buttons
+// needed. {{2}} carries a single-line, dynamically-built status line (e.g. "Your next dose:
+// Metformin 500mg at 9:00 AM" or "No pending doses today. Great job!") since template variables
+// can't contain line breaks — the fully-formatted version with food notes etc. stays in the
+// free-text fallback. Until configured, this falls back to the existing free-text send.
+const MSG91_LOGIN_TEMPLATE_NAME = process.env.MSG91_LOGIN_TEMPLATE_NAME || null;
+const MSG91_LOGIN_TEMPLATE_NAMESPACE = process.env.MSG91_LOGIN_TEMPLATE_NAMESPACE || MSG91_TEMPLATE_NAMESPACE;
+
+async function sendLoginTemplate(phone, patientName, statusLine) {
+  if (!MSG91_CONFIGURED || !MSG91_LOGIN_TEMPLATE_NAME) {
+    return { success: false, provider: 'msg91_login_template_not_configured' };
+  }
+  try {
+    const res = await fetch('https://api.msg91.com/api/v5/whatsapp/whatsapp-outbound-message/bulk/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'authkey': MSG91_AUTH_KEY },
+      body: JSON.stringify({
+        integrated_number: MSG91_INTEGRATED_NUMBER,
+        content_type: 'template',
+        payload: {
+          messaging_product: 'whatsapp',
+          type: 'template',
+          template: {
+            name: MSG91_LOGIN_TEMPLATE_NAME,
+            language: { code: MSG91_TEMPLATE_LANG, policy: 'deterministic' },
+            namespace: MSG91_LOGIN_TEMPLATE_NAMESPACE,
+            to_and_components: [{
+              to: [phone.replace(/\D/g, '')],
+              components: {
+                body_1: { type: 'text', value: sanitizeTemplateParam(patientName, 60), parameter_name: 'patient_name' },
+                body_2: { type: 'text', value: sanitizeTemplateParam(statusLine, 300), parameter_name: 'status_line' }
+              }
+            }]
+          }
+        }
+      }),
+      signal: AbortSignal.timeout(10000)
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      console.log('⚠️ MSG91 login template send failed:', JSON.stringify(data).substring(0, 500));
+      return { success: false, provider: 'msg91', detail: data };
+    }
+    console.log('✅ MSG91 login template sent to', phone);
+    return { success: true, provider: 'msg91' };
+  } catch (err) {
+    console.log('⚠️ MSG91 login template send error:', err.message);
+    return { success: false, provider: 'msg91', detail: err.message };
+  }
+}
+
+// Unified login-notification sender — template first (reaches the patient regardless of session
+// state), falls back to the existing free-text message only if the template isn't configured yet.
+async function sendLoginMessage(phone, patientName, statusLine, fallbackMsg) {
+  const templateResult = await sendLoginTemplate(phone, patientName, statusLine);
+  if (templateResult.success) return templateResult;
+  return sendWhatsAppFree(phone, fallbackMsg);
+}
+
 // Parses free-text vitals like "BP 120/80, temp 98.6, pulse 72" — deliberately permissive since
 // real patients won't format this consistently. Returns only the fields it actually found.
 // Two layers: first tries explicit labels (100% reliable, unchanged from before — anyone who
@@ -1860,16 +1929,22 @@ app.post('/api/auth/login', loginLimiter, async (req, res) => {
     }).sort({ scheduledTime: 1 });
 
     let loginMsg = `👋 Welcome back, ${patient.name}!\n\nYou've successfully logged in to Biomexa.`;
+    let statusLine;
     if (todayDoses.length > 0) {
       const nextDose = todayDoses[0];
       loginMsg += `\n\n💊 Your next dose:\n*${nextDose.medicineName}* — ${nextDose.dosage}\n⏰ ${nextDose.scheduledTime}`;
       if (nextDose.foodNote) loginMsg += `\n🍽️ ${nextDose.foodNote}`;
+      statusLine = `Your next dose: ${nextDose.medicineName} (${nextDose.dosage}) at ${nextDose.scheduledTime}.`;
     } else {
       loginMsg += `\n\n✅ No pending doses for today. Great job!`;
+      statusLine = 'No pending doses for today. Great job!';
     }
     loginMsg += `\n\n- Biomexa Team`;
 
-    sendWhatsAppFree(phone, loginMsg);
+    // Template first (reaches the patient regardless of WhatsApp session window), free-text
+    // fallback only if MSG91_LOGIN_TEMPLATE_NAME isn't configured yet — same fix as the OTP,
+    // treatment report, and report analysis sends above.
+    sendLoginMessage(phone, patient.name, statusLine, loginMsg);
 
     res.json({
       token,
@@ -3889,7 +3964,8 @@ app.get('/api/whatsapp-status', (req, res) => {
     doctorAlertTemplateConfigured: !!MSG91_DOCTOR_ALERT_TEMPLATE_NAME,
     treatmentReportTemplateConfigured: !!MSG91_TREATMENT_REPORT_TEMPLATE_NAME,
     reportAnalysisTemplateConfigured: !!MSG91_REPORT_ANALYSIS_TEMPLATE_NAME,
-    otpTemplateConfigured: !!MSG91_OTP_TEMPLATE_NAME
+    otpTemplateConfigured: !!MSG91_OTP_TEMPLATE_NAME,
+    loginTemplateConfigured: !!MSG91_LOGIN_TEMPLATE_NAME
   });
 });
 
