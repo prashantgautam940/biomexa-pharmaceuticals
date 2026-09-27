@@ -829,7 +829,7 @@ async function sendWelcomeMessage(phone, patientName, fallbackMsg) {
 // free-text send, which still works for anyone who has messaged Biomexa's WhatsApp number
 // within the last 24 hours.
 const MSG91_TREATMENT_REPORT_TEMPLATE_NAME = process.env.MSG91_TREATMENT_REPORT_TEMPLATE_NAME || null;
-const MSG91_TREATMENT_REPORT_TEMPLATE_NAMESPACE = process.env.MSG91_TREATMENT_REPORT_TEMPLATE_NAMESPACE || '';
+const MSG91_TREATMENT_REPORT_TEMPLATE_NAMESPACE = process.env.MSG91_TREATMENT_REPORT_TEMPLATE_NAMESPACE || MSG91_TEMPLATE_NAMESPACE;
 
 // Template params can't contain newlines and read best kept short — collapses whitespace and
 // caps length rather than silently truncating mid-word.
@@ -906,7 +906,7 @@ async function sendTreatmentReportMessage(phone, patientName, drugName, adherenc
 // template gets a short, single-line-safe summary since template variables can't contain line
 // breaks. Until configured, falls back to the existing free-text send.
 const MSG91_REPORT_ANALYSIS_TEMPLATE_NAME = process.env.MSG91_REPORT_ANALYSIS_TEMPLATE_NAME || null;
-const MSG91_REPORT_ANALYSIS_TEMPLATE_NAMESPACE = process.env.MSG91_REPORT_ANALYSIS_TEMPLATE_NAMESPACE || '';
+const MSG91_REPORT_ANALYSIS_TEMPLATE_NAMESPACE = process.env.MSG91_REPORT_ANALYSIS_TEMPLATE_NAMESPACE || MSG91_TEMPLATE_NAMESPACE;
 
 async function sendReportAnalysisTemplate(phone, patientName, fileName, summary) {
   if (!MSG91_CONFIGURED || !MSG91_REPORT_ANALYSIS_TEMPLATE_NAME) {
@@ -979,7 +979,7 @@ async function sendReportAnalysisMessage(phone, patientName, fileName, analysisT
 // send, which still works for anyone who has messaged Biomexa's WhatsApp number within the last
 // 24 hours.
 const MSG91_OTP_TEMPLATE_NAME = process.env.MSG91_OTP_TEMPLATE_NAME || null;
-const MSG91_OTP_TEMPLATE_NAMESPACE = process.env.MSG91_OTP_TEMPLATE_NAMESPACE || '';
+const MSG91_OTP_TEMPLATE_NAMESPACE = process.env.MSG91_OTP_TEMPLATE_NAMESPACE || MSG91_TEMPLATE_NAMESPACE;
 
 async function sendPasswordResetOTPTemplate(phone, accountName, otp, expiryMinutes) {
   if (!MSG91_CONFIGURED || !MSG91_OTP_TEMPLATE_NAME) {
