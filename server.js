@@ -1018,7 +1018,7 @@ async function sendPasswordResetOTPTemplate(phone, accountName, otp, expiryMinut
       return { success: false, provider: 'msg91', detail: data };
     }
     console.log('✅ MSG91 OTP template sent to', phone);
-    return { success: true, provider: 'msg91' };
+    return { success: true, provider: 'msg91', viaTemplate: true };
   } catch (err) {
     console.log('⚠️ MSG91 OTP template send error:', err.message);
     return { success: false, provider: 'msg91', detail: err.message };
@@ -1031,6 +1031,68 @@ async function sendPasswordResetOTPMessage(phone, accountName, otp, expiryMinute
   const templateResult = await sendPasswordResetOTPTemplate(phone, accountName, otp, expiryMinutes);
   if (templateResult.success) return templateResult;
   return sendWhatsAppFree(phone, fallbackMsg);
+}
+
+// Phone numbers aren't stored in one consistent format — patient signup always adds "+91", but
+// doctor signup stores whatever was typed (often a bare 10-digit number). The reset page always
+// sends "+91XXXXXXXXXX", so an exact-match lookup said "No doctor account found" for any doctor
+// who registered without the country code. These are every reasonable spelling of one number.
+function phoneVariants(raw) {
+  const s = String(raw || '').trim();
+  const digits = s.replace(/\D/g, '');
+  const last10 = digits.slice(-10);
+  return [...new Set([s, '+' + digits, digits, last10, '+91' + last10, '91' + last10].filter(Boolean))];
+}
+
+// Finds a patient/doctor account whatever format its phone was saved in.
+async function findAccountByPhone(role, phone) {
+  const Model = role === 'doctor' ? Doctor : Patient;
+  return Model.findOne({ phone: { $in: phoneVariants(phone) } });
+}
+
+// ===== "RESET" over WhatsApp — the reliable OTP path until the OTP template is approved =====
+// Free-text WhatsApp messages only reach people who messaged Biomexa's number in the last 24 hours
+// (Meta error 131047). Without MSG91_OTP_TEMPLATE_NAME set, and with email not configured, OTPs
+// were being "sent" (MSG91 accepts them) but silently dropped by Meta — so forgot-password looked
+// like it worked but the code never arrived. When the user themselves messages "RESET", that
+// inbound message opens the 24-hour window, so a free-text reply IS delivered. Reuses their
+// pending code from the website if there is one, otherwise issues a fresh one.
+const RESET_KEYWORD_RE = /^\s*(reset|otp|reset\s*password|forgot\s*password|password\s*reset)\s*[.!]?\s*$/i;
+
+async function handleWhatsAppResetRequest(phone) {
+  const variants = phoneVariants(phone);
+  let otpRecord = await Otp.findOne({
+    phone: { $in: variants },
+    role: { $in: ['patient', 'doctor'] },
+    used: false,
+    expiresAt: { $gt: new Date() }
+  }).sort({ createdAt: -1 });
+
+  let account;
+  if (otpRecord) {
+    account = await findAccountByPhone(otpRecord.role, phone);
+  } else {
+    // No pending request from the website — issue one directly, patient account first.
+    let role = 'patient';
+    account = await findAccountByPhone('patient', phone);
+    if (!account) { role = 'doctor'; account = await findAccountByPhone('doctor', phone); }
+    if (!account) {
+      await sendWhatsAppFree(phone, `We couldn't find a Biomexa account linked to this WhatsApp number.\n\nIf you signed up with a different number, request the reset from that number instead.\n\n- Biomexa Team`);
+      return;
+    }
+    // Stored under the "+91XXXXXXXXXX" form — exactly what the reset page sends at the verify step.
+    const identifier = '+91' + phone.replace(/\D/g, '').slice(-10);
+    await Otp.updateMany({ phone: { $in: variants }, role, used: false }, { used: true });
+    otpRecord = await Otp.create({
+      phone: identifier, role, otp: generateOTP(), resetToken: generateResetToken(),
+      expiresAt: new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000)
+    });
+  }
+
+  const minutesLeft = Math.max(1, Math.round((otpRecord.expiresAt - Date.now()) / 60000));
+  const name = account && (account.name || account.username);
+  await sendWhatsAppFree(phone, `🔐 *Biomexa Password Reset*\n\n${name ? `Hi ${name}, y` : 'Y'}our OTP code is: *${otpRecord.otp}*\n\nEnter it on the Forgot Password page. It expires in ${minutesLeft} minute${minutesLeft === 1 ? '' : 's'}.\n\nIf you didn't request this, you can ignore this message.\n\n- Biomexa Team`);
+  console.log(`🔐 OTP delivered on WhatsApp RESET request to ${phone} (${otpRecord.role})`);
 }
 
 // ===== POST-LOGIN "WELCOME BACK" TEMPLATE — same 131047 gap, this time on the message sent
@@ -1974,7 +2036,7 @@ app.post('/api/auth/forgot-password', otpLimiter, async (req, res) => {
     // The Otp collection's "phone" field doubles as that identifier for the admin role.
     const account = isAdmin
       ? await Admin.findOne({ username: phone })
-      : isDoctor ? await Doctor.findOne({ phone }) : await Patient.findOne({ phone });
+      : await findAccountByPhone(isDoctor ? 'doctor' : 'patient', phone);
     if (!account) return res.status(400).json({ message: `No ${isAdmin ? 'admin' : isDoctor ? 'doctor' : 'patient'} account found${isAdmin ? ' with this username' : ' with this phone number'}` });
 
     const roleKey = isAdmin ? 'admin' : isDoctor ? 'doctor' : 'patient';
@@ -1984,7 +2046,7 @@ app.post('/api/auth/forgot-password', otpLimiter, async (req, res) => {
     const resetToken = generateResetToken();
     const expiresAt = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
 
-    await Otp.updateMany({ phone: identifier, role: roleKey, used: false }, { used: true });
+    await Otp.updateMany({ phone: isAdmin ? identifier : { $in: phoneVariants(identifier) }, role: roleKey, used: false }, { used: true });
     await Otp.create({ phone: identifier, role: roleKey, otp, resetToken, expiresAt });
 
     const otpMsg = `🔐 *Biomexa Password Reset*\n\nYour OTP code is: *${otp}*\n\nThis code will expire in ${OTP_EXPIRY_MINUTES} minutes.\n\nIf you didn't request this, please ignore this message.\n\n- Biomexa Team`;
@@ -1995,18 +2057,26 @@ app.post('/api/auth/forgot-password', otpLimiter, async (req, res) => {
       : await sendPasswordResetOTPMessage(phone, account.name || account.username, otp, OTP_EXPIRY_MINUTES, otpMsg);
     const emailResult = await sendResetEmail(account.email, otp, account.name || account.username);
 
-    if (!waResult.success && !emailResult.success) {
+    if (isAdmin && !emailResult.success) {
       return res.status(500).json({
-        message: isAdmin
-          ? 'Could not deliver the code by email. Make sure EMAIL_USER/EMAIL_APP_PASSWORD are configured on the server.'
-          : account.email
-            ? 'Could not deliver the code over WhatsApp or email. Please try again in a moment.'
-            : 'This account has no email on file, and WhatsApp delivery only works if you\'ve messaged Biomexa on WhatsApp recently. Please contact support.'
+        message: 'Could not deliver the code by email. Make sure EMAIL_USER/EMAIL_APP_PASSWORD are configured on the server.'
       });
     }
 
-    const channels = [waResult.success && 'WhatsApp', emailResult.success && 'email'].filter(Boolean).join(' and ');
-    res.json({ message: `OTP sent via ${channels}`, sentVia: { whatsapp: waResult.success, email: emailResult.success } });
+    // Only an approved template or email is guaranteed to arrive. A free-text WhatsApp "success"
+    // just means MSG91 accepted it — Meta drops it for anyone outside the 24-hour session window.
+    // In that case the page shows a one-tap "send RESET on WhatsApp" button, which opens the
+    // session so the code is actually delivered (see handleWhatsAppResetRequest).
+    const guaranteed = !!(waResult.viaTemplate || emailResult.success);
+    const whatsappNumber = String(MSG91_INTEGRATED_NUMBER || '').replace(/\D/g, '');
+    res.json({
+      message: guaranteed
+        ? `OTP sent via ${[waResult.viaTemplate && 'WhatsApp', emailResult.success && 'email'].filter(Boolean).join(' and ')}`
+        : 'Code ready. If it doesn\'t arrive on WhatsApp within a minute, tap "Get code on WhatsApp" and send the message.',
+      sentVia: { whatsapp: !!waResult.success, email: !!emailResult.success },
+      needsWhatsAppReply: !isAdmin && !guaranteed,
+      whatsappNumber
+    });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -2019,8 +2089,8 @@ app.post('/api/auth/verify-otp', async (req, res) => {
     const roleKey = role === 'admin' ? 'admin' : role === 'doctor' ? 'doctor' : 'patient';
 
     const otpRecord = await Otp.findOne({
-      phone,
-      otp,
+      phone: roleKey === 'admin' ? phone : { $in: phoneVariants(phone) },
+      otp: String(otp || '').trim(),
       role: roleKey,
       used: false,
       expiresAt: { $gt: new Date() }
@@ -2044,8 +2114,12 @@ app.post('/api/auth/reset-password', async (req, res) => {
     const isAdmin = role === 'admin';
     const roleKey = isAdmin ? 'admin' : isDoctor ? 'doctor' : 'patient';
 
+    if (!newPassword || String(newPassword).length < 6) {
+      return res.status(400).json({ message: 'Password must be at least 6 characters.' });
+    }
+
     const otpRecord = await Otp.findOne({
-      phone,
+      phone: isAdmin ? phone : { $in: phoneVariants(phone) },
       resetToken,
       role: roleKey,
       used: false,
@@ -2060,10 +2134,11 @@ app.post('/api/auth/reset-password', async (req, res) => {
 
     if (isAdmin) {
       await Admin.findOneAndUpdate({ username: phone }, { password: hashed });
-    } else if (isDoctor) {
-      await Doctor.findOneAndUpdate({ phone }, { password: hashed });
     } else {
-      await Patient.findOneAndUpdate({ phone }, { password: hashed });
+      // Update the account whatever format its phone was saved in (see phoneVariants).
+      const Model = isDoctor ? Doctor : Patient;
+      const updated = await Model.findOneAndUpdate({ phone: { $in: phoneVariants(phone) } }, { password: hashed });
+      if (!updated) return res.status(400).json({ message: 'Account not found. Please start over.' });
     }
 
     otpRecord.used = true;
@@ -2071,7 +2146,6 @@ app.post('/api/auth/reset-password', async (req, res) => {
 
     if (!isAdmin) {
       const confirmMsg = `✅ *Password Reset Successful*\n\nYour Biomexa password has been reset successfully.\n\nIf you didn't do this, please contact support immediately.\n\n- Biomexa Team`;
-      const account = isDoctor ? await Doctor.findOne({ phone }) : await Patient.findOne({ phone });
       sendWhatsAppFree(phone, confirmMsg);
     }
 
@@ -2883,6 +2957,12 @@ app.post('/api/webhooks/msg91-whatsapp', async (req, res) => {
         const c = typeof payload.content === 'string' ? JSON.parse(payload.content) : payload.content;
         freeText = (c.text || '').trim();
       } catch { freeText = String(payload.content).trim(); }
+    }
+
+    // "RESET" keyword — checked first so it works mid-conversation too (see handleWhatsAppResetRequest).
+    if (!buttonText && RESET_KEYWORD_RE.test(freeText)) {
+      await handleWhatsAppResetRequest(phone);
+      return;
     }
 
     const convo = await ConversationState.findOne({ patientPhone: phone });
