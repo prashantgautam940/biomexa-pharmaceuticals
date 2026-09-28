@@ -1001,10 +1001,13 @@ async function sendPasswordResetOTPTemplate(phone, accountName, otp, expiryMinut
             namespace: MSG91_OTP_TEMPLATE_NAMESPACE,
             to_and_components: [{
               to: [phone.replace(/\D/g, '')],
+              // Meta only approves OTP templates in the AUTHENTICATION category (a Utility OTP
+              // template was rejected as "incorrect category"). Authentication templates have a
+              // fixed body with exactly one variable — the code — plus a "Copy code" button that
+              // must be sent the same code.
               components: {
-                body_1: { type: 'text', value: sanitizeTemplateParam(accountName || 'there', 60), parameter_name: 'account_name' },
-                body_2: { type: 'text', value: sanitizeTemplateParam(String(otp), 20), parameter_name: 'otp' },
-                body_3: { type: 'text', value: sanitizeTemplateParam(String(expiryMinutes), 10), parameter_name: 'expiry_minutes' }
+                body_1: { type: 'text', value: String(otp) },
+                button_1: { subtype: 'url', type: 'text', value: String(otp) }
               }
             }]
           }
