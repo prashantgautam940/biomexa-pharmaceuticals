@@ -1047,6 +1047,16 @@ function phoneVariants(raw) {
   return [...new Set([s, '+' + digits, digits, last10, '+91' + last10, '91' + last10].filter(Boolean))];
 }
 
+// One canonical format for numbers typed into public forms ("+91 98765 43210", "09876543210",
+// "9876543210" all -> "+919876543210") — the same shape signup and login use, so a patient who
+// sets a reminder from a product page can later log in with the same number.
+function normalizePhone(raw) {
+  const digits = String(raw || '').replace(/\D/g, '');
+  if (digits.length === 10) return '+91' + digits;
+  if (digits.length === 11 && digits.startsWith('0')) return '+91' + digits.slice(1);
+  return digits ? '+' + digits : '';
+}
+
 // Finds a patient/doctor account whatever format its phone was saved in.
 async function findAccountByPhone(role, phone) {
   const Model = role === 'doctor' ? Doctor : Patient;
@@ -1716,7 +1726,8 @@ app.post('/api/auth/register', signupLimiter, async (req, res) => {
 // person can later log in properly via "Forgot password" if they want the full dashboard.
 app.post('/api/quick-reminder', signupLimiter, async (req, res) => {
   try {
-    const { name, phone, medicineName, dosage, time, foodNote, durationDays } = req.body;
+    const { name, phone: rawPhone, medicineName, dosage, time, foodNote, durationDays } = req.body;
+    let phone = normalizePhone(rawPhone);
     if (!name || !phone || !medicineName || !time) {
       return res.status(400).json({ message: 'Name, phone, medicine, and time are required.' });
     }
@@ -1729,7 +1740,7 @@ app.post('/api/quick-reminder', signupLimiter, async (req, res) => {
       return res.status(400).json({ message: 'Treatment duration must be between 1 and 365 days, or left blank for ongoing.' });
     }
 
-    let patient = await Patient.findOne({ phone });
+    let patient = await findAccountByPhone('patient', phone);
     let isNewAccount = false;
 
     if (!patient) {
@@ -1738,6 +1749,7 @@ app.post('/api/quick-reminder', signupLimiter, async (req, res) => {
       const hashed = await bcrypt.hash(randomPassword, 10);
       patient = await Patient.create({ name, phone, password: hashed, medicines: [] });
     }
+    phone = patient.phone; // doses/reminders must use the number exactly as the account stores it
 
     const startDate = new Date();
     const endDate = days ? new Date(startDate.getTime() + days * 86400000) : null;
@@ -1801,17 +1813,19 @@ app.post('/api/quick-reminder', signupLimiter, async (req, res) => {
 // runs the same danger check the WhatsApp flow uses so risk alerts stay consistent everywhere.
 app.post('/api/quick-vitals', signupLimiter, async (req, res) => {
   try {
-    const { name, phone, glucose, bpSystolic, bpDiastolic, temperature, heartRate } = req.body;
+    const { name, phone: rawPhone, glucose, bpSystolic, bpDiastolic, temperature, heartRate } = req.body;
+    let phone = normalizePhone(rawPhone);
     if (!phone || (!glucose && !bpSystolic && !temperature && !heartRate)) {
       return res.status(400).json({ message: 'Phone number and at least one vital reading are required.' });
     }
 
-    let patient = await Patient.findOne({ phone });
+    let patient = await findAccountByPhone('patient', phone);
     if (!patient) {
       const randomPassword = crypto.randomBytes(12).toString('hex');
       const hashed = await bcrypt.hash(randomPassword, 10);
       patient = await Patient.create({ name: name || 'Biomexa Patient', phone, password: hashed, medicines: [] });
     }
+    phone = patient.phone;
 
     const vitals = {};
     if (glucose) vitals.glucose = parseInt(glucose, 10);
