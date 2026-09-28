@@ -8,9 +8,9 @@
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body {
-  background: #0f172a;
+  background: #f3f6fb;
   font-family: system-ui, -apple-system, sans-serif;
-  color: #f1f5f9;
+  color: #13213d;
   min-height: 100vh;
 }
 .navbar {
@@ -18,40 +18,40 @@ body {
   justify-content: space-between;
   align-items: center;
   padding: 16px 24px;
-  background: rgba(15, 23, 42, 0.95);
-  border-bottom: 1px solid #334155;
+  background: rgba(255,255,255,0.95);
+  border-bottom: 1px solid #e2e8f2;
   position: sticky;
   top: 0;
   z-index: 100;
   backdrop-filter: blur(10px);
 }
-.logo { color: #14b8a6; font-size: 20px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+.logo { color: #13804a; font-size: 20px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
 .nav-links { display: flex; gap: 20px; align-items: center; }
-.nav-links a { color: #94a3b8; text-decoration: none; font-size: 14px; cursor: pointer; }
-.nav-links a:hover { color: #14b8a6; }
+.nav-links a { color: #5b6b86; text-decoration: none; font-size: 14px; cursor: pointer; }
+.nav-links a:hover { color: #13804a; }
 .logout-btn {
   background: transparent;
-  border: 1px solid #334155;
-  color: #94a3b8;
+  border: 1px solid #e2e8f2;
+  color: #5b6b86;
   padding: 6px 14px;
   border-radius: 6px;
   font-size: 13px;
   cursor: pointer;
 }
-.logout-btn:hover { border-color: #ef4444; color: #ef4444; }
+.logout-btn:hover { border-color: #ef4444; color: #c0262d; }
 .container { max-width: 900px; margin: 0 auto; padding: 40px 24px; }
 .card {
-  background: #1e293b;
-  border: 1px solid #334155;
+  background: #ffffff;
+  border: 1px solid #e2e8f2;
   border-radius: 16px;
   padding: 24px;
   margin-bottom: 24px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+  box-shadow: 0 1px 3px rgba(19,33,61,0.14);
   transition: border-color 0.2s, box-shadow 0.2s;
 }
 .card:hover {
-  border-color: #3f5470;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+  border-color: #e2e8f2;
+  box-shadow: 0 4px 16px rgba(19,33,61,0.14);
 }
 .card-header {
   display: flex;
@@ -59,43 +59,43 @@ body {
   align-items: center;
   margin-bottom: 16px;
 }
-.card-title { color: #14b8a6; font-size: 14px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
+.card-title { color: #13804a; font-size: 14px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
 .status-badge {
   background: rgba(239, 68, 68, 0.1);
-  color: #f87171;
+  color: #c0262d;
   padding: 4px 12px;
   border-radius: 50px;
   font-size: 12px;
   font-weight: 600;
 }
-.status-badge.ok { background: rgba(34, 197, 94, 0.1); color: #4ade80; }
+.status-badge.ok { background: rgba(28,154,85,0.1); color: #11663a; }
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .stat-box {
-  background: #0f172a;
+  background: #f3f6fb;
   border-radius: 12px;
   padding: 16px;
   transition: background 0.15s;
 }
-.stat-box:hover { background: #142033; }
-.stat-label { color: #94a3b8; font-size: 12px; text-transform: uppercase; margin-bottom: 8px; }
-.stat-value { color: #f1f5f9; font-size: 24px; font-weight: 700; }
+.stat-box:hover { background: #ffffff; }
+.stat-label { color: #5b6b86; font-size: 12px; text-transform: uppercase; margin-bottom: 8px; }
+.stat-value { color: #13213d; font-size: 24px; font-weight: 700; }
 .dose-item {
   display: flex;
   justify-content: space-between;
   align-items: center;
   padding: 12px 16px;
-  background: #0f172a;
+  background: #f3f6fb;
   border-radius: 10px;
   margin-bottom: 8px;
   transition: all 0.2s;
 }
-.dose-item:hover { background: #1e293b; }
+.dose-item:hover { background: #ffffff; }
 .dose-item.pending { border-left: 3px solid #f59e0b; }
 .dose-item.taken { border-left: 3px solid #22c55e; }
 .dose-item.missed { border-left: 3px solid #ef4444; }
-.dose-info h4 { color: #f1f5f9; font-size: 14px; margin-bottom: 4px; }
-.dose-info p { color: #94a3b8; font-size: 12px; }
-.dose-time { color: #14b8a6; font-weight: 600; font-size: 14px; }
+.dose-info h4 { color: #13213d; font-size: 14px; margin-bottom: 4px; }
+.dose-info p { color: #5b6b86; font-size: 12px; }
+.dose-time { color: #13804a; font-weight: 600; font-size: 14px; }
 
 /* Doctor Connect */
 #doctorConnectCard { transition: box-shadow 0.3s, border-color 0.3s; }
@@ -108,25 +108,25 @@ body {
   0%, 100% { box-shadow: 0 0 0 1px rgba(239,68,68,0.3), 0 20px 45px rgba(239,68,68,0.18); }
   50% { box-shadow: 0 0 0 1px rgba(239,68,68,0.5), 0 24px 55px rgba(239,68,68,0.32); }
 }
-.risk-alert-line { display: none; align-items: center; gap: 8px; background: rgba(239,68,68,0.1); color: #f87171; border: 1px solid rgba(239,68,68,0.3); border-radius: 10px; padding: 10px 14px; font-size: 13px; margin-bottom: 12px; }
+.risk-alert-line { display: none; align-items: center; gap: 8px; background: rgba(239,68,68,0.1); color: #c0262d; border: 1px solid rgba(239,68,68,0.3); border-radius: 10px; padding: 10px 14px; font-size: 13px; margin-bottom: 12px; }
 #doctorConnectCard.high-risk .risk-alert-line { display: flex; }
 .doctor-row {
-  display: flex; align-items: center; gap: 12px; padding: 12px 14px; background: #0f172a; border-radius: 12px; margin-bottom: 10px;
+  display: flex; align-items: center; gap: 12px; padding: 12px 14px; background: #f3f6fb; border-radius: 12px; margin-bottom: 10px;
   transform-style: preserve-3d; transition: transform 0.2s ease;
 }
-.doctor-row-avatar { width: 42px; height: 42px; border-radius: 12px; background: linear-gradient(135deg, #0d7377, #14b8a6); display: flex; align-items: center; justify-content: center; font-weight: 700; color: #fff; flex-shrink: 0; }
-.doctor-row-info h4 { font-size: 14px; color: #f1f5f9; margin-bottom: 2px; }
-.doctor-row-info p { font-size: 12px; color: #94a3b8; }
+.doctor-row-avatar { width: 42px; height: 42px; border-radius: 12px; background: linear-gradient(135deg, #16336b, #27b566); display: flex; align-items: center; justify-content: center; font-weight: 700; color: #fff; flex-shrink: 0; }
+.doctor-row-info h4 { font-size: 14px; color: #13213d; margin-bottom: 2px; }
+.doctor-row-info p { font-size: 12px; color: #5b6b86; }
 .doctor-row-status { font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 50px; margin-left: auto; }
-.doctor-row-status.on { background: rgba(34,197,94,0.15); color: #4ade80; }
-.doctor-row-status.off { background: rgba(148,163,184,0.15); color: #94a3b8; }
+.doctor-row-status.on { background: rgba(28,154,85,0.15); color: #11663a; }
+.doctor-row-status.off { background: rgba(148,163,184,0.15); color: #5b6b86; }
 .doctor-connect-mini {
-  padding: 9px 14px; border: none; border-radius: 9px; background: linear-gradient(135deg, #0d7377, #14b8a6); color: #fff;
+  padding: 9px 14px; border: none; border-radius: 9px; background: linear-gradient(135deg, #16336b, #27b566); color: #fff;
   font-weight: 700; font-size: 12px; cursor: pointer; white-space: nowrap; text-decoration: none;
 }
-.doctor-connect-mini.disabled { background: #334155; color: #64748b; cursor: not-allowed; }
+.doctor-connect-mini.disabled { background: #f6f8fc; color: #64748b; cursor: not-allowed; }
 .btn {
-  background: linear-gradient(135deg, #0d9488, #14b8a6);
+  background: linear-gradient(135deg, #1c9a55, #27b566);
   color: white;
   border: none;
   border-radius: 8px;
@@ -138,24 +138,24 @@ body {
 }
 .btn:hover { opacity: 0.9; transform: translateY(-1px); }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
-.btn-confirm { background: #22c55e; }
-.btn-confirm:hover { background: #16a34a; }
+.btn-confirm { background: #1c9a55; }
+.btn-confirm:hover { background: #1c9a55; }
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .form-group { margin-bottom: 16px; }
 .form-group.full { grid-column: 1 / -1; }
-label { color: #cbd5e1; font-size: 13px; display: block; margin-bottom: 6px; }
+label { color: #34425e; font-size: 13px; display: block; margin-bottom: 6px; }
 input, select {
   width: 100%;
-  background: #0f172a;
-  border: 1px solid #334155;
+  background: #f3f6fb;
+  border: 1px solid #e2e8f2;
   border-radius: 8px;
   padding: 10px 14px;
-  color: #f1f5f9;
+  color: #13213d;
   font-size: 14px;
   outline: none;
   transition: border-color 0.15s, box-shadow 0.15s;
 }
-input:focus, select:focus { border-color: #14b8a6; box-shadow: 0 0 0 3px rgba(20,184,166,0.15); }
+input:focus, select:focus { border-color: #27b566; box-shadow: 0 0 0 3px rgba(28,154,85,0.15); }
 input[type="time"] { color-scheme: dark; }
 .empty-state {
   text-align: center;
@@ -165,16 +165,16 @@ input[type="time"] { color-scheme: dark; }
 .error-msg {
   background: rgba(239, 68, 68, 0.1);
   border: 1px solid rgba(239, 68, 68, 0.3);
-  color: #f87171;
+  color: #c0262d;
   padding: 12px;
   border-radius: 8px;
   margin-bottom: 16px;
   font-size: 14px;
 }
 .success-msg {
-  background: rgba(34, 197, 94, 0.1);
-  border: 1px solid rgba(34, 197, 94, 0.3);
-  color: #4ade80;
+  background: rgba(28,154,85,0.1);
+  border: 1px solid rgba(28,154,85,0.3);
+  color: #11663a;
   padding: 12px;
   border-radius: 8px;
   margin-bottom: 16px;
@@ -182,8 +182,8 @@ input[type="time"] { color-scheme: dark; }
 }
 .hidden { display: none; }
 .welcome-bar {
-  background: linear-gradient(135deg, rgba(13, 148, 136, 0.15), rgba(20, 184, 166, 0.1));
-  border: 1px solid rgba(20, 184, 166, 0.2);
+  background: linear-gradient(135deg, rgba(28,154,85,0.15), rgba(28,154,85,0.1));
+  border: 1px solid rgba(28,154,85,0.2);
   border-radius: 12px;
   padding: 16px 20px;
   margin-bottom: 24px;
@@ -191,14 +191,14 @@ input[type="time"] { color-scheme: dark; }
   justify-content: space-between;
   align-items: center;
 }
-.welcome-bar h2 { color: #f1f5f9; font-size: 18px; }
-.welcome-bar p { color: #94a3b8; font-size: 13px; margin-top: 4px; }
+.welcome-bar h2 { color: #13213d; font-size: 18px; }
+.welcome-bar p { color: #5b6b86; font-size: 13px; margin-top: 4px; }
 .whatsapp-status {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   background: rgba(16, 185, 129, 0.1);
-  color: #34d399;
+  color: #11663a;
   padding: 4px 12px;
   border-radius: 50px;
   font-size: 12px;
@@ -208,12 +208,46 @@ input[type="time"] { color-scheme: dark; }
   .form-grid { grid-template-columns: 1fr; }
   .welcome-bar { flex-direction: column; gap: 10px; text-align: center; }
 }
+
+/* ===== Light portal layout (matches AI Pharmacist pages) ===== */
+.container { max-width: 1180px !important; padding: 20px 16px 48px !important; display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; }
+.container > .card { margin-bottom: 0 !important; }
+@media (min-width: 1000px) {
+  .container { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; }
+  .pc-hero, .pc-upload, .pc-report, .pc-profile { grid-column: 1 / -1; }
+  .pc-hero { order: 0 } .pc-stats { order: 1 } .pc-doses { order: 2 } .pc-doctor { order: 3 } .pc-vitals { order: 4 }
+  .pc-report { order: 5 } .pc-upload { order: 6 } .pc-addmed { order: 7 } .pc-wa { order: 8 } .pc-profile { order: 9 }
+}
+.card { background: #fff !important; border: 1px solid #e2e8f2 !important; border-radius: 18px !important; box-shadow: 0 1px 2px rgba(19,33,61,.05), 0 8px 24px rgba(19,33,61,.07) !important; padding: 22px !important; }
+.card:hover { transform: none; }
+.card-title { color: #13213d !important; font-size: 17px !important; font-weight: 750 !important; text-transform: none !important; letter-spacing: -0.01em !important; }
+.card-header { margin-bottom: 16px !important; }
+.stat-box { background: linear-gradient(135deg, #eaf0fb, #f6f8fc) !important; border: 1px solid #e2e8f2 !important; border-radius: 14px !important; }
+.stat-value { font-size: 30px !important; color: #16336b !important; letter-spacing: -0.02em; }
+.btn { border-radius: 12px !important; font-weight: 650 !important; }
+.navbar { position: sticky; top: 0; z-index: 50; }
+.logout-btn { border-radius: 999px !important; }
+
+.pc-hero { background: linear-gradient(135deg, #16336b 0%, #1f4494 60%, #2458b8 100%); color: #fff; border-radius: 22px; padding: 26px; position: relative; overflow: hidden; box-shadow: 0 12px 32px rgba(22,51,107,.25); }
+.pc-hero::after { content: ''; position: absolute; right: -80px; top: -80px; width: 260px; height: 260px; border-radius: 50%; background: radial-gradient(circle, rgba(39,181,102,.35), transparent 70%); }
+.pc-hero-top { position: relative; z-index: 1; }
+.pc-hero h1 { font-size: clamp(1.6rem, 4.5vw, 2.2rem); font-weight: 800; letter-spacing: -0.02em; margin: 10px 0 4px; color: #fff; }
+.pc-hero p { color: #d6e1f7; }
+.pc-hero-pill { display: inline-block; background: rgba(39,181,102,.18); border: 1px solid rgba(95,227,154,.5); color: #c9f5da; font-size: 12.5px; font-weight: 600; padding: 5px 11px; border-radius: 999px; }
+.pc-quick { position: relative; z-index: 1; display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 20px; }
+@media (min-width: 760px) { .pc-quick { grid-template-columns: repeat(6, 1fr); } }
+.pc-quick a { display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.18); color: #fff; text-decoration: none; font-size: 12.5px; font-weight: 600; padding: 12px 6px; border-radius: 14px; transition: background .15s ease, transform .15s ease; }
+.pc-quick a:hover { background: rgba(255,255,255,.2); transform: translateY(-2px); }
+.pc-quick a span { font-size: 20px; }
+html { scroll-padding-top: 80px; }
 </style>
 <base target="_blank">
+<link rel="stylesheet" href="css/biomexa-ui.css">
+<script src="js/biomexa-ui.js" defer></script>
 </head>
 <body>
   <nav class="navbar">
-    <div class="logo"><img src="images/logo-full-white.png" alt="Biomexa Pharmaceuticals" style="height:26px;width:auto;"></div>
+    <div class="logo"><img src="images/logo-full.png" alt="Biomexa Pharmaceuticals" style="height:26px;width:auto;"></div>
     <div class="nav-links">
       <a href="index.html">Home</a>
       <a href="products/index.html">Products</a>
@@ -224,16 +258,27 @@ input[type="time"] { color-scheme: dark; }
   </nav>
 
   <div class="container">
-    <div class="welcome-bar">
-      <div>
-        <h2 id="welcomeName">Welcome!</h2>
-        <p>Your personal medication adherence dashboard</p>
+    <section class="pc-hero">
+      <div class="pc-hero-top">
+        <div>
+          <span class="pc-hero-pill">💬 WhatsApp reminders active</span>
+          <h1 id="welcomeName">Welcome!</h1>
+          <p>Your medicines, reminders and reports — all in one place.</p>
+        </div>
+        <div class="whatsapp-status" style="display:none">💬 WhatsApp Active</div>
       </div>
-      <div class="whatsapp-status">💬 WhatsApp Active</div>
-    </div>
+      <nav class="pc-quick" aria-label="Quick actions">
+        <a href="#doses"><span>💊</span>Today's doses</a>
+        <a href="#treatment-report"><span>📊</span>Treatment report</a>
+        <a href="#connect-doctor"><span>🩺</span>Talk to a doctor</a>
+        <a href="#upload-report"><span>📄</span>Upload prescription</a>
+        <a href="#vitals"><span>❤️</span>Log vitals</a>
+        <a href="#add-medicine"><span>➕</span>Add medicine</a>
+      </nav>
+    </section>
 
     <!-- Stats -->
-    <div class="card">
+    <div class="card pc-stats" id="overview">
       <div class="card-header">
         <span class="card-title">📊 Health Overview</span>
         <span class="status-badge" id="riskBadge">Calculating...</span>
@@ -251,7 +296,7 @@ input[type="time"] { color-scheme: dark; }
     </div>
 
     <!-- Connect with a Doctor -->
-    <div class="card" id="doctorConnectCard"><span id="connect-doctor" style="position:relative;top:-80px;"></span>
+    <div class="card pc-doctor" id="doctorConnectCard"><span id="connect-doctor" style="position:relative;top:-80px;"></span>
       <div class="card-header">
         <span class="card-title">🩺 Talk to a Doctor</span>
         <span id="doctorConnectHint" style="color:#64748b;font-size:12px;">Live WhatsApp connect</span>
@@ -262,7 +307,7 @@ input[type="time"] { color-scheme: dark; }
     </div>
 
     <!-- Today's Doses -->
-    <div class="card">
+    <div class="card pc-doses" id="doses">
       <div class="card-header">
         <span class="card-title">💊 Today's Doses</span>
         <span style="color:#64748b;font-size:12px;">Auto WhatsApp reminders</span>
@@ -273,27 +318,27 @@ input[type="time"] { color-scheme: dark; }
     </div>
 
     <!-- Upload Report / Prescription / Imaging — real AI analysis via Gemini/Claude vision -->
-    <div class="card" id="upload-report">
+    <div class="card pc-upload" id="upload-report">
       <div class="card-header">
         <span class="card-title">📄 Upload Report or Prescription</span>
       </div>
-      <p style="color:#64748b;font-size:12.5px;margin:-4px 0 14px;">Upload up to 3 photos or PDFs (e.g. front & back, or multiple pages) — AI reads them together and pulls out the key factors, ready to discuss with your doctor. Written in your <a href="#" onclick="document.getElementById('profLanguage').scrollIntoView({behavior:'smooth'}); return false;" style="color:#5eead4;">preferred language</a>.</p>
+      <p style="color:#64748b;font-size:12.5px;margin:-4px 0 14px;">Upload up to 3 photos or PDFs (e.g. front & back, or multiple pages) — AI reads them together and pulls out the key factors, ready to discuss with your doctor. Written in your <a href="#" onclick="document.getElementById('profLanguage').scrollIntoView({behavior:'smooth'}); return false;" style="color: #13804a;">preferred language</a>.</p>
 
       <div style="display:flex;gap:8px;margin-bottom:14px;">
         <button type="button" id="docTypePrescriptionBtn" onclick="setDocumentType('prescription')" class="btn" style="width:auto;padding:8px 14px;font-size:12.5px;">📄 Prescription / Lab Report</button>
-        <button type="button" id="docTypeImagingBtn" onclick="setDocumentType('imaging')" style="width:auto;padding:8px 14px;font-size:12.5px;background:#1e293b;border:1px solid #334155;border-radius:8px;color:#94a3b8;cursor:pointer;">🩻 X-Ray / Medical Imaging</button>
+        <button type="button" id="docTypeImagingBtn" onclick="setDocumentType('imaging')" style="width:auto;padding:8px 14px;font-size:12.5px;background: #ffffff;border: 1px solid #e2e8f2;border-radius:8px;color: #5b6b86;cursor:pointer;">🩻 X-Ray / Medical Imaging</button>
       </div>
 
-      <div id="imagingDisclaimer" style="display:none;background:rgba(251,191,36,0.08);border:1px solid rgba(251,191,36,0.3);border-radius:8px;padding:12px 14px;font-size:12.5px;color:#fde68a;line-height:1.6;margin-bottom:14px;">
+      <div id="imagingDisclaimer" style="display:none;background:rgba(251,191,36,0.08);border:1px solid rgba(251,191,36,0.3);border-radius:8px;padding:12px 14px;font-size:12.5px;color: #b45309;line-height:1.6;margin-bottom:14px;">
         ⚠️ <strong>This is not a diagnosis.</strong> AI can describe what's visible in an X-ray or scan, but it isn't a substitute for a radiologist or doctor's professional reading. Always share the actual image with your doctor — especially if you have any symptoms right now.
       </div>
 
       <form id="uploadForm" style="margin-bottom:14px;">
         <input type="file" id="reportFile" accept="image/jpeg,image/png,image/webp,application/pdf" multiple style="display:none;" onchange="handleFileSelected()">
-        <div id="uploadDropzone" onclick="document.getElementById('reportFile').click()" style="border:1px dashed #334155;border-radius:10px;padding:20px;text-align:center;cursor:pointer;font-size:13px;color:#64748b;">
+        <div id="uploadDropzone" onclick="document.getElementById('reportFile').click()" style="border: 1px dashed #e2e8f2;border-radius:10px;padding:20px;text-align:center;cursor:pointer;font-size:13px;color:#64748b;">
           📎 Click to choose up to 3 files — JPG, PNG, or PDF, up to 5MB each
         </div>
-        <div id="selectedFileName" style="font-size:12.5px;color:#5eead4;margin-top:8px;display:none;"></div>
+        <div id="selectedFileName" style="font-size:12.5px;color: #13804a;margin-top:8px;display:none;"></div>
         <button type="submit" class="btn" id="uploadBtn" style="width:100%;margin-top:10px;display:none;">Upload & Analyze</button>
       </form>
       <div id="uploadMsg" style="font-size:12.5px;margin-bottom:10px;"></div>
@@ -302,19 +347,19 @@ input[type="time"] { color-scheme: dark; }
     </div>
 
     <!-- Treatment Report — real AI analysis of the whole course so far, same engine the doctor uses -->
-    <div class="card" id="treatment-report">
+    <div class="card pc-report" id="treatment-report">
       <div class="card-header">
         <span class="card-title">📊 Treatment Report</span>
       </div>
       <p style="color:#64748b;font-size:12.5px;margin:-4px 0 14px;">A full analysis of how your treatment is going so far — adherence, vitals trends, and advice for what's next.</p>
       <div style="display:flex;gap:10px;flex-wrap:wrap;">
         <button class="btn" id="reportGenBtn" onclick="generateTreatmentReport()" style="width:auto;padding:9px 18px;">Generate Report</button>
-        <button class="btn" id="reportSendBtn" onclick="sendTreatmentReportWhatsapp()" style="width:auto;padding:9px 18px;background:#1e293b;border:1px solid #334155;display:none;">📱 Send to My WhatsApp</button>
+        <button class="btn" id="reportSendBtn" onclick="sendTreatmentReportWhatsapp()" style="width:auto;padding:9px 18px;background: #ffffff;border: 1px solid #e2e8f2;display:none;">📱 Send to My WhatsApp</button>
       </div>
       <div id="reportMsg" style="font-size:12.5px;margin-top:8px;"></div>
       <div id="reportContent" style="margin-top:16px;display:none;"></div>
 
-      <div style="border-top:1px solid #1f2937;margin:18px 0 12px;padding-top:14px;">
+      <div style="border-top: 1px solid #e2e8f2;margin:18px 0 12px;padding-top:14px;">
         <div style="color:#64748b;font-size:12px;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:10px;">⏰ Missed Doses — Exact Date & Time</div>
         <div id="missedDosesList">
           <div class="empty-state">Loading...</div>
@@ -323,7 +368,7 @@ input[type="time"] { color-scheme: dark; }
     </div>
 
     <!-- My Vitals — everything the patient has sent over WhatsApp, plus a direct entry form -->
-    <div class="card">
+    <div class="card pc-vitals" id="vitals">
       <div class="card-header">
         <span class="card-title">🩺 My Vitals</span>
       </div>
@@ -356,7 +401,7 @@ input[type="time"] { color-scheme: dark; }
         <div id="vFormMsg" style="font-size:12.5px;margin-top:10px;text-align:center;"></div>
       </form>
 
-      <div style="border-top:1px solid #1f2937;margin:20px 0 14px;padding-top:16px;">
+      <div style="border-top: 1px solid #e2e8f2;margin:20px 0 14px;padding-top:16px;">
         <div style="color:#64748b;font-size:12px;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:10px;">📋 Recent Readings</div>
         <div id="vitalsHistoryList">
           <div class="empty-state">Loading...</div>
@@ -365,7 +410,7 @@ input[type="time"] { color-scheme: dark; }
     </div>
 
     <!-- Add Medicine -->
-    <div class="card">
+    <div class="card pc-addmed" id="add-medicine">
       <div class="card-header">
         <span class="card-title">➕ Add New Medicine</span>
       </div>
@@ -383,7 +428,7 @@ input[type="time"] { color-scheme: dark; }
           <div class="form-group full">
             <label>Reminder Time(s) *</label>
             <div id="medTimesContainer"></div>
-            <button type="button" id="addTimeBtn" onclick="addTimeRow()" style="margin-top:6px;background:none;border:1px dashed #475569;color:#5eead4;padding:6px 12px;border-radius:6px;font-size:12.5px;cursor:pointer;">+ Add another time</button>
+            <button type="button" id="addTimeBtn" onclick="addTimeRow()" style="margin-top:6px;background:none;border: 1px dashed #e2e8f2;color: #13804a;padding:6px 12px;border-radius:6px;font-size:12.5px;cursor:pointer;">+ Add another time</button>
           </div>
           <div class="form-group">
             <label>Frequency *</label>
@@ -408,14 +453,14 @@ input[type="time"] { color-scheme: dark; }
 
     <!-- WhatsApp Connection — moved after Add Medicine so it appears once there's actually a
          reminder to activate for -->
-    <div class="card" id="whatsappCard">
+    <div class="card pc-wa" id="whatsappCard">
       <div class="card-header">
         <span class="card-title">💬 WhatsApp Reminders</span>
         <span id="waStatusBadge" style="font-size:12px;color:#64748b;">Checking...</span>
       </div>
 
       <!-- Shown when MSG91 isn't configured server-side yet — nothing a patient can do about this -->
-      <div id="waNotConfigured" style="display:none;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);border-radius:8px;padding:12px 14px;font-size:13px;color:#fca5a5;line-height:1.6;">
+      <div id="waNotConfigured" style="display:none;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);border-radius:8px;padding:12px 14px;font-size:13px;color: #c0262d;line-height:1.6;">
         ⚠️ WhatsApp reminders aren't active yet — this is being set up on Biomexa's end, not something you need to configure.
       </div>
 
@@ -426,7 +471,7 @@ input[type="time"] { color-scheme: dark; }
     </div>
 
     <!-- My Profile — account details and password, kept at the end since health content matters more day-to-day -->
-    <div class="card">
+    <div class="card pc-profile" id="profile">
       <div class="card-header">
         <span class="card-title">👤 My Profile</span>
       </div>
@@ -468,7 +513,7 @@ input[type="time"] { color-scheme: dark; }
 
       </form>
 
-      <div style="border-top:1px solid #1f2937;margin:20px 0 16px;padding-top:16px;">
+      <div style="border-top: 1px solid #e2e8f2;margin:20px 0 16px;padding-top:16px;">
         <div style="color:#64748b;font-size:12px;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:12px;">🔒 Change Password</div>
         <form id="passwordForm">
           <div class="form-grid">
@@ -544,13 +589,13 @@ input[type="time"] { color-scheme: dark; }
         const data = await res.json();
         if (!res.ok) throw new Error(data.message);
 
-        msg.style.color = '#34d399';
+        msg.style.color = '#11663a';
         msg.textContent = 'Saved!';
         document.getElementById('welcomeName').textContent = `Welcome, ${data.patient.name}!`;
         const cachedUser = JSON.parse(localStorage.getItem('user') || '{}');
         localStorage.setItem('user', JSON.stringify({ ...cachedUser, name: data.patient.name }));
       } catch (err) {
-        msg.style.color = '#f87171';
+        msg.style.color = '#c0262d';
         msg.textContent = err.message;
       } finally {
         btn.disabled = false;
@@ -577,11 +622,11 @@ input[type="time"] { color-scheme: dark; }
         const data = await res.json();
         if (!res.ok) throw new Error(data.message);
 
-        msg.style.color = '#34d399';
+        msg.style.color = '#11663a';
         msg.textContent = 'Password changed!';
         document.getElementById('passwordForm').reset();
       } catch (err) {
-        msg.style.color = '#f87171';
+        msg.style.color = '#c0262d';
         msg.textContent = err.message;
       } finally {
         btn.disabled = false;
@@ -628,10 +673,10 @@ input[type="time"] { color-scheme: dark; }
             <div style="text-align:right;display:flex;align-items:center;gap:10px;">
               <div>
                 <div class="dose-time">${d.scheduledTime}</div>
-                <div style="color:#94a3b8;font-size:11px;margin-top:4px;text-transform:uppercase;">${d.status}</div>
+                <div style="color: #5b6b86;font-size:11px;margin-top:4px;text-transform:uppercase;">${d.status}</div>
                 ${d.status === 'pending' ? `<button class="btn btn-confirm" onclick="confirmDose('${d._id}')">Confirm</button>` : ''}
               </div>
-              <button onclick="deleteDose('${d._id}')" title="Delete this dose" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:16px;padding:4px 6px;border-radius:6px;transition:color 0.15s, background 0.15s;" onmouseover="this.style.color='#f87171';this.style.background='rgba(248,113,113,0.1)';" onmouseout="this.style.color='#64748b';this.style.background='none';">🗑️</button>
+              <button onclick="deleteDose('${d._id}')" title="Delete this dose" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:16px;padding:4px 6px;border-radius:6px;transition:color 0.15s, background 0.15s;" onmouseover="this.style.color='#c0262d';this.style.background='rgba(248,113,113,0.1)';" onmouseout="this.style.color='#64748b';this.style.background='none';">🗑️</button>
             </div>
           </div>
         `).join('');
@@ -784,7 +829,7 @@ input[type="time"] { color-scheme: dark; }
         }).catch(() => {});
       }
       if (doctorPhone) {
-        const text = encodeURIComponent(`Hello Dr. ${doctorName}, this is ${user.name || 'a Biomexa patient'}.${isHighRisk ? ' My current adherence risk is HIGH — I would like to speak with you as soon as possible.' : ''}`);
+        const text = encodeURIComponent(`Hello Dr. ${String(doctorName || '').replace(/^dr\.?\s+/i, '')}, this is ${user.name || 'a Biomexa patient'}.${isHighRisk ? ' My current adherence risk is HIGH — I would like to speak with you as soon as possible.' : ''}`);
         window.open(`https://wa.me/${doctorPhone}?text=${text}`, '_blank');
       } else {
         alert('Connect request sent — the doctor will reach out to you shortly.');
@@ -804,10 +849,10 @@ input[type="time"] { color-scheme: dark; }
         const badge = document.getElementById('waStatusBadge');
         if (status.msg91Configured) {
           badge.textContent = '✅ Active';
-          badge.style.color = '#34d399';
+          badge.style.color = '#11663a';
         } else {
           badge.textContent = 'Not active yet';
-          badge.style.color = '#f87171';
+          badge.style.color = '#c0262d';
           document.getElementById('waNotConfigured').style.display = 'block';
         }
       })
@@ -815,7 +860,7 @@ input[type="time"] { color-scheme: dark; }
 
     function testWhatsapp() {
       const msg = document.getElementById('waMsg');
-      msg.style.color = '#94a3b8';
+      msg.style.color = '#5b6b86';
       msg.textContent = 'Sending test message...';
       fetch(`${API_URL}/api/patient/test-whatsapp`, {
         method: 'POST',
@@ -826,7 +871,7 @@ input[type="time"] { color-scheme: dark; }
           msg.style.color = ok ? '#34d399' : '#f87171';
           msg.textContent = data.message;
         })
-        .catch(() => { msg.style.color = '#f87171'; msg.textContent = 'Test failed — check your connection.'; });
+        .catch(() => { msg.style.color = '#c0262d'; msg.textContent = 'Test failed — check your connection.'; });
     }
 
     // ===== Multi-time reminder rows =====
@@ -848,9 +893,9 @@ input[type="time"] { color-scheme: dark; }
       row.innerHTML = `
         <div style="flex:1;">
           <input type="time" id="medTime${id}" required value="${initialValue || ''}" onchange="updateTimePreview(${id})" style="width:100%;">
-          <small id="medTimePreview${id}" style="display:block;margin-top:4px;color:#5eead4;font-size:12px;"></small>
+          <small id="medTimePreview${id}" style="display:block;margin-top:4px;color: #13804a;font-size:12px;"></small>
         </div>
-        ${id > 1 ? `<button type="button" onclick="removeTimeRow(${id})" style="background:none;border:1px solid #475569;color:#f87171;padding:8px 10px;border-radius:6px;cursor:pointer;height:38px;">✕</button>` : ''}
+        ${id > 1 ? `<button type="button" onclick="removeTimeRow(${id})" style="background:none;border: 1px solid #e2e8f2;color: #c0262d;padding:8px 10px;border-radius:6px;cursor:pointer;height:38px;">✕</button>` : ''}
       `;
       container.appendChild(row);
       if (initialValue) updateTimePreview(id);
@@ -965,12 +1010,12 @@ input[type="time"] { color-scheme: dark; }
         const data = await res.json();
         if (!res.ok) throw new Error(data.message || 'Could not save vitals');
 
-        msg.style.color = '#34d399';
+        msg.style.color = '#11663a';
         msg.textContent = data.riskFlagged ? '⚠️ Saved — this reading was flagged for review.' : 'Saved!';
         document.getElementById('vitalsForm').reset();
         loadVitalsHistory();
       } catch (err) {
-        msg.style.color = '#f87171';
+        msg.style.color = '#c0262d';
         msg.textContent = err.message;
       } finally {
         btn.disabled = false;
@@ -998,7 +1043,7 @@ input[type="time"] { color-scheme: dark; }
         imgBtn.className = 'btn';
         imgBtn.style.cssText = 'width:auto;padding:8px 14px;font-size:12.5px;';
         rxBtn.className = '';
-        rxBtn.style.cssText = 'width:auto;padding:8px 14px;font-size:12.5px;background:#1e293b;border:1px solid #334155;border-radius:8px;color:#94a3b8;cursor:pointer;';
+        rxBtn.style.cssText = 'width:auto;padding:8px 14px;font-size:12.5px;background: #ffffff;border: 1px solid #e2e8f2;border-radius:8px;color: #5b6b86;cursor:pointer;';
         disclaimer.style.display = 'block';
         fileInput.accept = 'image/jpeg,image/png,image/webp'; // no PDF for imaging
         dropzone.textContent = '📎 Click to choose up to 3 X-ray/scan photos — JPG, PNG, or WEBP, up to 5MB each';
@@ -1006,7 +1051,7 @@ input[type="time"] { color-scheme: dark; }
         rxBtn.className = 'btn';
         rxBtn.style.cssText = 'width:auto;padding:8px 14px;font-size:12.5px;';
         imgBtn.className = '';
-        imgBtn.style.cssText = 'width:auto;padding:8px 14px;font-size:12.5px;background:#1e293b;border:1px solid #334155;border-radius:8px;color:#94a3b8;cursor:pointer;';
+        imgBtn.style.cssText = 'width:auto;padding:8px 14px;font-size:12.5px;background: #ffffff;border: 1px solid #e2e8f2;border-radius:8px;color: #5b6b86;cursor:pointer;';
         disclaimer.style.display = 'none';
         fileInput.accept = 'image/jpeg,image/png,image/webp,application/pdf';
         dropzone.textContent = '📎 Click to choose up to 3 files — JPG, PNG, or PDF, up to 5MB each';
@@ -1026,7 +1071,7 @@ input[type="time"] { color-scheme: dark; }
       if (!files.length) return;
 
       if (files.length > MAX_UPLOAD_FILES) {
-        msg.style.color = '#f87171';
+        msg.style.color = '#c0262d';
         msg.textContent = `Please choose up to ${MAX_UPLOAD_FILES} files at once.`;
         input.value = '';
         return;
@@ -1037,7 +1082,7 @@ input[type="time"] { color-scheme: dark; }
         : ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
       for (const file of files) {
         if (!allowed.includes(file.type)) {
-          msg.style.color = '#f87171';
+          msg.style.color = '#c0262d';
           msg.textContent = currentDocumentType === 'imaging'
             ? `"${file.name}" — X-rays/imaging should be JPG, PNG, or WEBP photos, not PDF.`
             : `"${file.name}" — only JPG, PNG, WEBP, or PDF files are supported.`;
@@ -1045,7 +1090,7 @@ input[type="time"] { color-scheme: dark; }
           return;
         }
         if (file.size > 5 * 1024 * 1024) {
-          msg.style.color = '#f87171';
+          msg.style.color = '#c0262d';
           msg.textContent = `"${file.name}" is too large — please choose something under 5MB.`;
           input.value = '';
           return;
@@ -1100,7 +1145,7 @@ input[type="time"] { color-scheme: dark; }
         selectedFiles = [];
         loadUploadedReports();
       } catch (err) {
-        msg.style.color = '#f87171';
+        msg.style.color = '#c0262d';
         msg.textContent = err.message;
       } finally {
         btn.disabled = false;
@@ -1113,7 +1158,7 @@ input[type="time"] { color-scheme: dark; }
     // inject markup.
     function formatAnalysisForPortal(text) {
       const escaped = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-      return escaped.replace(/\*([^*\n]+)\*/g, '<strong style="color:#f1f5f9;">$1</strong>');
+      return escaped.replace(/\*([^*\n]+)\*/g, '<strong style="color: #13213d;">$1</strong>');
     }
 
     function sendReportToWhatsapp(docId, btn) {
@@ -1168,24 +1213,24 @@ input[type="time"] { color-scheme: dark; }
         const date = new Date(d.uploadedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
         const statusBadge = d.analysisStatus === 'done' ? '✅' : d.analysisStatus === 'failed' ? '❌' : '⏳';
         const sendBtn = d.analysisStatus === 'done'
-          ? `<button onclick="sendReportToWhatsapp('${d._id}', this)" style="background:none;border:1px solid #334155;color:#5eead4;padding:4px 10px;border-radius:6px;font-size:11.5px;cursor:pointer;margin-top:8px;transition:border-color 0.15s;" onmouseover="this.style.borderColor='#5eead4';" onmouseout="this.style.borderColor='#334155';">📱 Send to WhatsApp</button>`
+          ? `<button onclick="sendReportToWhatsapp('${d._id}', this)" style="background:none;border: 1px solid #e2e8f2;color: #13804a;padding:4px 10px;border-radius:6px;font-size:11.5px;cursor:pointer;margin-top:8px;transition:border-color 0.15s;" onmouseover="this.style.borderColor='#5eead4';" onmouseout="this.style.borderColor='#e2e8f2';">📱 Send to WhatsApp</button>`
           : '';
         let reviewBadge = '';
         if (d.reviewStatus === 'confirmed') {
-          reviewBadge = `<div style="font-size:11.5px;color:#34d399;margin-top:6px;">✅ Reviewed and confirmed by Dr. ${(d.reviewedBy || '').replace(/</g,'&lt;')}</div>`;
+          reviewBadge = `<div style="font-size:11.5px;color: #11663a;margin-top:6px;">✅ Reviewed and confirmed by Dr. ${(d.reviewedBy || '').replace(/^dr\.?\s+/i, '').replace(/</g,'&lt;')}</div>`;
         } else if (d.reviewStatus === 'corrected') {
-          reviewBadge = `<div style="background:rgba(251,191,36,0.1);border:1px solid rgba(251,191,36,0.3);border-radius:6px;padding:8px 10px;margin-top:8px;font-size:12px;color:#fbbf24;"><strong>Doctor's correction (Dr. ${(d.reviewedBy || '').replace(/</g,'&lt;')}):</strong><br>${(d.doctorCorrection || '').replace(/</g,'&lt;')}</div>`;
+          reviewBadge = `<div style="background:rgba(251,191,36,0.1);border:1px solid rgba(251,191,36,0.3);border-radius:6px;padding:8px 10px;margin-top:8px;font-size:12px;color: #b45309;"><strong>Doctor's correction (Dr. ${(d.reviewedBy || '').replace(/^dr\.?\s+/i, '').replace(/</g,'&lt;')}):</strong><br>${(d.doctorCorrection || '').replace(/</g,'&lt;')}</div>`;
         }
         return `
-          <div style="background:#0f172a;border-radius:8px;padding:12px 14px;margin-bottom:8px;transition:background 0.15s;">
-            <div style="display:flex;justify-content:space-between;align-items:center;font-size:12.5px;color:#94a3b8;margin-bottom:6px;">
+          <div style="background: #f3f6fb;border-radius:8px;padding:12px 14px;margin-bottom:8px;transition:background 0.15s;">
+            <div style="display:flex;justify-content:space-between;align-items:center;font-size:12.5px;color: #5b6b86;margin-bottom:6px;">
               <span>${statusBadge} ${d.fileName}</span>
               <span style="display:flex;align-items:center;gap:10px;">
                 ${date}
-                <button onclick="deleteUploadedReport('${d._id}')" title="Delete this report" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:14px;padding:2px 4px;border-radius:4px;transition:color 0.15s;" onmouseover="this.style.color='#f87171';" onmouseout="this.style.color='#64748b';">🗑️</button>
+                <button onclick="deleteUploadedReport('${d._id}')" title="Delete this report" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:14px;padding:2px 4px;border-radius:4px;transition:color 0.15s;" onmouseover="this.style.color='#c0262d';" onmouseout="this.style.color='#64748b';">🗑️</button>
               </span>
             </div>
-            ${d.analysis ? `<div style="font-size:13px;color:#cbd5e1;white-space:pre-wrap;line-height:1.5;">${formatAnalysisForPortal(d.analysis)}</div>` : ''}
+            ${d.analysis ? `<div style="font-size:13px;color: #34425e;white-space:pre-wrap;line-height:1.5;">${formatAnalysisForPortal(d.analysis)}</div>` : ''}
             ${sendBtn}
             ${reviewBadge}
           </div>
@@ -1193,10 +1238,10 @@ input[type="time"] { color-scheme: dark; }
       }).join('');
 
       const toggleBtn = hiddenCount > 0
-        ? `<button onclick="toggleReportsExpanded()" style="background:none;border:none;color:#5eead4;cursor:pointer;font-size:12px;padding:6px 0;text-decoration:underline;">${reportsExpanded ? 'Show less' : `Show ${hiddenCount} more`}</button>`
+        ? `<button onclick="toggleReportsExpanded()" style="background:none;border:none;color: #13804a;cursor:pointer;font-size:12px;padding:6px 0;text-decoration:underline;">${reportsExpanded ? 'Show less' : `Show ${hiddenCount} more`}</button>`
         : '';
 
-      el.innerHTML = `<div style="font-size:12px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.04em;margin:14px 0 8px;">Past Uploads</div>${cards}${toggleBtn}`;
+      el.innerHTML = `<div style="font-size:12px;color: #5b6b86;text-transform:uppercase;letter-spacing:0.04em;margin:14px 0 8px;">Past Uploads</div>${cards}${toggleBtn}`;
     }
 
     function loadUploadedReports() {
@@ -1223,9 +1268,9 @@ input[type="time"] { color-scheme: dark; }
           el.innerHTML = doses.map(d => {
             const dateLabel = new Date(d.scheduledDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
             return `
-              <div style="display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid #1f2937;">
-                <span style="font-size:13px;color:#e2e8f0;">${d.medicineName}${d.dosage ? ' — ' + d.dosage : ''}</span>
-                <span style="font-size:12px;color:#f87171;">${dateLabel}, ${d.scheduledTime}</span>
+              <div style="display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom: 1px solid #e2e8f2;">
+                <span style="font-size:13px;color: #13213d;">${d.medicineName}${d.dosage ? ' — ' + d.dosage : ''}</span>
+                <span style="font-size:12px;color: #c0262d;">${dateLabel}, ${d.scheduledTime}</span>
               </div>
             `;
           }).join('');
@@ -1256,7 +1301,7 @@ input[type="time"] { color-scheme: dark; }
           document.getElementById('reportSendBtn').style.display = 'inline-block';
         })
         .catch(err => {
-          msg.style.color = '#f87171';
+          msg.style.color = '#c0262d';
           msg.textContent = err.message;
         })
         .finally(() => {
@@ -1273,7 +1318,7 @@ input[type="time"] { color-scheme: dark; }
       if (!breakdown || !breakdown.length) return '';
       const rows = breakdown.map(d => {
         const dateLabel = new Date(d.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
-        const statusBadge = d.status === 'taken' ? '<span style="color:#34d399;">✓ Taken</span>' : '<span style="color:#f87171;">✕ Missed</span>';
+        const statusBadge = d.status === 'taken' ? '<span style="color: #11663a;">✓ Taken</span>' : '<span style="color: #c0262d;">✕ Missed</span>';
         let vitalsCell = '<span style="color:#64748b;font-size:11.5px;">Estimated</span>';
         if (d.vitalsSource === 'logged' && d.vitals) {
           const parts = [];
@@ -1284,22 +1329,22 @@ input[type="time"] { color-scheme: dark; }
           vitalsCell = parts.length ? parts.join(' · ') : '<span style="color:#64748b;font-size:11.5px;">Logged, no readings</span>';
         }
         return `
-          <tr style="border-bottom:1px solid #1f2937;">
-            <td style="padding:8px 6px;font-size:12.5px;color:#e2e8f0;white-space:nowrap;">${dateLabel}</td>
-            <td style="padding:8px 6px;font-size:12.5px;color:#e2e8f0;">${d.medicineName}${d.dosage ? ' — ' + d.dosage : ''}</td>
+          <tr style="border-bottom: 1px solid #e2e8f2;">
+            <td style="padding:8px 6px;font-size:12.5px;color: #13213d;white-space:nowrap;">${dateLabel}</td>
+            <td style="padding:8px 6px;font-size:12.5px;color: #13213d;">${d.medicineName}${d.dosage ? ' — ' + d.dosage : ''}</td>
             <td style="padding:8px 6px;font-size:12.5px;">${statusBadge}</td>
-            <td style="padding:8px 6px;font-size:12.5px;color:#cbd5e1;">${vitalsCell}</td>
+            <td style="padding:8px 6px;font-size:12.5px;color: #34425e;">${vitalsCell}</td>
           </tr>
         `;
       }).join('');
 
       return `
-        <div style="border-top:1px solid #1f2937;margin:18px 0 0;padding-top:14px;">
-          <div style="font-size:12px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:8px;">📅 Day-by-Day Breakdown</div>
+        <div style="border-top: 1px solid #e2e8f2;margin:18px 0 0;padding-top:14px;">
+          <div style="font-size:12px;color: #5b6b86;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:8px;">📅 Day-by-Day Breakdown</div>
           <div style="overflow-x:auto;">
             <table style="width:100%;border-collapse:collapse;">
               <thead>
-                <tr style="border-bottom:1px solid #334155;">
+                <tr style="border-bottom: 1px solid #e2e8f2;">
                   <th style="text-align:left;padding:6px;font-size:11px;color:#64748b;text-transform:uppercase;">Date</th>
                   <th style="text-align:left;padding:6px;font-size:11px;color:#64748b;text-transform:uppercase;">Medicine</th>
                   <th style="text-align:left;padding:6px;font-size:11px;color:#64748b;text-transform:uppercase;">Dose</th>
@@ -1322,26 +1367,26 @@ input[type="time"] { color-scheme: dark; }
 
       content.innerHTML = `
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:16px;">
-          <div style="background:#0f172a;border-radius:8px;padding:12px;text-align:center;">
+          <div style="background: #f3f6fb;border-radius:8px;padding:12px;text-align:center;">
             <div style="font-size:22px;font-weight:700;color:${scoreColor};">${r.effectiveness_score}</div>
             <div style="font-size:11px;color:#64748b;">${r.effectiveness_category}</div>
           </div>
-          <div style="background:#0f172a;border-radius:8px;padding:12px;text-align:center;">
-            <div style="font-size:22px;font-weight:700;color:#5eead4;">${r.adherence_summary?.adherence_rate ?? '—'}%</div>
+          <div style="background: #f3f6fb;border-radius:8px;padding:12px;text-align:center;">
+            <div style="font-size:22px;font-weight:700;color: #13804a;">${r.adherence_summary?.adherence_rate ?? '—'}%</div>
             <div style="font-size:11px;color:#64748b;">Adherence</div>
           </div>
-          <div style="background:#0f172a;border-radius:8px;padding:12px;text-align:center;">
-            <div style="font-size:22px;font-weight:700;color:#f1f5f9;">${r.course_duration_days}</div>
+          <div style="background: #f3f6fb;border-radius:8px;padding:12px;text-align:center;">
+            <div style="font-size:22px;font-weight:700;color: #13213d;">${r.course_duration_days}</div>
             <div style="font-size:11px;color:#64748b;">Days Tracked</div>
           </div>
         </div>
         <div style="margin-bottom:14px;">
-          <div style="font-size:12px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px;">🔍 Key Insights</div>
-          <ul style="margin:0;padding-left:18px;font-size:13px;color:#cbd5e1;">${insightsList}</ul>
+          <div style="font-size:12px;color: #5b6b86;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px;">🔍 Key Insights</div>
+          <ul style="margin:0;padding-left:18px;font-size:13px;color: #34425e;">${insightsList}</ul>
         </div>
         <div>
-          <div style="font-size:12px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px;">💡 Advice For Further Treatment</div>
-          <ul style="margin:0;padding-left:18px;font-size:13px;color:#cbd5e1;">${recsList}</ul>
+          <div style="font-size:12px;color: #5b6b86;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px;">💡 Advice For Further Treatment</div>
+          <ul style="margin:0;padding-left:18px;font-size:13px;color: #34425e;">${recsList}</ul>
         </div>
         ${renderDailyBreakdownTable(r.dailyBreakdown)}
         ${!r.usedRealVitals ? '<div style="margin-top:14px;font-size:11.5px;color:#64748b;">📌 Based on estimated vitals — log real readings on WhatsApp or above for a more accurate report.</div>' : ''}
@@ -1365,7 +1410,7 @@ input[type="time"] { color-scheme: dark; }
           msg.textContent = data.message;
         })
         .catch(() => {
-          msg.style.color = '#f87171';
+          msg.style.color = '#c0262d';
           msg.textContent = 'Could not send right now.';
         })
         .finally(() => {
@@ -1391,8 +1436,8 @@ input[type="time"] { color-scheme: dark; }
             if (v.glucose) parts.push(`Sugar ${v.glucose} mg/dL`);
             const date = new Date(v.recordedAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
             return `
-              <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #1f2937;">
-                <span style="font-size:13px;color:#e2e8f0;">${parts.join(' · ')}</span>
+              <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom: 1px solid #e2e8f2;">
+                <span style="font-size:13px;color: #13213d;">${parts.join(' · ')}</span>
                 <span style="font-size:11px;color:#64748b;">${date}</span>
               </div>
             `;

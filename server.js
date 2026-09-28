@@ -3340,7 +3340,10 @@ const doctorAuth = (req, res, next) => {
 // Doctor signup — creates a real doctor account for the "Connect with a Doctor" portal
 app.post('/api/doctors/register', signupLimiter, async (req, res) => {
   try {
-    const { name, email, phone, password, specialty, licenseNumber, experienceYears, bio } = req.body;
+    const { email, phone, password, specialty, licenseNumber, experienceYears, bio } = req.body;
+    // Stored without a leading "Dr." — every message and page adds it, so a doctor who typed
+    // "Dr. Aditi Sharma" (as the signup form's own example shows) would otherwise read "Dr. Dr. …".
+    const name = String(req.body.name || '').trim().replace(/^dr\.?\s+/i, '');
     if (!name || !phone || !password || !licenseNumber) {
       return res.status(400).json({ message: 'Name, WhatsApp number, password and license number are required' });
     }

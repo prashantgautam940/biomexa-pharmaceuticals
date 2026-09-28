@@ -9,29 +9,31 @@
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body {
   min-height: 100vh;
-  background: #0f172a;
+  background: #f3f6fb;
   font-family: system-ui, -apple-system, sans-serif;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #f1f5f9;
+  color: #13213d;
   flex-direction: column;
   gap: 16px;
 }
 .spinner {
   width: 40px;
   height: 40px;
-  border: 3px solid #334155;
-  border-top-color: #14b8a6;
+  border: 3px solid #e2e8f2;
+  border-top-color: #27b566;
   border-radius: 50%;
   animation: spin 1s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
-p { color: #94a3b8; font-size: 14px; }
-a { color: #14b8a6; text-decoration: none; }
+p { color: #5b6b86; font-size: 14px; }
+a { color: #13804a; text-decoration: none; }
 a:hover { text-decoration: underline; }
 </style>
 <base target="_blank">
+<link rel="stylesheet" href="css/biomexa-ui.css">
+<script src="js/biomexa-ui.js" defer></script>
 </head>
 <body>
   <div class="spinner"></div>

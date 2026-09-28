@@ -1,0 +1,139 @@
+/* =====================================================================
+   Biomexa UI — shared light theme for every page of the platform.
+   Same tokens as the AI Pharmacist pages (products/ai/ai-pharmacist.css):
+   packaging navy + green on a soft light background, with gentle 3D depth.
+   Loaded AFTER each page's own <style>, so it wins where they overlap.
+   ===================================================================== */
+:root {
+  --bx-navy: #16336b;
+  --bx-navy-2: #1f4494;
+  --bx-green: #1c9a55;
+  --bx-green-2: #27b566;
+  --bx-green-text: #13804a;
+  --bx-green-soft: #e8f6ee;
+  --bx-blue-soft: #eaf0fb;
+  --bx-bg: #f3f6fb;
+  --bx-card: #ffffff;
+  --bx-inner: #f6f8fc;
+  --bx-text: #13213d;
+  --bx-muted: #5b6b86;
+  --bx-line: #e2e8f2;
+  --bx-warn: #b45309;
+  --bx-warn-soft: #fff6e6;
+  --bx-danger: #c0262d;
+  --bx-danger-soft: #fdecec;
+  --bx-radius: 18px;
+  --bx-shadow: 0 1px 2px rgba(19, 33, 61, 0.05), 0 8px 24px rgba(19, 33, 61, 0.07);
+  --bx-shadow-lift: 0 2px 4px rgba(19, 33, 61, 0.06), 0 18px 40px rgba(19, 33, 61, 0.13);
+}
+
+html { scroll-behavior: smooth; }
+body {
+  font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif !important;
+  background: var(--bx-bg) !important;
+  color: var(--bx-text) !important;
+  -webkit-font-smoothing: antialiased;
+}
+::selection { background: rgba(28, 154, 85, 0.22); }
+
+/* ---------- Header / navigation (every page's top bar) ---------- */
+body > header, .site-header, header.header, .navbar, nav.navbar, body > nav:first-of-type:not(.actionbar) {
+  background: rgba(255, 255, 255, 0.92) !important;
+  backdrop-filter: saturate(180%) blur(12px);
+  -webkit-backdrop-filter: saturate(180%) blur(12px);
+  border-bottom: 1px solid var(--bx-line) !important;
+  box-shadow: 0 1px 0 rgba(19, 33, 61, 0.02);
+  color: var(--bx-text) !important;
+}
+body > header a, .site-header a, .navbar a, .site-nav a, header nav a { color: var(--bx-muted) !important; }
+body > header a:hover, .site-header a:hover, .navbar a:hover, .site-nav a:hover, header nav a:hover { color: var(--bx-navy) !important; }
+header nav a.active, .site-nav a.active, .nav-link.active { color: var(--bx-navy) !important; font-weight: 700; }
+
+/* ---------- Form controls ---------- */
+input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]):not([type=color]), select, textarea {
+  background: #fff !important;
+  color: var(--bx-text) !important;
+  border: 1px solid #cfd8e6 !important;
+  border-radius: 12px;
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+input::placeholder, textarea::placeholder { color: #8a97ad !important; }
+input:focus, select:focus, textarea:focus {
+  outline: none !important;
+  border-color: var(--bx-navy-2) !important;
+  box-shadow: 0 0 0 3px rgba(31, 68, 148, 0.15) !important;
+}
+input:disabled, select:disabled, textarea:disabled { background: var(--bx-inner) !important; color: var(--bx-muted) !important; }
+input[type=checkbox], input[type=radio] { accent-color: var(--bx-green); }
+label { color: #34425e; }
+option { background: #fff; color: var(--bx-text); }
+
+/* ---------- 3D depth on cards ----------
+   Cards float slightly above the page and lift towards the pointer on hover
+   (tilt driven by js/biomexa-ui.js on mouse/trackpad devices only). */
+.bx-3d {
+  transform-style: preserve-3d;
+  transition: transform .25s cubic-bezier(.2, .8, .2, 1), box-shadow .25s ease;
+  will-change: transform;
+}
+.bx-3d:hover { box-shadow: var(--bx-shadow-lift) !important; }
+.bx-3d::after {
+  /* soft light sheen that follows the tilt */
+  content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  background: radial-gradient(600px circle at var(--bx-mx, 50%) var(--bx-my, 0%), rgba(255, 255, 255, 0.55), transparent 40%);
+  opacity: 0; transition: opacity .25s ease;
+}
+.bx-3d:hover::after { opacity: 1; }
+
+/* Buttons get a tactile pressed state everywhere */
+button, .btn, a.btn { transition: transform .12s ease, box-shadow .15s ease, filter .15s ease, background .15s ease; }
+button:active:not(:disabled), .btn:active { transform: translateY(1px) scale(0.99); }
+
+/* ---------- Shared status helpers used across portals ---------- */
+.bx-muted { color: var(--bx-muted) !important; }
+
+/* Scrollbars that suit a light UI */
+* { scrollbar-color: #c7d1e2 transparent; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: #c7d1e2; border-radius: 999px; border: 2px solid transparent; background-clip: padding-box; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+  .bx-3d { transform: none !important; }
+}
+
+/* ---------- Sign-in / sign-up / reset pages (body.bx-auth) ---------- */
+body.bx-auth .main-content { display: flex; align-items: center; justify-content: center; gap: 0; padding: 28px 16px; }
+body.bx-auth .main-content > .container {
+  background: var(--bx-card); border: 1px solid var(--bx-line); border-radius: 22px; box-shadow: var(--bx-shadow-lift);
+  padding: 34px 28px !important; max-width: 440px !important; position: relative; z-index: 1;
+}
+body.bx-auth .bx-auth-side {
+  display: none; width: 400px; align-self: stretch; margin-right: -22px; padding: 44px 58px 44px 40px;
+  background: linear-gradient(150deg, var(--bx-navy) 0%, var(--bx-navy-2) 65%, #2458b8 100%); color: #fff;
+  border-radius: 22px 0 0 22px; position: relative; overflow: hidden; box-shadow: var(--bx-shadow-lift);
+}
+body.bx-auth .bx-auth-side::after {
+  content: ''; position: absolute; right: -90px; bottom: -90px; width: 280px; height: 280px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(39, 181, 102, 0.4), transparent 70%);
+}
+body.bx-auth .bx-auth-side h2 { font-size: 1.7rem; line-height: 1.2; font-weight: 800; letter-spacing: -0.02em; margin: 14px 0 10px; color: #fff; }
+body.bx-auth .bx-auth-side p { color: #d6e1f7; font-size: 0.95rem; }
+body.bx-auth .bx-auth-side ul { list-style: none; margin-top: 22px; display: grid; gap: 12px; position: relative; z-index: 1; }
+body.bx-auth .bx-auth-side li { display: flex; gap: 10px; align-items: flex-start; font-size: 0.93rem; color: #eef3fd; }
+body.bx-auth .bx-auth-side li span { width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center; background: rgba(255, 255, 255, 0.14); flex-shrink: 0; font-size: 0.85rem; }
+body.bx-auth .bx-auth-side .bx-pill { display: inline-block; background: rgba(39, 181, 102, 0.2); border: 1px solid rgba(39, 181, 102, 0.55); color: #c9f5da; font-size: 0.78rem; font-weight: 600; padding: 5px 11px; border-radius: 999px; }
+@media (min-width: 900px) { body.bx-auth .bx-auth-side { display: block; } }
+
+/* ---------- Phone header: logo, then one swipeable row of links ---------- */
+@media (max-width: 760px) {
+  body > header, .site-header { flex-wrap: wrap !important; gap: 6px 12px !important; padding: 10px 16px !important; }
+  body > header > nav, .site-header > nav, .site-nav, body > header > .nav-links, .navbar:not(#navbar) > .nav-links {
+    width: 100%; display: flex !important; flex-wrap: nowrap !important; overflow-x: auto; gap: 18px !important;
+    scrollbar-width: none; padding: 2px 0 4px; -webkit-overflow-scrolling: touch;
+  }
+  body > header > nav::-webkit-scrollbar, .site-nav::-webkit-scrollbar, .nav-links::-webkit-scrollbar { display: none; }
+  body > header > .engine-badge { display: none !important; }
+  .navbar:not(#navbar) { flex-wrap: wrap !important; gap: 6px 12px !important; padding: 10px 16px !important; }
+  body > header > nav a, .site-nav a, .nav-links a, .nav-links button { white-space: nowrap; flex-shrink: 0; font-size: 0.9rem !important; }
+}

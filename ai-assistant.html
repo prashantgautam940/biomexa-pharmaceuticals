@@ -9,18 +9,18 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         :root {
-            --primary: #0d7377;
-            --primary-dark: #095457;
-            --primary-light: #14a085;
-            --accent: #f39c12;
-            --danger: #e74c3c;
-            --success: #27ae60;
-            --bg-dark: #0a0e17;
-            --bg-card: #111827;
-            --bg-light: #1f2937;
-            --text: #f3f4f6;
-            --text-muted: #9ca3af;
-            --border: #374151;
+            --primary: #16336b;
+            --primary-dark: #0f2552;
+            --primary-light: #1c9a55;
+            --accent: #d97706;
+            --danger: #c0262d;
+            --success: #1c9a55;
+            --bg-dark: #f3f6fb;
+            --bg-card: #ffffff;
+            --bg-light: #f6f8fc;
+            --text: #13213d;
+            --text-muted: #5b6b86;
+            --border: #e2e8f2;
         }
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -30,7 +30,7 @@
             line-height: 1.6;
         }
         header {
-            background: rgba(10, 14, 23, 0.95);
+            background: rgba(255,255,255,0.95);
             backdrop-filter: blur(10px);
             border-bottom: 1px solid var(--border);
             padding: 1rem 2rem;
@@ -45,7 +45,7 @@
         .logo i { font-size: 1.5rem; }
         .engine-badge {
             display: flex; align-items: center; gap: 0.5rem;
-            background: linear-gradient(135deg, rgba(13,115,119,0.2), rgba(20,160,133,0.1));
+            background: linear-gradient(135deg, rgba(28,154,85,0.2), rgba(28,154,85,0.1));
             border: 1px solid var(--primary);
             padding: 0.5rem 1rem;
             border-radius: 50px;
@@ -63,17 +63,17 @@
         nav a:hover { color: var(--primary-light); }
 
         .hero {
-            background: linear-gradient(135deg, var(--bg-dark) 0%, #0d1f2d 50%, var(--bg-dark) 100%);
+            background: linear-gradient(135deg, var(--bg-dark) 0%, #f3f6fb 50%, var(--bg-dark) 100%);
             padding: 5rem 2rem;
             text-align: center;
             border-bottom: 1px solid var(--border);
         }
         .hero h1 { font-size: 3.5rem; font-weight: 800; margin-bottom: 1rem; }
-        .hero h1 span { background: linear-gradient(90deg, var(--primary-light), #4ade80); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .hero h1 span { background: linear-gradient(90deg, var(--primary-light), #27b566); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
         .hero p { color: var(--text-muted); font-size: 1.2rem; max-width: 700px; margin: 0 auto 2rem; }
         .hero .subtitle {
             display: inline-flex; align-items: center; gap: 0.5rem;
-            background: rgba(13,115,119,0.15);
+            background: rgba(28,154,85,0.15);
             border: 1px solid var(--primary);
             padding: 0.75rem 1.5rem;
             border-radius: 50px;
@@ -130,7 +130,7 @@
         .drug-card .meta span {
             font-size: 0.75rem;
             padding: 0.25rem 0.75rem;
-            background: rgba(13,115,119,0.15);
+            background: rgba(28,154,85,0.15);
             border-radius: 50px;
             color: var(--primary-light);
         }
@@ -171,10 +171,12 @@
         }
     </style>
 <base target="_blank">
+<link rel="stylesheet" href="css/biomexa-ui.css">
+<script src="js/biomexa-ui.js" defer></script>
 </head>
 <body>
     <header>
-        <div class="logo"><img src="images/logo-full-white.png" alt="Biomexa Pharmaceuticals" style="height:28px;width:auto;"></div>
+        <div class="logo"><img src="images/logo-full.png" alt="Biomexa Pharmaceuticals" style="height:28px;width:auto;"></div>
         <div class="engine-badge">
             <div class="pulse"></div>
             Adaptive Adherence Intelligence Engine
@@ -287,7 +289,7 @@
     </div>
 
     <footer>
-        <p><img src="images/logo-full-white.png" alt="Biomexa" style="height:14px;width:auto;vertical-align:middle;margin-right:6px;opacity:0.8;">Biomexa Pharmaceuticals — Adaptive Adherence Intelligence Engine</p>
+        <p><img src="images/logo-full.png" alt="Biomexa" style="height:14px;width:auto;vertical-align:middle;margin-right:6px;opacity:0.8;">Biomexa Pharmaceuticals — Adaptive Adherence Intelligence Engine</p>
         <p style="margin-top: 0.5rem; font-size: 0.75rem;">This platform is for informational purposes. Always follow your physician's advice.</p>
     </footer>
 </body>
