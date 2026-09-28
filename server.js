@@ -3481,13 +3481,24 @@ app.delete('/api/doctors/imaging-history/:id', doctorAuth, async (req, res) => {
 // from any patient) shows up here until a doctor either confirms it's accurate or corrects it.
 // A correction also gets folded into the clinical reference library so similar future documents
 // benefit from the fix — see getReferenceContext.
+// Adds each document's patient name (one DB lookup for the whole list) so the doctor sees
+// "Rahul Sharma · +91…" instead of just a number. Matches any stored phone format.
+async function attachPatientNames(docs) {
+  const phones = [...new Set(docs.map(d => d.patientPhone).filter(Boolean))];
+  if (!phones.length) return docs.map(d => d.toObject());
+  const patients = await Patient.find({ phone: { $in: phones.flatMap(phoneVariants) } }).select('name phone');
+  const nameByDigits = {};
+  for (const p of patients) nameByDigits[String(p.phone).replace(/\D/g, '').slice(-10)] = p.name;
+  return docs.map(d => ({ ...d.toObject(), patientName: nameByDigits[String(d.patientPhone || '').replace(/\D/g, '').slice(-10)] || null }));
+}
+
 app.get('/api/doctors/review-queue', doctorAuth, async (req, res) => {
   try {
     const docs = await UploadedDocument.find({ analysisStatus: 'done', reviewStatus: 'unreviewed' })
       .select('-files -fileData')
       .sort({ uploadedAt: -1 })
       .limit(50);
-    res.json(docs);
+    res.json(await attachPatientNames(docs));
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -3501,7 +3512,7 @@ app.get('/api/doctors/reviewed-history', doctorAuth, async (req, res) => {
       .select('-files -fileData')
       .sort({ reviewedAt: -1 })
       .limit(50);
-    res.json(docs);
+    res.json(await attachPatientNames(docs));
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

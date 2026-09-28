@@ -917,7 +917,7 @@ function renderReviewCard(d, isHistory) {
   return `
     <div style="background: var(--bg-light); border-radius: 8px; padding: 14px; margin-bottom: 10px;" id="reviewCard_${d._id}">
       <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.78rem; color:var(--text-muted); margin-bottom:8px;">
-        <span>${typeLabel} · Patient: ${escapeReviewHtml(d.patientPhone || 'unknown')}</span>
+        <span>${typeLabel} · Patient: ${d.patientName ? `<strong style="color:var(--text);">${escapeReviewHtml(d.patientName)}</strong> · ` : ''}${escapeReviewHtml(d.patientPhone || 'unknown')}</span>
         <span>${date} ${statusHtml}</span>
       </div>
       <div style="font-size:0.82rem; color:var(--text); white-space:pre-wrap; line-height:1.5; margin-bottom:10px;">${analysisHtml}</div>
