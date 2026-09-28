@@ -251,7 +251,7 @@ input[type="time"] { color-scheme: dark; }
     </div>
 
     <!-- Connect with a Doctor -->
-    <div class="card" id="doctorConnectCard">
+    <div class="card" id="doctorConnectCard"><span id="connect-doctor" style="position:relative;top:-80px;"></span>
       <div class="card-header">
         <span class="card-title">🩺 Talk to a Doctor</span>
         <span id="doctorConnectHint" style="color:#64748b;font-size:12px;">Live WhatsApp connect</span>
@@ -302,7 +302,7 @@ input[type="time"] { color-scheme: dark; }
     </div>
 
     <!-- Treatment Report — real AI analysis of the whole course so far, same engine the doctor uses -->
-    <div class="card">
+    <div class="card" id="treatment-report">
       <div class="card-header">
         <span class="card-title">📊 Treatment Report</span>
       </div>
@@ -496,15 +496,17 @@ input[type="time"] { color-scheme: dark; }
     const token = localStorage.getItem('token');
     const user = JSON.parse(localStorage.getItem('user') || '{}');
 
+    // WhatsApp links deep-link to a section (e.g. #treatment-report) — carried through login.
+    const loginRedirect = 'login.html' + (location.hash ? '?next=' + encodeURIComponent('patient.html' + location.hash) : '');
     if (!token) {
-      window.location.href = 'login.html';
+      window.location.href = loginRedirect;
     } else {
       // Verify the token against the server before trusting anything cached in localStorage —
       // an old/expired/invalid token now gets kicked straight back to login instead of silently
       // showing stale cached data from a previous session on this device.
       fetch(`${API_URL}/api/patient/profile`, { headers: { 'Authorization': `Bearer ${token}` } })
         .then(r => {
-          if (!r.ok) { localStorage.clear(); window.location.href = 'login.html'; throw new Error('invalid session'); }
+          if (!r.ok) { localStorage.clear(); window.location.href = loginRedirect; throw new Error('invalid session'); }
           return r.json();
         })
         .then(profile => {

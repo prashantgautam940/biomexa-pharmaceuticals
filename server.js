@@ -1395,7 +1395,13 @@ const patientSchema = new mongoose.Schema({
     active: { type: Boolean, default: true },
     durationDays: Number, // optional — how many days this treatment runs for; null/undefined = ongoing indefinitely
     startDate: { type: Date, default: Date.now },
-    endDate: Date // computed from startDate + durationDays when durationDays is set; reminders stop after this date
+    endDate: Date, // computed from startDate + durationDays when durationDays is set; reminders stop after this date
+    // End-of-course follow-up (see processCompletedCourses): 0 = nothing sent yet, 1 = "course
+    // complete + report" sent, 2 = doctor/refill follow-up sent, 3 = final refill nudge sent.
+    completedAt: Date,
+    followUpStage: { type: Number, default: 0 },
+    lastFollowUpAt: Date,
+    courseSummary: { taken: Number, missed: Number, adherence: Number }
   }],
   createdAt: { type: Date, default: Date.now }
 });
@@ -2780,8 +2786,11 @@ async function generateTodaysDoses(todayStr) {
       for (const med of patient.medicines) {
         if (!med.active) continue;
 
-        if (med.endDate && new Date(med.endDate) < today) {
+        if (med.endDate && new Date(med.endDate) <= today) {
+          // Deactivated here too so no dose is created; processCompletedCourses sends the
+          // "course complete" message and follow-ups (it keys off endDate, not active).
           med.active = false;
+          med.completedAt = med.completedAt || today;
           expired++;
           continue;
         }
@@ -2823,6 +2832,228 @@ async function generateTodaysDoses(todayStr) {
   }
 }
 
+// ========== END OF TREATMENT COURSE ==========
+// When a medicine with a set duration reaches its endDate: reminders stop immediately (the course
+// is deactivated and any not-yet-sent doses for it are removed), and the patient gets a short
+// follow-up sequence on WhatsApp:
+//   Stage 1 (right away)  — "course complete", their adherence for the course, link to the full
+//                           treatment report, and a nudge to review it with their doctor.
+//   Stage 2 (+2 days)     — reminder to consult the doctor + refill link if the doctor continues it.
+//   Stage 3 (+7 days)     — last gentle refill / check-in reminder.
+// Follow-ups stop by themselves if the patient restarts the same medicine. Messages are only sent
+// 09:00–21:00 so nobody gets a WhatsApp at midnight; anything due overnight goes out in the morning.
+// Refill links point to the Biomexa product page when the medicine is a Biomexa product;
+// otherwise the message introduces the Biomexa range, always framed as "ask your doctor" —
+// patients shouldn't switch medicines on the strength of a WhatsApp message alone.
+const SITE_URL = (process.env.SITE_URL || 'https://biomexa-website.onrender.com').replace(/\/+$/, '');
+const FOLLOW_UP_DAYS = { 2: 2, 3: 7 }; // stage -> days after completion
+const COURSE_MSG_START_HOUR = 9, COURSE_MSG_END_HOUR = 21;
+
+// Optional approved template so these reach patients outside WhatsApp's 24-hour session window
+// (most will be — the course has ended, so they're no longer replying to dose reminders).
+// Suggested body: "✅ Biomexa — Hi {{1}}, your {{2}} treatment course update:\n\n{{3}}"
+const MSG91_COURSE_TEMPLATE_NAME = process.env.MSG91_COURSE_TEMPLATE_NAME || null;
+const MSG91_COURSE_TEMPLATE_NAMESPACE = process.env.MSG91_COURSE_TEMPLATE_NAMESPACE || MSG91_TEMPLATE_NAMESPACE;
+
+async function sendCourseTemplate(phone, patientName, medicineName, summaryLine) {
+  if (!MSG91_CONFIGURED || !MSG91_COURSE_TEMPLATE_NAME) {
+    return { success: false, provider: 'msg91_course_template_not_configured' };
+  }
+  try {
+    const res = await fetch('https://api.msg91.com/api/v5/whatsapp/whatsapp-outbound-message/bulk/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'authkey': MSG91_AUTH_KEY },
+      body: JSON.stringify({
+        integrated_number: MSG91_INTEGRATED_NUMBER,
+        content_type: 'template',
+        payload: {
+          messaging_product: 'whatsapp',
+          type: 'template',
+          template: {
+            name: MSG91_COURSE_TEMPLATE_NAME,
+            language: { code: MSG91_TEMPLATE_LANG, policy: 'deterministic' },
+            namespace: MSG91_COURSE_TEMPLATE_NAMESPACE,
+            to_and_components: [{
+              to: [phone.replace(/\D/g, '')],
+              components: {
+                body_1: { type: 'text', value: sanitizeTemplateParam(patientName || 'there', 60), parameter_name: 'patient_name' },
+                body_2: { type: 'text', value: sanitizeTemplateParam(medicineName, 60), parameter_name: 'medicine_name' },
+                body_3: { type: 'text', value: sanitizeTemplateParam(summaryLine, 600), parameter_name: 'summary' }
+              }
+            }]
+          }
+        }
+      }),
+      signal: AbortSignal.timeout(10000)
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      console.log('⚠️ MSG91 course template send failed:', JSON.stringify(data).substring(0, 500));
+      return { success: false, provider: 'msg91', detail: data };
+    }
+    console.log('✅ MSG91 course template sent to', phone);
+    return { success: true, provider: 'msg91' };
+  } catch (err) {
+    console.log('⚠️ MSG91 course template send error:', err.message);
+    return { success: false, provider: 'msg91', detail: err.message };
+  }
+}
+
+async function sendCourseMessage(phone, patientName, medicineName, summaryLine, fallbackMsg) {
+  const templateResult = await sendCourseTemplate(phone, patientName, medicineName, summaryLine);
+  if (templateResult.success) return templateResult;
+  return sendWhatsAppFree(phone, fallbackMsg);
+}
+
+// Matches a patient's medicine to a Biomexa product ("Telmexa AM 40mg" -> Telmexa AM).
+function findBiomexaProduct(medicineName) {
+  const n = String(medicineName || '').toLowerCase();
+  const key = Object.keys(MEDICINE_CATALOG).find(k => n.includes(k.toLowerCase()) || n.includes(MEDICINE_CATALOG[k].slug.replace(/-/g, ' ')));
+  return key ? { name: key, ...MEDICINE_CATALOG[key] } : null;
+}
+
+function refillLine(medicineName) {
+  const product = findBiomexaProduct(medicineName);
+  if (product) {
+    return {
+      text: `🛒 *Refill ${product.name}* — if your doctor continues it, order in one tap:\n${SITE_URL}${product.url}#orderForm`,
+      short: `If your doctor continues it, refill ${product.name} at ${SITE_URL}${product.url}`
+    };
+  }
+  return {
+    text: `💊 *Biomexa medicines* — quality BP & diabetes care (Telmexa AM, Diabmexa M 500) with free WhatsApp reminders. Ask your doctor if one is right for you:\n${SITE_URL}/products/index.html`,
+    short: `Ask your doctor about Biomexa medicines: ${SITE_URL}/products/index.html`
+  };
+}
+
+async function summarizeCourse(phone, med) {
+  const query = { patientPhone: phone, medicineName: med.name };
+  if (med.startDate) query.scheduledDate = { $gte: new Date(med.startDate).toISOString().split('T')[0] };
+  const doses = await Dose.find(query);
+  const taken = doses.filter(d => d.status === 'taken').length;
+  const missed = doses.filter(d => d.status !== 'taken' && d.status !== 'pending').length;
+  const unconfirmed = doses.filter(d => d.status === 'pending').length;
+  const total = taken + missed + unconfirmed;
+  const adherence = total ? Math.round((taken / total) * 100) : null;
+  return { taken, missed, unconfirmed, total, adherence };
+}
+
+function courseMessages(stage, patient, med, summary) {
+  const first = (patient.name || 'there').split(' ')[0];
+  const reportUrl = `${SITE_URL}/patient.html#treatment-report`;
+  const doctorUrl = `${SITE_URL}/patient.html#connect-doctor`;
+  const refill = refillLine(med.name);
+  const days = med.durationDays ? `${med.durationDays}-day ` : '';
+
+  if (stage === 1) {
+    const stats = summary.total
+      ? `✅ Taken: ${summary.taken} of ${summary.total} doses (${summary.adherence}% adherence)${summary.missed ? `\n❌ Missed: ${summary.missed}` : ''}${summary.unconfirmed ? `\n❔ Not confirmed: ${summary.unconfirmed}` : ''}`
+      : `We didn't receive any dose confirmations for this course.`;
+    const praise = summary.adherence == null ? '' : summary.adherence >= 90 ? '🌟 Excellent consistency — well done!' : summary.adherence >= 70 ? '👍 Good effort — a few doses were missed.' : '⚠️ Several doses were missed — please mention this to your doctor.';
+    return {
+      summaryLine: `Your ${days}course is complete and reminders have stopped. Adherence: ${summary.adherence ?? 'n/a'}%. View your treatment report at ${reportUrl} and review it with your doctor before stopping or continuing.`,
+      full: `🎉 *Treatment Course Complete*\n\nHi ${first}, your ${days}course of *${med.name}* has finished, so we've stopped its reminders.\n\n📊 *Course summary*\n${stats}\n${praise}\n\n📄 *Your treatment report* — see how the course went, day by day:\n${reportUrl}\n\n👨‍⚕️ *Next step:* please check with your doctor whether to stop, continue or change this medicine. Don't restart or stop on your own.\nConnect with a doctor: ${doctorUrl}\n\n${refill.text}\n\n- Biomexa Team`
+    };
+  }
+  if (stage === 2) {
+    return {
+      summaryLine: `It's been 2 days since your course ended. Have you consulted your doctor? Connect: ${doctorUrl}. ${refill.short}`,
+      full: `👨‍⚕️ *Time for a check-up?*\n\nHi ${first}, it's been 2 days since your *${med.name}* course ended.\n\nIf you haven't yet, please consult your doctor — share your treatment report so they can decide whether to continue:\n📄 ${reportUrl}\n\nNeed a doctor? Connect instantly: ${doctorUrl}\n\n${refill.text}\n\nIf your doctor restarts it, add it again on Biomexa and your reminders resume automatically.\n\n- Biomexa Team`
+    };
+  }
+  return {
+    summaryLine: `A week since your course ended. If your doctor continued it, don't run out. ${refill.short}`,
+    full: `💊 *Don't run out*\n\nHi ${first}, it's been a week since your *${med.name}* course ended.\n\nIf your doctor asked you to continue, make sure you have enough stock so you don't miss doses.\n\n${refill.text}\n\nNot sure whether to continue? Talk to a doctor: ${doctorUrl}\n\nThis is our last reminder about this course. Take care!\n\n- Biomexa Team`
+  };
+}
+
+let courseCheckRunning = false;
+async function processCompletedCourses() {
+  if (courseCheckRunning) return;
+  courseCheckRunning = true;
+  try {
+    const now = new Date();
+    const hour = now.getHours();
+    const withinSendingHours = hour >= COURSE_MSG_START_HOUR && hour < COURSE_MSG_END_HOUR;
+    const todayStr = now.toISOString().split('T')[0];
+
+    const patients = await Patient.find({
+      medicines: { $elemMatch: { endDate: { $ne: null, $lte: now }, followUpStage: { $not: { $gte: 3 } } } }
+    });
+
+    for (const patient of patients) {
+      let changed = false;
+      for (const med of patient.medicines) {
+        if (!med.endDate || new Date(med.endDate) > now || (med.followUpStage || 0) >= 3) continue;
+
+        // Stop reminders the moment the course ends — not just at the next daily run.
+        if (med.active || !med.completedAt) {
+          med.active = false;
+          med.completedAt = med.completedAt || now;
+          changed = true;
+          const removed = await Dose.deleteMany({
+            patientPhone: patient.phone, medicineName: med.name, status: 'pending', sentReminder: false,
+            scheduledDate: { $gte: todayStr }
+          });
+          console.log(`🏁 Course ended: ${med.name} for ${patient.phone} — reminders stopped${removed.deletedCount ? `, ${removed.deletedCount} upcoming dose(s) removed` : ''}`);
+        }
+
+        // Patient restarted the same medicine (new active entry) — no refill nudges needed.
+        const restarted = patient.medicines.some(m => m !== med && m.active && m.name.toLowerCase() === med.name.toLowerCase());
+        if (restarted && (med.followUpStage || 0) >= 1) { med.followUpStage = 3; changed = true; continue; }
+
+        // Courses that ended before this feature shipped (or while the service was down for days)
+        // shouldn't suddenly get a "your course just finished" message — close them out silently.
+        if (!med.followUpStage && now - new Date(med.endDate) > 3 * 86400000) {
+          await Patient.updateOne({ _id: patient._id, 'medicines._id': med._id }, { $set: { 'medicines.$.followUpStage': 3, 'medicines.$.active': false } });
+          med.followUpStage = 3;
+          continue;
+        }
+
+        const nextStage = (med.followUpStage || 0) + 1;
+        const dueAt = nextStage === 1 ? new Date(med.completedAt)
+          : new Date(new Date(med.completedAt).getTime() + FOLLOW_UP_DAYS[nextStage] * 86400000);
+        if (now < dueAt || !withinSendingHours) continue;
+
+        // Claim this stage atomically so two instances (zero-downtime deploys) never double-send.
+        const claimed = await Patient.updateOne(
+          { _id: patient._id, medicines: { $elemMatch: { _id: med._id, followUpStage: { $in: nextStage === 1 ? [0, null] : [nextStage - 1] } } } },
+          { $set: { 'medicines.$.followUpStage': nextStage, 'medicines.$.lastFollowUpAt': now, 'medicines.$.active': false, 'medicines.$.completedAt': med.completedAt } }
+        );
+        if (!claimed.modifiedCount) continue;
+        med.followUpStage = nextStage;
+
+        const summary = med.courseSummary?.taken != null && nextStage > 1
+          ? med.courseSummary : await summarizeCourse(patient.phone, med);
+        if (nextStage === 1) {
+          await Patient.updateOne({ _id: patient._id, 'medicines._id': med._id },
+            { $set: { 'medicines.$.courseSummary': { taken: summary.taken, missed: summary.missed, adherence: summary.adherence } } });
+        }
+
+        const { summaryLine, full } = courseMessages(nextStage, patient, med, summary);
+        const result = await sendCourseMessage(patient.phone, patient.name, med.name, summaryLine, full);
+        if (!result.success) {
+          // Delivery failed outright (MSG91 down) — roll the stage back so the next check retries.
+          await Patient.updateOne({ _id: patient._id, 'medicines._id': med._id }, { $set: { 'medicines.$.followUpStage': nextStage - 1 } });
+          med.followUpStage = nextStage - 1;
+        }
+        console.log(`📨 Course follow-up stage ${nextStage} for ${med.name} → ${patient.phone}: ${result.success ? 'sent' : 'failed, will retry'}`);
+      }
+      if (changed) {
+        // Only the active/completedAt flags were changed in memory; stages were written atomically above.
+        await Patient.updateOne({ _id: patient._id }, {
+          $set: Object.fromEntries(patient.medicines.flatMap((m, i) => m.completedAt
+            ? [[`medicines.${i}.active`, m.active], [`medicines.${i}.completedAt`, m.completedAt]] : []))
+        });
+      }
+    }
+  } catch (err) {
+    console.error('❌ Course completion check error:', err.message);
+  } finally {
+    courseCheckRunning = false;
+  }
+}
+
 cron.schedule('* * * * *', async () => {
   const now = new Date();
   const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
@@ -2831,6 +3062,12 @@ cron.schedule('* * * * *', async () => {
   if (lastDoseGenerationDate !== today) {
     lastDoseGenerationDate = today;
     await generateTodaysDoses(today);
+  }
+
+  // Course-end checks every 5 minutes (and on the first tick after a wake-up/restart).
+  if (now.getMinutes() % 5 === 0 || !processCompletedCourses.ranOnce) {
+    processCompletedCourses.ranOnce = true;
+    processCompletedCourses(); // not awaited — must never delay dose reminders
   }
 
   console.log(`⏰ [${currentTime}] Checking for pending doses...`);
@@ -2866,6 +3103,14 @@ cron.schedule('* * * * *', async () => {
       const patient = await Patient.findOne({ phone: dose.patientPhone });
       if (!patient) {
         console.log(`⚠️ Patient not found for ${dose.patientPhone}`);
+        continue;
+      }
+
+      // Course already over (ended between course checks) — never remind past the end date.
+      const sameMeds = patient.medicines.filter(m => m.name === dose.medicineName);
+      if (sameMeds.length && sameMeds.every(m => m.endDate && new Date(m.endDate) <= now)) {
+        await Dose.deleteOne({ _id: dose._id });
+        console.log(`🏁 Skipped reminder for ended course: ${dose.medicineName} → ${dose.patientPhone}`);
         continue;
       }
 
@@ -4045,7 +4290,8 @@ app.get('/api/whatsapp-status', (req, res) => {
     treatmentReportTemplateConfigured: !!MSG91_TREATMENT_REPORT_TEMPLATE_NAME,
     reportAnalysisTemplateConfigured: !!MSG91_REPORT_ANALYSIS_TEMPLATE_NAME,
     otpTemplateConfigured: !!MSG91_OTP_TEMPLATE_NAME,
-    loginTemplateConfigured: !!MSG91_LOGIN_TEMPLATE_NAME
+    loginTemplateConfigured: !!MSG91_LOGIN_TEMPLATE_NAME,
+    courseTemplateConfigured: !!MSG91_COURSE_TEMPLATE_NAME
   });
 });
 

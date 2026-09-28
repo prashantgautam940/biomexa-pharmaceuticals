@@ -270,13 +270,19 @@
   </div>
 
   <script>
+    // Only ever returns to a page on this site (patient.html + optional #section) — never an
+    // arbitrary URL, so ?next= can't be abused as an open redirect.
+    function postLoginTarget() {
+      const next = new URLSearchParams(location.search).get('next') || '';
+      return /^patient\.html(#[A-Za-z0-9_-]+)?$/.test(next) ? next : 'patient.html';
+    }
     const API_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
       ? 'http://localhost:3000'
       : 'https://biomexa-api-f9f6.onrender.com';
 
     // Redirect if already logged in
     if (localStorage.getItem('token')) {
-      window.location.href = 'patient.html';
+      window.location.href = postLoginTarget();
     }
 
     document.getElementById('loginForm').addEventListener('submit', async (e) => {
@@ -312,7 +318,7 @@
         document.getElementById('successText').textContent = 'Login successful! Redirecting...';
 
         setTimeout(() => {
-          window.location.href = 'patient.html';
+          window.location.href = postLoginTarget();
         }, 1200);
 
       } catch (err) {
