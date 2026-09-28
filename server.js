@@ -2851,7 +2851,7 @@ const COURSE_MSG_START_HOUR = 9, COURSE_MSG_END_HOUR = 21;
 
 // Optional approved template so these reach patients outside WhatsApp's 24-hour session window
 // (most will be — the course has ended, so they're no longer replying to dose reminders).
-// Suggested body: "✅ Biomexa — Hi {{1}}, your {{2}} treatment course update:\n\n{{3}}"
+// Suggested body: "✅ Biomexa — Hi {{1}}, here is an update on your {{2}} treatment course:\n\n{{3}}\n\nThank you for trusting Biomexa with your care. — Biomexa Team" (see .env.example)
 const MSG91_COURSE_TEMPLATE_NAME = process.env.MSG91_COURSE_TEMPLATE_NAME || null;
 const MSG91_COURSE_TEMPLATE_NAMESPACE = process.env.MSG91_COURSE_TEMPLATE_NAMESPACE || MSG91_TEMPLATE_NAMESPACE;
 
