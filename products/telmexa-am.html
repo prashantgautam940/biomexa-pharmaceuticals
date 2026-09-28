@@ -1,549 +1,127 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Telmexa AM - Telmisartan 40mg & Amlodipine 5mg | Biomexa Pharmaceuticals</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Telmexa AM — Telmisartan 40 mg + Amlodipine 5 mg Tablets | Biomexa Pharmaceuticals</title>
+<meta name="description" content="Telmexa AM (Telmisartan 40 mg + Amlodipine 5 mg Tablets) by Biomexa Pharmaceuticals — how to take it, food interactions, and free AI Pharmacist with WhatsApp reminders.">
+<meta name="theme-color" content="#16336b">
 <link rel="icon" type="image/svg+xml" href="../logo.svg">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <style>
-        :root {
-            --primary: #0d7377;
-            --primary-dark: #095457;
-            --primary-light: #14a085;
-            --accent: #f39c12;
-            --danger: #e74c3c;
-            --success: #27ae60;
-            --bg-dark: #0a0e17;
-            --bg-card: #111827;
-            --bg-light: #1f2937;
-            --text: #f3f4f6;
-            --text-muted: #9ca3af;
-            --border: #374151;
-        }
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: 'Inter', sans-serif;
-            background: var(--bg-dark);
-            color: var(--text);
-            line-height: 1.6;
-        }
-
-        /* Header */
-        header {
-            background: rgba(10, 14, 23, 0.95);
-            backdrop-filter: blur(10px);
-            border-bottom: 1px solid var(--border);
-            padding: 1rem 2rem;
-            position: sticky;
-            top: 0;
-            z-index: 100;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        .logo { display: flex; align-items: center; gap: 0.75rem; font-weight: 800; font-size: 1.25rem; color: var(--primary-light); }
-        .logo i { font-size: 1.5rem; }
-        nav { display: flex; gap: 2rem; }
-        nav a { color: var(--text-muted); text-decoration: none; font-weight: 500; transition: color 0.3s; }
-        nav a:hover { color: var(--primary-light); }
-
-        /* Hero */
-        .hero {
-            background: linear-gradient(135deg, var(--bg-dark) 0%, #0d1f2d 50%, var(--bg-dark) 100%);
-            padding: 4rem 2rem;
-            text-align: center;
-            border-bottom: 1px solid var(--border);
-        }
-        .hero h1 { font-size: 3rem; font-weight: 800; margin-bottom: 0.5rem; background: linear-gradient(90deg, var(--primary-light), #4ade80); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-        .hero .subtitle { color: var(--text-muted); font-size: 1.25rem; margin-bottom: 2rem; }
-        .badge { display: inline-flex; align-items: center; gap: 0.5rem; background: rgba(13, 115, 119, 0.2); border: 1px solid var(--primary); padding: 0.5rem 1.25rem; border-radius: 50px; font-size: 0.875rem; color: var(--primary-light); margin: 0 0.5rem; }
-
-        /* Main Content */
-        .container { max-width: 1200px; margin: 0 auto; padding: 3rem 2rem; }
-        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 3rem; }
-
-        /* Product Card */
-        .product-visual {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: 20px;
-            padding: 3rem;
-            text-align: center;
-            position: relative;
-            overflow: hidden;
-        }
-        .product-visual::before {
-            content: '';
-            position: absolute;
-            top: -50%; left: -50%; width: 200%; height: 200%;
-            background: radial-gradient(circle, rgba(13,115,119,0.1) 0%, transparent 70%);
-            animation: pulse 4s ease-in-out infinite;
-        }
-        @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.1); } }
-        .pill-visual {
-            width: 200px; height: 100px;
-            background: linear-gradient(135deg, #1a5f4a, #0d7377);
-            border-radius: 50px;
-            margin: 2rem auto;
-            display: flex; align-items: center; justify-content: center;
-            box-shadow: 0 20px 60px rgba(13,115,119,0.4);
-            position: relative;
-            z-index: 1;
-        }
-        .pill-visual span { font-weight: 800; font-size: 1.1rem; color: white; }
-        .qr-trigger {
-            margin-top: 2rem;
-            padding: 1.5rem;
-            background: linear-gradient(135deg, rgba(13,115,119,0.2), rgba(20,160,133,0.1));
-            border: 2px dashed var(--primary);
-            border-radius: 16px;
-            cursor: pointer;
-            transition: all 0.3s;
-            position: relative;
-            z-index: 1;
-        }
-        .qr-trigger:hover { background: rgba(13,115,119,0.3); transform: translateY(-2px); }
-        .qr-trigger i { font-size: 2.5rem; color: var(--primary-light); margin-bottom: 0.5rem; }
-        .qr-trigger h3 { color: var(--primary-light); margin-bottom: 0.25rem; }
-        .qr-trigger p { color: var(--text-muted); font-size: 0.875rem; }
-
-        /* Info Sections */
-        .section { margin-bottom: 3rem; }
-        .section-title {
-            font-size: 1.5rem; font-weight: 700;
-            display: flex; align-items: center; gap: 0.75rem;
-            margin-bottom: 1.5rem;
-            color: var(--primary-light);
-        }
-        .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
-        .info-card {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            padding: 1.25rem;
-            transition: transform 0.3s, border-color 0.3s;
-        }
-        .info-card:hover { transform: translateY(-3px); border-color: var(--primary); }
-        .info-card h4 { color: var(--text); font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.5rem; }
-        .info-card p { color: var(--text-muted); font-size: 0.95rem; }
-        .info-card .value { color: var(--primary-light); font-size: 1.25rem; font-weight: 700; }
-
-        /* Drug-Food Interactions */
-        .interaction-list { display: flex; flex-direction: column; gap: 1rem; }
-        .interaction-item {
-            display: flex; align-items: flex-start; gap: 1rem;
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            padding: 1.25rem;
-        }
-        .interaction-item.danger { border-left: 4px solid var(--danger); }
-        .interaction-item.warning { border-left: 4px solid var(--accent); }
-        .interaction-item.safe { border-left: 4px solid var(--success); }
-        .interaction-icon { width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 1.25rem; flex-shrink: 0; }
-        .interaction-item.danger .interaction-icon { background: rgba(231,76,60,0.2); color: var(--danger); }
-        .interaction-item.warning .interaction-icon { background: rgba(243,156,18,0.2); color: var(--accent); }
-        .interaction-item.safe .interaction-icon { background: rgba(39,174,96,0.2); color: var(--success); }
-        .interaction-content h4 { margin-bottom: 0.25rem; }
-        .interaction-content p { color: var(--text-muted); font-size: 0.9rem; }
-
-        /* Dosing Schedule */
-        .dose-timeline { display: flex; flex-direction: column; gap: 0; position: relative; }
-        .dose-timeline::before {
-            content: ''; position: absolute; left: 24px; top: 0; bottom: 0;
-            width: 2px; background: linear-gradient(to bottom, var(--primary), var(--primary-light));
-        }
-        .dose-item {
-            display: flex; align-items: flex-start; gap: 1.5rem;
-            padding: 1.25rem 0;
-            position: relative;
-        }
-        .dose-time {
-            width: 50px; height: 50px; border-radius: 50%;
-            background: var(--bg-light); border: 2px solid var(--primary);
-            display: flex; align-items: center; justify-content: center;
-            font-weight: 700; font-size: 0.75rem; color: var(--primary-light);
-            flex-shrink: 0; z-index: 1;
-        }
-        .dose-details h4 { margin-bottom: 0.25rem; }
-        .dose-details p { color: var(--text-muted); font-size: 0.9rem; }
-        .dose-details .tag {
-            display: inline-block; padding: 0.25rem 0.75rem;
-            background: rgba(13,115,119,0.2); color: var(--primary-light);
-            border-radius: 50px; font-size: 0.75rem; margin-top: 0.5rem;
-        }
-
-        /* CTA Buttons */
-        .btn {
-            display: inline-flex; align-items: center; gap: 0.5rem;
-            padding: 1rem 2rem; border-radius: 12px;
-            font-weight: 600; text-decoration: none; font-size: 1rem;
-            border: none; cursor: pointer; transition: all 0.3s;
-        }
-        .btn-primary { background: linear-gradient(135deg, var(--primary), var(--primary-light)); color: white; box-shadow: 0 10px 30px rgba(13,115,119,0.3); }
-        .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 15px 40px rgba(13,115,119,0.4); }
-        .btn-whatsapp { background: linear-gradient(135deg, #25d366, #128c7e); color: white; }
-        .btn-outline { background: transparent; border: 2px solid var(--primary); color: var(--primary-light); }
-        .btn-outline:hover { background: var(--primary); color: white; }
-
-        .cta-section {
-            background: linear-gradient(135deg, rgba(13,115,119,0.1), rgba(20,160,133,0.05));
-            border: 1px solid var(--border);
-            border-radius: 20px;
-            padding: 3rem;
-            text-align: center;
-            margin-top: 3rem;
-        }
-        .cta-section h2 { margin-bottom: 1rem; }
-        .cta-section p { color: var(--text-muted); margin-bottom: 2rem; max-width: 600px; margin-left: auto; margin-right: auto; }
-        .btn-group { display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap; }
-
-        /* Footer */
-        footer {
-            border-top: 1px solid var(--border);
-            padding: 2rem;
-            text-align: center;
-            color: var(--text-muted);
-            font-size: 0.875rem;
-        }
-
-        @media (max-width: 768px) {
-            .grid-2 { grid-template-columns: 1fr; }
-            .info-grid { grid-template-columns: 1fr; }
-            .hero h1 { font-size: 2rem; }
-            nav { gap: 1rem; font-size: 0.875rem; }
-        }
-    </style>
-<base target="_blank">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<link rel="stylesheet" href="ai/ai-pharmacist.css">
 </head>
 <body>
-    <header>
-        <div class="logo"><img src="../images/logo-full-white.png" alt="Biomexa Pharmaceuticals" style="height:28px;width:auto;"></div>
-        <nav>
-            <a href="../index.html">Home</a>
-            <a href="index.html">Products</a>
-            <a href="../ai-assistant.html">AI Assistant</a>
-            <a href="../doctor.html">Doctor Portal</a>
-            <a href="../patient.html">Patient Portal</a>
-            <a href="../login.html">Login</a>
-        </nav>
-    </header>
 
-    <section class="hero">
-        <div style="display: inline-flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem;">
-            <span class="badge"><i class="fas fa-shield-alt"></i> BP Management</span>
-            <span class="badge"><i class="fas fa-clock"></i> Once Daily</span>
-        </div>
+<header class="topbar">
+  <div class="topbar-inner">
+    <a class="logo" href="../index.html"><img src="../images/logo-full.png" alt="Biomexa Pharmaceuticals"></a>
+    <nav>
+      <a href="../index.html" class="hide-sm">Home</a>
+      <a href="index.html" class="hide-sm">Products</a>
+      <a href="ai/telmexa-am-ai.html" class="hide-sm">AI Pharmacist</a>
+      <a href="../patient.html" class="nav-cta"><i class="fas fa-user"></i> My Dashboard</a>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+  <section class="hero">
+    <div class="hero-inner">
+      <div>
+        <span class="verified"><i class="fas fa-shield-halved"></i> Biomexa Pharmaceuticals</span>
         <h1>Telmexa AM</h1>
-        <p class="subtitle">Telmisartan 40 mg & Amlodipine 5 mg Tablets</p>
-        <p style="color: var(--text-muted); max-width: 600px; margin: 0 auto;">
-            Dual-action antihypertensive therapy powered by the <strong style="color: var(--primary-light);">Adaptive Adherence Intelligence Engine</strong>
-        </p>
+        <div class="composition">Telmisartan 40 mg + Amlodipine 5 mg Tablets</div>
+        <div class="chips">
+          <span class="chip"><i class="fas fa-heart-pulse"></i> Blood pressure</span>
+          <span class="chip"><i class="fas fa-clock"></i> Once daily</span>
+          <span class="chip"><i class="fas fa-prescription"></i> Prescription medicine</span>
+        </div>
+        <p class="desc">A once-daily, dual-action tablet for high blood pressure. Telmisartan relaxes blood vessels by blocking angiotensin; amlodipine widens them — together giving steady 24-hour control.</p>
+        <div class="hero-actions">
+          <a class="btn btn-green" href="ai/telmexa-am-ai.html"><i class="fas fa-robot"></i> Open AI Pharmacist</a>
+          <a class="btn btn-outline-light" href="#order"><i class="fas fa-cart-shopping"></i> Order now</a>
+        </div>
+      </div>
+      <div class="pack"><img src="../images/products/telmexa-am-box.jpg" alt="Telmexa AM pack" width="702" height="423"></div>
+    </div>
+  </section>
+
+  <a class="section card scan-banner" href="ai/telmexa-am-ai.html">
+    <span class="qr"><i class="fas fa-qrcode"></i></span>
+    <div><strong>Taking Telmexa AM? Your free AI Pharmacist is ready</strong><span>Scan the QR on your pack or tap here — voice guide, WhatsApp dose reminders, health tips and progress tracking.</span></div>
+    <i class="fas fa-chevron-right go"></i>
+  </a>
+
+  <section class="section card" id="info">
+    <h2><span class="ico navy"><i class="fas fa-circle-info"></i></span>Product information</h2>
+    <div class="info-grid"><div class="info"><div class="k">Composition</div><div class="v">Telmisartan 40 mg</div><div class="s">Amlodipine besylate 5 mg</div></div><div class="info"><div class="k">Category</div><div class="v">Antihypertensive</div><div class="s">ARB + calcium channel blocker</div></div><div class="info"><div class="k">Pack size</div><div class="v">10 × 10 tablets</div><div class="s">Blister packs</div></div><div class="info"><div class="k">Storage</div><div class="v">15–30 °C</div><div class="s">Protect from moisture & light</div></div></div>
+  </section>
+
+  <div class="grid-2 section">
+    <section class="card" id="how">
+      <h2><span class="ico green"><i class="fas fa-clock"></i></span>Your daily routine</h2>
+      <p class="lead" style="margin-bottom:0">When to take Telmexa AM — and what to do the rest of the day.</p>
+      <ul class="timeline"><li><span class="dot dose"><i class="fas fa-sun"></i></span><div><div class="when">6–8 AM</div><h3>Take your tablet</h3><p>One tablet with breakfast and a full glass of water. Morning dosing covers the natural early-morning rise in BP.</p></div></li><li><span class="dot rest"><i class="fas fa-heart-pulse"></i></span><div><div class="when">12–2 PM</div><h3>Check your BP</h3><p>No dose needed. Check your BP if you can, keep lunch low in salt, and drink enough water.</p></div></li><li><span class="dot no"><i class="fas fa-ban"></i></span><div><div class="when">6–8 PM</div><h3>No evening dose</h3><p>Telmexa AM is taken once a day only. Don't take a second tablet in the evening.</p></div></li><li><span class="dot rest"><i class="fas fa-moon"></i></span><div><div class="when">10 PM</div><h3>Rest well</h3><p>Aim for 7–8 hours of sleep — poor sleep can push your BP up.</p></div></li></ul>
+      <a class="btn btn-wa btn-block" href="ai/telmexa-am-ai.html#reminders" style="margin-top:10px"><i class="fab fa-whatsapp"></i> Get free WhatsApp dose reminders</a>
     </section>
 
-    <div class="container">
-        <div class="grid-2">
-            <div class="product-visual">
-                <div class="pill-visual"><span>Telmexa AM</span></div>
-                <p style="color: var(--text-muted); margin-bottom: 2rem;">Film-coated tablets for oral administration</p>
-
-                <a href="ai/telmexa-am-ai.html" style="text-decoration: none;">
-                    <div class="qr-trigger">
-                        <i class="fas fa-qrcode"></i>
-                        <h3>Scan QR Code</h3>
-                        <p>Activate your personal AI voice guide & adherence plan</p>
-                    </div>
-                </a>
-
-                <div id="reminderWidget" style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px; padding: 1.5rem; margin-top: 1.5rem; text-align: left;">
-                    <h3 style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; font-size: 1.05rem;"><i class="fab fa-whatsapp" style="color: var(--success);"></i> Set a WhatsApp Reminder</h3>
-                    <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 1rem;">Get a WhatsApp message when it's time to take Telmexa AM — free, takes 15 seconds.</p>
-                    <div id="reminderMsg91Note" style="display:none;font-size:0.78rem;color:#34d399;margin-bottom:10px;">✅ Powered by Biomexa's official WhatsApp number — no app or setup needed.</div>
-                    <form id="reminderForm">
-                        <div style="margin-bottom: 0.75rem;">
-                            <input type="text" id="remName" placeholder="Your name" required style="width:100%;padding:10px 12px;background:var(--bg-light);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:0.88rem;">
-                        </div>
-                        <div style="margin-bottom: 0.75rem;">
-                            <input type="tel" id="remPhone" placeholder="WhatsApp number, e.g. +919876543210" required style="width:100%;padding:10px 12px;background:var(--bg-light);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:0.88rem;">
-                        </div>
-                        <div style="margin-bottom: 1rem;">
-                            <label style="display:block;font-size:0.78rem;color:var(--text-muted);margin-bottom:4px;">Preferred time</label>
-                            <input type="time" id="remTime" value="08:00" required onchange="updateRemTimePreview()" style="width:100%;padding:10px 12px;background:var(--bg-light);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:0.88rem;">
-                            <small id="remTimePreview" style="display:block;margin-top:4px;color:#5eead4;font-size:11px;"></small>
-                        </div>
-                        <div style="margin-bottom: 1rem;">
-                            <label style="display:block;font-size:0.78rem;color:var(--text-muted);margin-bottom:4px;">Treatment duration (days) — optional</label>
-                            <input type="number" id="remDuration" placeholder="e.g. 30 — leave blank for ongoing" min="1" max="365" style="width:100%;padding:10px 12px;background:var(--bg-light);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:0.88rem;">
-                        </div>
-                        <button type="submit" id="remSubmitBtn" style="width:100%;padding:12px;border:none;border-radius:8px;background:linear-gradient(135deg,var(--primary),var(--primary-light));color:white;font-weight:600;font-size:0.9rem;cursor:pointer;">Set My Reminder</button>
-                        <div id="remResultMsg" style="font-size:0.8rem;margin-top:10px;"></div>
-                    </form>
-                </div>
-
-                <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px; padding: 1.5rem; margin-top: 1.5rem; text-align: left;">
-                    <h3 style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; font-size: 1.05rem;"><i class="fas fa-shopping-cart" style="color: var(--accent);"></i> Place an Order</h3>
-                    <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 1rem;">Order request only — no payment here. Our team will contact you to confirm and arrange delivery.</p>
-                    <form id="orderForm">
-                        <div style="margin-bottom: 0.75rem;">
-                            <input type="text" id="orderName" placeholder="Your name" required style="width:100%;padding:10px 12px;background:var(--bg-light);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:0.88rem;">
-                        </div>
-                        <div style="margin-bottom: 0.75rem;">
-                            <input type="tel" id="orderPhone" placeholder="Phone number, e.g. +919876543210" required style="width:100%;padding:10px 12px;background:var(--bg-light);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:0.88rem;">
-                        </div>
-                        <div style="margin-bottom: 0.75rem;">
-                            <textarea id="orderAddress" placeholder="Delivery address" required rows="2" style="width:100%;padding:10px 12px;background:var(--bg-light);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:0.88rem;resize:vertical;"></textarea>
-                        </div>
-                        <div style="margin-bottom: 1rem;">
-                            <label style="display:block;font-size:0.78rem;color:var(--text-muted);margin-bottom:4px;">Quantity</label>
-                            <input type="number" id="orderQuantity" min="1" value="1" required style="width:100%;padding:10px 12px;background:var(--bg-light);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:0.88rem;">
-                        </div>
-                        <button type="submit" id="orderSubmitBtn" style="width:100%;padding:12px;border:none;border-radius:8px;background:linear-gradient(135deg,var(--accent),#fbbf24);color:#1a1206;font-weight:600;font-size:0.9rem;cursor:pointer;">Submit Order</button>
-                        <div id="orderResultMsg" style="font-size:0.8rem;margin-top:10px;"></div>
-                    </form>
-                </div>
-
-                <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px; padding: 1.25rem; margin-top: 1.5rem; text-align: center;">
-                    <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 0.75rem;">Already taking Telmexa AM?</p>
-                    <a href="../signup.html" style="display:inline-block;padding:10px 20px;background:linear-gradient(135deg,var(--primary),var(--primary-light));color:white;border-radius:8px;text-decoration:none;font-weight:600;font-size:0.88rem;margin-bottom:0.5rem;">Sign up as a Patient →</a>
-                    <p style="color: var(--text-muted); font-size: 0.78rem; margin-top:0.5rem;">Doctor? <a href="../doctor-signup.html" style="color:var(--primary-light);">Join to prescribe & review reports</a></p>
-                </div>
-            </div>
-
-            <div>
-                <div class="section">
-                    <h2 class="section-title"><i class="fas fa-info-circle"></i> Drug Information</h2>
-                    <div class="info-grid">
-                        <div class="info-card">
-                            <h4>Composition</h4>
-                            <p class="value">Telmisartan 40mg</p>
-                            <p>Amlodipine Besylate 5mg</p>
-                        </div>
-                        <div class="info-card">
-                            <h4>Category</h4>
-                            <p class="value">Antihypertensive</p>
-                            <p>ARB + Calcium Channel Blocker</p>
-                        </div>
-                        <div class="info-card">
-                            <h4>Pack Size</h4>
-                            <p class="value">10 Tablets</p>
-                            <p>Blister pack, 10x10</p>
-                        </div>
-                        <div class="info-card">
-                            <h4>Storage</h4>
-                            <p class="value">15-30°C</p>
-                            <p>Protect from moisture & light</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
+    <section class="card" id="order">
+      <h2><span class="ico navy"><i class="fas fa-cart-shopping"></i></span>Order Telmexa AM</h2>
+      <p class="lead">Request home delivery — our team will call you to confirm.</p>
+      <div class="order-note"><i class="fas fa-circle-info"></i><span>No payment online. A valid prescription is required — please keep it ready when our team calls.</span></div>
+      <form id="orderForm" novalidate>
+        <div class="field"><label class="fl" for="orderName">Your name</label><input type="text" id="orderName" data-fill="name" autocomplete="name" placeholder="e.g. Ramesh Gupta"></div>
+        <div class="field"><label class="fl" for="orderPhone">Phone number</label>
+          <div class="phone"><span class="cc">+91</span><input type="tel" id="orderPhone" data-fill="phone" inputmode="numeric" autocomplete="tel-national" placeholder="98765 43210" maxlength="14"></div>
         </div>
-
-        <div class="section" style="margin-top: 3rem;">
-            <h2 class="section-title"><i class="fas fa-apple-alt"></i> Drug-Food Interactions</h2>
-            <div class="interaction-list">
-                <div class="interaction-item danger">
-                    <div class="interaction-icon"><i class="fas fa-ban"></i></div>
-                    <div class="interaction-content">
-                        <h4>Grapefruit & Grapefruit Juice</h4>
-                        <p>Amlodipine is metabolized by CYP3A4. Grapefruit inhibits this enzyme, increasing amlodipine plasma levels by up to 3x, risking hypotension and edema. <strong>Avoid completely.</strong></p>
-                    </div>
-                </div>
-                <div class="interaction-item danger">
-                    <div class="interaction-icon"><i class="fas fa-ban"></i></div>
-                    <div class="interaction-content">
-                        <h4>High-Sodium Foods</h4>
-                        <p>Excess sodium counteracts telmisartan's ARB mechanism. Processed foods, pickles, and canned soups can raise BP. <strong>Limit sodium to <2g/day.</strong></p>
-                    </div>
-                </div>
-                <div class="interaction-item warning">
-                    <div class="interaction-icon"><i class="fas fa-exclamation-triangle"></i></div>
-                    <div class="interaction-content">
-                        <h4>Alcohol</h4>
-                        <p>Enhances hypotensive effect. May cause dizziness, fainting. If consumed, limit to 1 standard drink and take medication 2 hours apart.</p>
-                    </div>
-                </div>
-                <div class="interaction-item warning">
-                    <div class="interaction-icon"><i class="fas fa-exclamation-triangle"></i></div>
-                    <div class="interaction-content">
-                        <h4>High-Potassium Foods</h4>
-                        <p>Telmisartan can raise serum potassium. Large amounts of bananas, spinach, and supplements may cause hyperkalemia. <strong>Monitor levels monthly.</strong></p>
-                    </div>
-                </div>
-                <div class="interaction-item safe">
-                    <div class="interaction-icon"><i class="fas fa-check-circle"></i></div>
-                    <div class="interaction-content">
-                        <h4>DASH Diet (Recommended)</h4>
-                        <p>Leafy greens, berries, oats, fatty fish, and nuts enhance drug efficacy. Take with a light, low-fat meal for optimal absorption.</p>
-                    </div>
-                </div>
-                <div class="interaction-item safe">
-                    <div class="interaction-icon"><i class="fas fa-check-circle"></i></div>
-                    <div class="interaction-content">
-                        <h4>Beetroot & Pomegranate</h4>
-                        <p>Natural nitrates support vasodilation, complementing amlodipine's mechanism. Best consumed in morning, 1 hour before dosing.</p>
-                    </div>
-                </div>
-            </div>
+        <div class="field"><label class="fl" for="orderAddress">Delivery address</label><textarea id="orderAddress" rows="3" autocomplete="street-address" placeholder="House no., street, area, city, PIN code"></textarea></div>
+        <div class="field"><label class="fl" for="orderQuantity">Quantity (strips of 10)</label>
+          <div class="qty"><button type="button" data-q="-1" aria-label="Less">−</button><input type="number" id="orderQuantity" min="1" max="50" value="1"><button type="button" data-q="1" aria-label="More">+</button></div>
         </div>
+        <button class="btn btn-primary btn-block" id="orderBtn"><i class="fas fa-paper-plane"></i> Request delivery</button>
+        <div class="form-msg" id="orderMsg" role="status"></div>
+      </form>
+    </section>
+  </div>
 
-        <div class="section">
-            <h2 class="section-title"><i class="fas fa-clock"></i> Circadian Dosing Schedule</h2>
-            <div class="dose-timeline">
-                <div class="dose-item">
-                    <div class="dose-time">6-8 AM</div>
-                    <div class="dose-details">
-                        <h4>🌅 Morning Dose — Optimal Window</h4>
-                        <p>Take 1 tablet with light breakfast. Amlodipine peak absorption aligns with natural BP surge. Telmisartan's long half-life (24h) provides 24h coverage.</p>
-                        <span class="tag"><i class="fas fa-utensils"></i> With food</span>
-                        <span class="tag"><i class="fas fa-tint"></i> Full glass of water</span>
-                    </div>
-                </div>
-                <div class="dose-item">
-                    <div class="dose-time">12-2 PM</div>
-                    <div class="dose-details">
-                        <h4>🌞 Midday — Monitoring Phase</h4>
-                        <p>No dose required. Check BP if possible. Avoid heavy, salty lunches. Stay hydrated.</p>
-                        <span class="tag"><i class="fas fa-heartbeat"></i> Check vitals</span>
-                    </div>
-                </div>
-                <div class="dose-item">
-                    <div class="dose-time">6-8 PM</div>
-                    <div class="dose-details">
-                        <h4>🌆 Evening — Do NOT Dose</h4>
-                        <p>Telmexa AM is a single morning dose. Taking at night may cause nocturnal hypotension and disrupt sleep architecture.</p>
-                        <span class="tag" style="background: rgba(231,76,60,0.2); color: var(--danger);"><i class="fas fa-times"></i> Skip</span>
-                    </div>
-                </div>
-                <div class="dose-item">
-                    <div class="dose-time">10 PM</div>
-                    <div class="dose-details">
-                        <h4>🌙 Night — Rest & Recovery</h4>
-                        <p>No medication. Ensure 7-8 hours sleep. Poor sleep raises cortisol and BP. Consider magnesium-rich dinner.</p>
-                        <span class="tag"><i class="fas fa-moon"></i> Sleep hygiene</span>
-                    </div>
-                </div>
-            </div>
-        </div>
+  <section class="section card" id="food">
+    <h2><span class="ico amber"><i class="fas fa-apple-whole"></i></span>Food &amp; drug interactions</h2>
+    <p class="lead" style="margin-bottom:0">What to avoid, what to be careful with, and what helps.</p>
+    <div class="inter-list"><div class="inter avoid"><span class="ico"><i class="fas fa-ban"></i></span><div><span class="tag">Avoid</span><h3>Grapefruit & grapefruit juice</h3><p>Raises amlodipine levels in the blood, which can cause very low BP, dizziness and ankle swelling. Avoid completely.</p></div></div><div class="inter avoid"><span class="ico"><i class="fas fa-ban"></i></span><div><span class="tag">Avoid</span><h3>High-salt foods</h3><p>Pickles, papad, chips, processed and packaged foods work against the medicine. Keep sodium under 2 g a day.</p></div></div><div class="inter caution"><span class="ico"><i class="fas fa-triangle-exclamation"></i></span><div><span class="tag">Caution</span><h3>Alcohol</h3><p>Adds to the BP-lowering effect and can cause dizziness or fainting. Best avoided — if you drink, keep it minimal.</p></div></div><div class="inter caution"><span class="ico"><i class="fas fa-triangle-exclamation"></i></span><div><span class="tag">Caution</span><h3>Potassium supplements & salt substitutes</h3><p>Telmisartan can raise potassium. Avoid supplements or "low-sodium" salts unless your doctor advises; your doctor may check potassium levels.</p></div></div><div class="inter good"><span class="ico"><i class="fas fa-circle-check"></i></span><div><span class="tag">Good for you</span><h3>DASH-style diet</h3><p>Vegetables, fruit, dal, oats, nuts and fish support healthy BP alongside your medicine.</p></div></div><div class="inter good"><span class="ico"><i class="fas fa-circle-check"></i></span><div><span class="tag">Good for you</span><h3>Beetroot & pomegranate</h3><p>Heart-friendly foods that fit well into a BP-friendly diet.</p></div></div></div>
+  </section>
 
-        <div class="cta-section">
-            <h2><i class="fas fa-robot" style="color: var(--primary-light);"></i> Adaptive Adherence Intelligence Engine</h2>
-            <p>Your personal AI companion for Telmexa AM. Scan the QR code on your packaging to unlock voice-guided dosing, food interaction alerts, WhatsApp reminders, and daily vitals tracking.</p>
-            <div class="btn-group">
-                <a href="ai/telmexa-am-ai.html" class="btn btn-primary"><i class="fas fa-qrcode"></i> Scan & Start AI Guide</a>
-                <a href="https://wa.me/?text=I%20want%20to%20set%20up%20Telmexa%20AM%20medication%20reminders" class="btn btn-whatsapp" target="_blank"><i class="fab fa-whatsapp"></i> WhatsApp Reminder</a>
-                <a href="index.html" class="btn btn-outline"><i class="fas fa-arrow-left"></i> All Products</a>
-            </div>
-        </div>
+  <section class="section card">
+    <h2><span class="ico navy"><i class="fas fa-hand-holding-medical"></i></span>More from Biomexa</h2>
+    <div class="help-grid" style="margin-top:14px">
+      <a class="help" href="ai/telmexa-am-ai.html#ask"><span class="ico green"><i class="fas fa-comments"></i></span><div><strong>Ask the AI Pharmacist</strong><span>Questions answered instantly</span></div></a>
+      <a class="help" href="../index.html#connect-doctor"><span class="ico navy"><i class="fas fa-user-doctor"></i></span><div><strong>Talk to a doctor</strong><span>Connect on WhatsApp</span></div></a>
+      <a class="help" href="../patient.html#upload-report"><span class="ico amber"><i class="fas fa-file-arrow-up"></i></span><div><strong>Upload prescription</strong><span>AI explains it simply</span></div></a>
+      <a class="help" href="../doctor-signup.html"><span class="ico navy"><i class="fas fa-stethoscope"></i></span><div><strong>For doctors</strong><span>Join the Biomexa network</span></div></a>
     </div>
+  </section>
+</main>
 
-    <footer>
-        <p> Biomexa Pharmaceuticals. Adaptive Adherence Intelligence Engine.</p>
-        <p style="margin-top: 0.5rem; font-size: 0.75rem;">This information is for educational purposes. Always consult your physician.</p>
-    </footer>
+<footer>
+  <div class="links">
+    <a href="../index.html">Home</a><a href="index.html">All products</a><a href="ai/telmexa-am-ai.html">AI Pharmacist</a><a href="../patient.html">My dashboard</a>
+  </div>
+  <p class="disclaimer">Telmexa AM is a prescription medicine. This page is for general information and doesn't replace your doctor's advice — always follow your prescription.</p>
+  <p style="margin-top:10px">© Biomexa Pharmaceuticals · Care Beyond the Pill</p>
+</footer>
 
-    <script>
-        const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-            ? 'http://localhost:3000'
-            : 'https://biomexa-api-f9f6.onrender.com';
+<nav class="actionbar" aria-label="Quick actions">
+  <a href="ai/telmexa-am-ai.html" class="primary"><i class="fas fa-robot"></i>AI Pharmacist</a>
+  <a href="#how"><i class="fas fa-clock"></i>How to take</a>
+  <a href="#order"><i class="fas fa-cart-shopping"></i>Order</a>
+  <a href="../index.html#connect-doctor"><i class="fas fa-user-doctor"></i>Doctor</a>
+</nav>
+<div class="toast" id="toast" role="status"></div>
 
-        fetch(`${API_URL}/api/whatsapp-status`)
-            .then(r => r.json())
-            .then(status => { if (status.msg91Configured) document.getElementById('reminderMsg91Note').style.display = 'block'; })
-            .catch(() => {});
-
-        function updateRemTimePreview() {
-            const val = document.getElementById('remTime').value;
-            const preview = document.getElementById('remTimePreview');
-            if (!val) { preview.textContent = ''; return; }
-            const [h, m] = val.split(':').map(Number);
-            const period = h >= 12 ? 'PM' : 'AM';
-            const h12 = h % 12 === 0 ? 12 : h % 12;
-            preview.textContent = '= ' + h12 + ':' + String(m).padStart(2, '0') + ' ' + period + ' — double-check before submitting';
-        }
-        updateRemTimePreview();
-
-        document.getElementById('reminderForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const btn = document.getElementById('remSubmitBtn');
-            const msg = document.getElementById('remResultMsg');
-            btn.disabled = true;
-            btn.textContent = 'Setting reminder...';
-            msg.textContent = '';
-
-            const payload = {
-                name: document.getElementById('remName').value.trim(),
-                phone: document.getElementById('remPhone').value.trim(),
-                medicineName: 'Telmexa AM',
-                dosage: 'Telmisartan 40mg / Amlodipine 5mg',
-                time: document.getElementById('remTime').value,
-                foodNote: 'Take in the morning, with or without food',
-                durationDays: document.getElementById('remDuration').value || null
-            };
-
-            try {
-                const res = await fetch(`${API_URL}/api/quick-reminder`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-                const data = await res.json();
-                if (!res.ok) throw new Error(data.message || 'Something went wrong');
-
-                msg.style.color = 'var(--success)';
-                msg.textContent = data.whatsappSent
-                    ? '✅ Reminder set! Check your WhatsApp for confirmation.'
-                    : '✅ Reminder set! (WhatsApp confirmation may take a moment.)';
-                document.getElementById('reminderForm').reset();
-                document.getElementById('remTime').value = '08:00';
-            } catch (err) {
-                msg.style.color = 'var(--danger)';
-                msg.textContent = err.message;
-            } finally {
-                btn.disabled = false;
-                btn.textContent = 'Set My Reminder';
-            }
-        });
-
-        document.getElementById('orderForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const btn = document.getElementById('orderSubmitBtn');
-            const msg = document.getElementById('orderResultMsg');
-            btn.disabled = true;
-            btn.textContent = 'Submitting...';
-            msg.textContent = '';
-
-            const payload = {
-                productName: 'Telmexa AM',
-                productSlug: 'telmexa-am',
-                customerName: document.getElementById('orderName').value.trim(),
-                phone: document.getElementById('orderPhone').value.trim(),
-                address: document.getElementById('orderAddress').value.trim(),
-                quantity: document.getElementById('orderQuantity').value
-            };
-
-            try {
-                const res = await fetch(`${API_URL}/api/orders`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-                const data = await res.json();
-                if (!res.ok) throw new Error(data.message || 'Something went wrong');
-
-                msg.style.color = 'var(--success)';
-                msg.textContent = '✅ ' + data.message;
-                document.getElementById('orderForm').reset();
-                document.getElementById('orderQuantity').value = 1;
-            } catch (err) {
-                msg.style.color = 'var(--danger)';
-                msg.textContent = err.message;
-            } finally {
-                btn.disabled = false;
-                btn.textContent = 'Submit Order';
-            }
-        });
-    </script>
+<script>
+window.BIOMEXA_ORDER = {"productName": "Telmexa AM", "productSlug": "telmexa-am"};
+</script>
+<script src="ai/product-detail.js"></script>
 </body>
 </html>

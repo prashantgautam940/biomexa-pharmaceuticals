@@ -1867,7 +1867,7 @@ app.post('/api/orders', orderLimiter, async (req, res) => {
       productName,
       productSlug: productSlug || '',
       customerName,
-      phone,
+      phone: normalizePhone(phone) || phone,
       address,
       quantity: quantity ? Math.max(1, parseInt(quantity, 10) || 1) : 1,
       notes: notes || ''
