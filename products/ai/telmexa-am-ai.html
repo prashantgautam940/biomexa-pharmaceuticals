@@ -104,26 +104,14 @@
     <!-- WhatsApp dose reminders (with treatment duration) -->
     <section class="card" id="reminders">
       <h2><span class="ico green"><i class="fab fa-whatsapp"></i></span>Free WhatsApp dose reminders</h2>
-      <p class="lead">Never miss a dose. Set it up once — takes 30 seconds.</p>
+      <p class="lead">Never miss a dose. Create your free account and choose your reminder times.</p>
       <ul class="benefits">
         <li><i class="fas fa-circle-check"></i><span>A reminder at your dose time — tap <strong>Taken</strong> or <strong>Not taken</strong></span></li>
         <li><i class="fas fa-circle-check"></i><span>Reminders stop automatically when your course ends</span></li>
-        <li><i class="fas fa-circle-check"></i><span>Then: your treatment report, a reminder to see your doctor, and an easy refill</span></li>
+        <li><i class="fas fa-circle-check"></i><span>Your own dashboard — adherence, vitals and treatment report</span></li>
       </ul>
-      <form id="remForm" novalidate>
-        <div class="field"><label class="fl" for="remName">Your name</label><input type="text" id="remName" data-fill="name" placeholder="e.g. Ramesh Gupta" autocomplete="name"></div>
-        <div class="field"><label class="fl" for="remPhone">WhatsApp number</label>
-          <div class="phone"><span class="cc">+91</span><input type="tel" id="remPhone" data-fill="phone" inputmode="numeric" placeholder="98765 43210" autocomplete="tel-national" maxlength="14"></div>
-        </div>
-        <label class="fl">Reminder time</label>
-        <div id="remSlots"></div>
-        <div class="field"><label class="fl" for="remDays">How long did your doctor prescribe it?</label>
-          <select id="remDays"><option value="">Ongoing / not sure</option><option value="5">5 days</option><option value="7">7 days</option><option value="10">10 days</option><option value="15">15 days</option><option value="30">1 month (30 days)</option><option value="60">2 months (60 days)</option><option value="90">3 months (90 days)</option></select>
-          <div class="hint">Check your prescription. Choose “Ongoing” if you take it long-term.</div>
-        </div>
-        <button class="btn btn-wa btn-block" id="remBtn"><i class="fab fa-whatsapp"></i> Activate WhatsApp reminders</button>
-        <div class="form-msg" id="remMsg" role="status"></div>
-      </form>
+      <a class="btn btn-wa btn-block" href="../../reminders.html?product=telmexa-am" id="remSignup"><i class="fab fa-whatsapp"></i> Sign up free — start my reminders</a>
+      <p class="hint" style="text-align:center;margin-top:10px">Takes 30 seconds. Already have an account? <a href="../../login.html?next=patient.html%23add-medicine">Log in</a></p>
     </section>
 
     <!-- Track progress -->

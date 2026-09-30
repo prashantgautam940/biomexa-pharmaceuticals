@@ -147,6 +147,9 @@
   $('chatSuggest').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) ask(b.textContent); });
 
   // ---------- WhatsApp dose reminders ----------
+  // (Pages now link to the free sign-up page, reminders.html; the inline form is only kept for
+  // any page that still includes it.)
+  if ($('remForm')) {
   $('remSlots').innerHTML = P.reminders.map((r, i) => `
     <label class="check">
       <input type="checkbox" data-slot="${i}" ${r.defaultOn ? 'checked' : ''}>
@@ -193,6 +196,7 @@
 
     function fail(t) { msg.className = 'form-msg err'; msg.textContent = t; }
   });
+  }
   function fmtTime(t) { const [h, m] = t.split(':').map(Number); return `${((h + 11) % 12) + 1}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`; }
 
   // ---------- Track progress (vitals) ----------

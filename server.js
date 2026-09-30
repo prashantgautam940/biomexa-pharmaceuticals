@@ -1698,9 +1698,18 @@ function generateResetToken() {
 // Register
 app.post('/api/auth/register', signupLimiter, async (req, res) => {
   try {
-    const { name, phone, email, password } = req.body;
-    const existing = await Patient.findOne({ phone });
-    if (existing) return res.status(400).json({ message: 'Phone number already registered. Please login.' });
+    const name = String(req.body.name || '').trim();
+    const phone = normalizePhone(req.body.phone);
+    const email = String(req.body.email || '').trim() || undefined;
+    const password = String(req.body.password || '');
+    if (!name) return res.status(400).json({ message: 'Please enter your name.' });
+    if (!/^\+91\d{10}$/.test(phone) && !/^\+\d{11,15}$/.test(phone)) return res.status(400).json({ message: 'Please enter a valid 10-digit mobile number.' });
+    if (password.length < 6) return res.status(400).json({ message: 'Password must be at least 6 characters.' });
+
+    // Matches accounts saved in any number format — including ones created automatically when a
+    // reminder was set from a product page, whose owner never chose a password.
+    const existing = await findAccountByPhone('patient', phone);
+    if (existing) return res.status(409).json({ code: 'exists', message: 'This number already has a Biomexa account. Please log in — or use "Forgot password" if you never set one.' });
 
     const hashed = await bcrypt.hash(password, 10);
     const patient = new Patient({ name, phone, email, password: hashed });
@@ -2673,6 +2682,12 @@ app.post('/api/medicines', auth, async (req, res) => {
     const medicineEntries = times.map(t => ({
       name, dosage, time: t, frequency, foodNote, active: true, durationDays: days, startDate, endDate
     }));
+
+    // Same medicine already running -> don't double every reminder.
+    if (!name || !String(name).trim()) return res.status(400).json({ message: 'Please enter the medicine name.' });
+    const current = await Patient.findOne({ phone: req.user.phone }).select('medicines');
+    const dup = current && current.medicines.find(m => m.active && String(m.name).trim().toLowerCase() === String(name).trim().toLowerCase());
+    if (dup) return res.status(409).json({ code: 'duplicate', message: `${dup.name} reminders are already active on your account. Stop the old one in "My medicines" first if you want to change the times.` });
 
     const patient = await Patient.findOneAndUpdate(
       { phone: req.user.phone },

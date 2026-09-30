@@ -990,6 +990,23 @@ html { scroll-padding-top: 80px; }
     // Start with one time row on page load.
     addTimeRow();
 
+    // A medicine chosen on the free-reminder sign-up page (reminders.html) by someone who already
+    // had an account: pre-fill it here after they log in, so one tap starts the reminders.
+    (function prefillPendingMedicine() {
+      let pending = null;
+      try { pending = JSON.parse(localStorage.getItem('biomexa_pending_med') || 'null'); localStorage.removeItem('biomexa_pending_med'); } catch {}
+      if (!pending || !pending.name || Date.now() - (pending.savedAt || 0) > 2 * 86400000) return;
+      document.getElementById('medName').value = pending.name;
+      document.getElementById('medDosage').value = pending.dosage || '';
+      document.getElementById('medFood').value = pending.foodNote || '';
+      document.getElementById('medDuration').value = pending.durationDays || '';
+      document.getElementById('medFreq').value = (pending.times || []).length > 1 ? 'twice-daily' : 'daily';
+      document.getElementById('medTimesContainer').innerHTML = ''; timeRowCount = 0;
+      (pending.times && pending.times.length ? pending.times : ['']).forEach(t => addTimeRow(t));
+      showMsg(`Your ${pending.name} reminder is ready — check the times and tap "Add Medicine" to start.`, false);
+      setTimeout(() => document.getElementById('add-medicine').scrollIntoView({ behavior: 'smooth', block: 'start' }), 400);
+    })();
+
     document.getElementById('medicineForm').addEventListener('submit', async (e) => {
       e.preventDefault();
       const btn = document.getElementById('addBtn');

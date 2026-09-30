@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Free WhatsApp Dose Reminders — Sign up | Biomexa</title>
+<meta name="description" content="Sign up free for WhatsApp dose reminders from Biomexa — set your medicine, reminder times and course length in 30 seconds.">
+<meta name="theme-color" content="#16336b">
+<link rel="icon" type="image/svg+xml" href="logo.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<link rel="stylesheet" href="products/ai/ai-pharmacist.css">
+<style>
+  body { padding-bottom: 0; }
+  .signup-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; margin-top: 16px; }
+  @media (min-width: 900px) { .signup-grid { grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr); align-items: start; } .side { position: sticky; top: 84px; } }
+  .side { color: #fff; border-radius: 24px; padding: 26px; background: linear-gradient(135deg, var(--navy) 0%, var(--navy-2) 60%, #2458b8 100%); position: relative; overflow: hidden; box-shadow: 0 12px 32px rgba(22, 51, 107, 0.25); }
+  .side::after { content: ''; position: absolute; right: -80px; top: -80px; width: 260px; height: 260px; border-radius: 50%; background: radial-gradient(circle, rgba(39, 181, 102, 0.35), transparent 70%); }
+  .side > * { position: relative; z-index: 1; }
+  .side h1 { font-size: clamp(1.6rem, 5vw, 2.2rem); line-height: 1.15; font-weight: 800; letter-spacing: -0.02em; margin: 12px 0 8px; }
+  .side p.lead2 { color: #d6e1f7; }
+  .side .pack { margin-top: 18px; }
+  .side ul { list-style: none; display: grid; gap: 10px; margin-top: 18px; }
+  .side li { display: flex; gap: 10px; align-items: flex-start; color: #eef3fd; font-size: 0.93rem; }
+  .side li i { color: #5fe39a; margin-top: 4px; }
+  .step { display: flex; align-items: center; gap: 10px; font-weight: 750; font-size: 1rem; margin: 22px 0 12px; }
+  .step:first-of-type { margin-top: 4px; }
+  .step .n { width: 26px; height: 26px; border-radius: 50%; background: var(--navy); color: #fff; display: grid; place-items: center; font-size: 0.8rem; flex-shrink: 0; }
+  .med-pick { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .med-pick label { border: 1.5px solid var(--line); border-radius: 14px; padding: 12px 10px; cursor: pointer; text-align: center; font-size: 0.86rem; font-weight: 650; background: #fff; transition: border-color .15s, background .15s; }
+  .med-pick label small { display: block; font-weight: 500; color: var(--muted); font-size: 0.74rem; margin-top: 2px; }
+  .med-pick input { position: absolute; opacity: 0; pointer-events: none; }
+  .med-pick label:has(input:checked) { border-color: var(--green); background: var(--green-soft); }
+  .add-time { background: none; border: 1px dashed #b9c8e6; color: var(--navy-2); font-weight: 600; font-size: 0.85rem; padding: 8px 12px; border-radius: 10px; cursor: pointer; }
+  .time-row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+  .time-row input { max-width: 170px; }
+  .time-row button { border: none; background: none; color: var(--muted); font-size: 1.1rem; cursor: pointer; padding: 6px; }
+  .pw { position: relative; }
+  .pw button { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); border: none; background: none; color: var(--muted); cursor: pointer; padding: 6px; font-size: 0.85rem; font-weight: 600; }
+  .consent { display: flex; gap: 10px; align-items: flex-start; font-size: 0.85rem; color: var(--muted); margin: 16px 0; }
+  .consent input { width: 18px; height: 18px; margin-top: 2px; accent-color: var(--green); flex-shrink: 0; }
+  .signed-in { display: flex; gap: 10px; align-items: center; background: var(--green-soft); color: #11663a; border-radius: 12px; padding: 12px 14px; font-size: 0.9rem; }
+  .done { text-align: center; padding: 10px 4px; }
+  .done .big { width: 64px; height: 64px; border-radius: 50%; background: var(--green-soft); color: var(--green); display: grid; place-items: center; font-size: 1.8rem; margin: 0 auto 12px; }
+  .done h2 { justify-content: center; font-size: 1.4rem; }
+  .done .summary { background: var(--bg); border: 1px solid var(--line); border-radius: 14px; padding: 14px; text-align: left; margin: 16px 0; font-size: 0.92rem; display: grid; gap: 6px; }
+  .done .actions { display: grid; gap: 10px; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar-inner">
+    <a class="logo" href="index.html"><img src="images/logo-full.png" alt="Biomexa Pharmaceuticals"></a>
+    <nav>
+      <a href="index.html" class="hide-sm">Home</a>
+      <a href="products/index.html" class="hide-sm">Products</a>
+      <a href="login.html" class="nav-cta" id="navLogin"><i class="fas fa-right-to-bracket"></i> Log in</a>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="signup-grid">
+    <aside class="side">
+      <span class="verified"><i class="fab fa-whatsapp"></i> Free · No app needed</span>
+      <h1 id="sideTitle">Never miss a dose again</h1>
+      <p class="lead2" id="sideLead">Sign up once and Biomexa reminds you on WhatsApp at every dose time.</p>
+      <div class="pack hidden" id="sidePack"><img id="sidePackImg" alt="" width="702" height="423"></div>
+      <ul>
+        <li><i class="fas fa-circle-check"></i><span>A WhatsApp reminder at each dose — tap <strong>Taken</strong> or <strong>Not taken</strong></span></li>
+        <li><i class="fas fa-circle-check"></i><span>Reminders stop by themselves when your course ends</span></li>
+        <li><i class="fas fa-circle-check"></i><span>Your adherence, vitals and treatment report on your own dashboard</span></li>
+        <li><i class="fas fa-circle-check"></i><span>Stop or change reminders any time from “My medicines”</span></li>
+      </ul>
+    </aside>
+
+    <section class="card" id="formCard">
+      <form id="signupForm" novalidate>
+        <div class="step"><span class="n">1</span>Your medicine</div>
+        <div class="med-pick" id="medPick">
+          <label><input type="radio" name="med" value="telmexa-am">Telmexa AM<small>Blood pressure</small></label>
+          <label><input type="radio" name="med" value="diabmexa-m-500">Diabmexa M 500<small>Diabetes</small></label>
+          <label><input type="radio" name="med" value="other">Other<small>Any medicine</small></label>
+        </div>
+        <div id="otherFields" class="hidden" style="margin-top:12px">
+          <div class="row-2">
+            <div class="field"><label class="fl" for="otherName">Medicine name</label><input type="text" id="otherName" placeholder="e.g. Metformin"></div>
+            <div class="field"><label class="fl" for="otherDose">Dose</label><input type="text" id="otherDose" placeholder="e.g. 500 mg"></div>
+          </div>
+        </div>
+
+        <div class="step"><span class="n">2</span>When should we remind you?</div>
+        <div id="slotArea"></div>
+        <div class="field" style="margin-top:6px">
+          <label class="fl" for="days">How long did your doctor prescribe it?</label>
+          <select id="days">
+            <option value="">Ongoing / not sure</option>
+            <option value="5">5 days</option><option value="7">7 days</option><option value="10">10 days</option>
+            <option value="15">15 days</option><option value="30">1 month (30 days)</option>
+            <option value="60">2 months (60 days)</option><option value="90">3 months (90 days)</option>
+          </select>
+          <div class="hint">Reminders stop automatically after this. Choose “Ongoing” if you take it long-term.</div>
+        </div>
+
+        <div id="accountStep">
+          <div class="step"><span class="n">3</span>Create your free account</div>
+          <div class="field"><label class="fl" for="name">Your name</label><input type="text" id="name" autocomplete="name" placeholder="e.g. Ramesh Gupta"></div>
+          <div class="field"><label class="fl" for="phone">WhatsApp number</label>
+            <div class="phone"><span class="cc">+91</span><input type="tel" id="phone" inputmode="numeric" autocomplete="tel-national" placeholder="98765 43210" maxlength="14"></div>
+            <div class="hint">Reminders are sent to this number. You'll also use it to log in.</div>
+          </div>
+          <div class="field"><label class="fl" for="password">Choose a password</label>
+            <div class="pw"><input type="password" id="password" autocomplete="new-password" placeholder="At least 6 characters" minlength="6"><button type="button" id="pwToggle">Show</button></div>
+          </div>
+        </div>
+        <div id="signedInStep" class="hidden">
+          <div class="step"><span class="n">3</span>Your account</div>
+          <div class="signed-in"><i class="fas fa-circle-check"></i><span id="signedInText">Signed in</span></div>
+        </div>
+
+        <label class="consent"><input type="checkbox" id="consent" checked> I agree to receive medication reminders and related messages from Biomexa on WhatsApp.</label>
+        <button class="btn btn-green btn-block" id="submitBtn"><i class="fab fa-whatsapp"></i> <span id="submitLabel">Create account &amp; start reminders</span></button>
+        <div class="form-msg" id="formMsg" role="status"></div>
+        <p class="hint" style="text-align:center;margin-top:14px" id="loginHint">Already have an account? <a href="login.html?next=patient.html%23add-medicine" id="loginLink">Log in</a></p>
+      </form>
+
+      <div id="donePanel" class="done hidden">
+        <div class="big"><i class="fas fa-check"></i></div>
+        <h2>You're all set!</h2>
+        <p class="lead" id="doneLead">Your WhatsApp reminders are active.</p>
+        <div class="summary" id="doneSummary"></div>
+        <div class="actions">
+          <a class="btn btn-wa btn-block" id="waHello" href="#" target="_blank" rel="noopener"><i class="fab fa-whatsapp"></i> Say “Hi” to Biomexa on WhatsApp</a>
+          <a class="btn btn-primary btn-block" href="patient.html"><i class="fas fa-gauge"></i> Go to my dashboard</a>
+        </div>
+        <p class="hint" style="margin-top:12px">Saying hi once and saving our number makes sure every reminder reaches you.</p>
+      </div>
+    </section>
+  </div>
+</main>
+
+<footer>
+  <div class="links"><a href="index.html">Home</a><a href="products/index.html">Products</a><a href="login.html">Log in</a></div>
+  <p class="disclaimer">Reminders help you follow your doctor's prescription — they don't replace it. You can stop reminders any time from your dashboard.</p>
+  <p style="margin-top:10px">© Biomexa Pharmaceuticals · Care Beyond the Pill</p>
+</footer>
+
+<script>
+(function () {
+  const API_URL = (location.hostname === 'localhost' || location.hostname === '127.0.0.1') ? 'http://localhost:3000' : 'https://biomexa-api-f9f6.onrender.com';
+  const WA_NUMBER = '919625339181';
+  const $ = (id) => document.getElementById(id);
+  const PRODUCTS = {
+    'telmexa-am': { name: 'Telmexa AM', dosage: 'Telmisartan 40mg / Amlodipine 5mg', pack: 'images/products/telmexa-am-box.jpg', what: 'blood pressure',
+      slots: [{ label: 'Morning dose', sub: '1 tablet with breakfast', time: '07:30', on: true }], foodNote: 'Take with breakfast and a glass of water' },
+    'diabmexa-m-500': { name: 'Diabmexa M 500', dosage: 'Metformin Hydrochloride 500mg', pack: 'images/products/diabmexa-m-box.jpg', what: 'diabetes',
+      slots: [{ label: 'Morning dose', sub: 'With breakfast', time: '08:00', on: true }, { label: 'Evening dose', sub: 'With dinner — if prescribed twice daily', time: '20:00', on: true }],
+      foodNote: 'Take with food — never on an empty stomach' }
+  };
+  const store = { get(k, f) { try { const v = localStorage.getItem(k); return v === null ? f : JSON.parse(v); } catch { return f; } }, set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} } };
+  const esc = (t) => String(t ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const fmt = (t) => { const [h, m] = t.split(':').map(Number); return `${((h + 11) % 12) + 1}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`; };
+  const tenDigits = (v) => { const d = String(v || '').replace(/\D/g, ''); return d.length > 10 ? d.slice(-10) : d; };
+  async function api(path, opts = {}) {
+    const res = await fetch(API_URL + path, { ...opts, headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) } });
+    const text = await res.text(); let data; try { data = JSON.parse(text); } catch { data = { message: text }; }
+    if (!res.ok) { const e = new Error(data.message || 'Something went wrong — please try again.'); e.status = res.status; e.code = data.code; throw e; }
+    return data;
+  }
+
+  // ---------- medicine choice ----------
+  const params = new URLSearchParams(location.search);
+  let medKey = PRODUCTS[params.get('product')] ? params.get('product') : (params.get('product') === 'other' ? 'other' : 'telmexa-am');
+  document.querySelector(`input[name=med][value="${medKey}"]`).checked = true;
+
+  function renderMed() {
+    const p = PRODUCTS[medKey];
+    $('otherFields').classList.toggle('hidden', !!p);
+    $('sidePack').classList.toggle('hidden', !p);
+    if (p) {
+      $('sidePackImg').src = p.pack; $('sidePackImg').alt = p.name + ' pack';
+      $('sideTitle').textContent = `Free reminders for ${p.name}`;
+      $('sideLead').textContent = `Take ${p.name} on time, every time — and stay on track with your ${p.what} care.`;
+      $('slotArea').innerHTML = p.slots.map((s, i) => `
+        <label class="check"><input type="checkbox" data-slot="${i}" ${s.on ? 'checked' : ''}>
+          <div style="flex:1"><div class="t">${s.label}</div><div class="s">${s.sub}</div>
+          <input type="time" class="time-in" data-time="${i}" value="${s.time}" aria-label="${s.label} time"></div></label>`).join('');
+    } else {
+      $('sideTitle').textContent = 'Never miss a dose again';
+      $('sideLead').textContent = 'Sign up once and Biomexa reminds you on WhatsApp at every dose time.';
+      $('slotArea').innerHTML = `<div id="timeRows"></div><button type="button" class="add-time" id="addTime">+ Add another time</button>`;
+      addTimeRow('08:00');
+      $('addTime').onclick = () => addTimeRow('');
+    }
+  }
+  function addTimeRow(v) {
+    const rows = $('timeRows'); if (rows.children.length >= 4) return;
+    const div = document.createElement('div'); div.className = 'time-row';
+    div.innerHTML = `<input type="time" value="${v}" aria-label="Reminder time"><button type="button" aria-label="Remove">✕</button>`;
+    div.querySelector('button').onclick = () => { if (rows.children.length > 1) div.remove(); };
+    rows.appendChild(div);
+    $('addTime') && ($('addTime').style.display = rows.children.length >= 4 ? 'none' : '');
+  }
+  $('medPick').addEventListener('change', (e) => { medKey = e.target.value; renderMed(); });
+  renderMed();
+
+  function readMedicine() {
+    const p = PRODUCTS[medKey];
+    if (p) {
+      const times = p.slots.map((s, i) => ({ on: document.querySelector(`[data-slot="${i}"]`).checked, t: document.querySelector(`[data-time="${i}"]`).value })).filter(x => x.on).map(x => x.t);
+      return { name: p.name, dosage: p.dosage, foodNote: p.foodNote, times };
+    }
+    return { name: $('otherName').value.trim(), dosage: $('otherDose').value.trim(), foodNote: '', times: [...document.querySelectorAll('#timeRows input')].map(i => i.value).filter(Boolean) };
+  }
+
+  // ---------- already signed in? skip the account step ----------
+  let token = null;
+  (async () => {
+    const t = localStorage.getItem('token'); if (!t) return;
+    try {
+      const me = await api('/api/patient/profile', { headers: { Authorization: 'Bearer ' + t } });
+      token = t;
+      $('accountStep').classList.add('hidden'); $('signedInStep').classList.remove('hidden'); $('loginHint').classList.add('hidden');
+      $('signedInText').textContent = `Signed in as ${me.name} (${me.phone}) — reminders will go to this number.`;
+      $('submitLabel').textContent = 'Start my reminders';
+      $('navLogin').innerHTML = '<i class="fas fa-user"></i> My Dashboard'; $('navLogin').href = 'patient.html';
+    } catch { /* expired session — use the normal sign-up form */ }
+  })();
+
+  // Prefill from the AI Pharmacist pages ("remembered on this phone").
+  const remembered = store.get('biomexa_me', {});
+  if (remembered.name) $('name').value = remembered.name;
+  if (remembered.phone) $('phone').value = remembered.phone;
+
+  $('pwToggle').onclick = () => { const i = $('password'); const show = i.type === 'password'; i.type = show ? 'text' : 'password'; $('pwToggle').textContent = show ? 'Hide' : 'Show'; };
+
+  // ---------- submit ----------
+  $('signupForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const msg = $('formMsg'); msg.className = 'form-msg'; msg.innerHTML = '';
+    const fail = (html) => { msg.className = 'form-msg err'; msg.innerHTML = html; };
+    const med = readMedicine();
+    const days = $('days').value;
+    if (!med.name) return fail('Please enter the medicine name.');
+    if (!med.times.length) return fail('Choose at least one reminder time.');
+    if (new Set(med.times).size !== med.times.length) return fail('Each reminder time must be different.');
+    let name, phone10, password;
+    if (!token) {
+      name = $('name').value.trim(); phone10 = tenDigits($('phone').value); password = $('password').value;
+      if (!name) return fail('Please enter your name.');
+      if (phone10.length !== 10) return fail('Please enter your 10-digit WhatsApp number.');
+      if (password.length < 6) return fail('Please choose a password of at least 6 characters.');
+    }
+    if (!$('consent').checked) return fail('Please agree to receive reminders on WhatsApp so we can send them.');
+
+    const medicineBody = { name: med.name, dosage: med.dosage, foodNote: med.foodNote, times: med.times,
+      frequency: med.times.length > 1 ? 'twice-daily' : 'daily', durationDays: days || undefined };
+    const btn = $('submitBtn'); btn.disabled = true; const label = $('submitLabel').textContent; $('submitLabel').textContent = 'Setting up…';
+    try {
+      if (!token) {
+        const reg = await api('/api/auth/register', { method: 'POST', body: JSON.stringify({ name, phone: '+91' + phone10, password }) });
+        token = reg.token;
+        localStorage.setItem('token', reg.token);
+        localStorage.setItem('user', JSON.stringify(reg.patient));
+        store.set('biomexa_me', { ...remembered, name, phone: phone10 });
+      }
+      await api('/api/medicines', { method: 'POST', headers: { Authorization: 'Bearer ' + token }, body: JSON.stringify(medicineBody) });
+      showDone(med, days, name);
+    } catch (err) {
+      if (err.code === 'exists') {
+        // Account exists (maybe auto-created from a product page, never given a password): keep
+        // the chosen medicine so the dashboard can pre-fill it right after logging in.
+        store.set('biomexa_pending_med', { ...medicineBody, savedAt: Date.now() });
+        fail(`${esc(err.message)}<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+          <a class="btn btn-primary" href="login.html?next=patient.html%23add-medicine">Log in</a>
+          <a class="btn btn-ghost" href="forgot-password.html">Forgot / set password</a></div>
+          <div style="margin-top:8px;font-size:0.8rem">Your ${esc(med.name)} reminder will be ready to confirm after you log in.</div>`);
+      } else if (err.code === 'duplicate') {
+        fail(`${esc(err.message)} <a href="patient.html#doses">Open my medicines</a>`);
+      } else if (err.status === 401) {
+        localStorage.removeItem('token'); token = null; location.reload();
+      } else {
+        fail(esc(/fetch|network/i.test(err.message) ? 'Could not connect — please check your internet and try again.' : err.message));
+      }
+    } finally { btn.disabled = false; $('submitLabel').textContent = label; }
+  });
+
+  function showDone(med, days, name) {
+    $('signupForm').classList.add('hidden'); $('donePanel').classList.remove('hidden');
+    $('navLogin').innerHTML = '<i class="fas fa-user"></i> My Dashboard'; $('navLogin').href = 'patient.html';
+    $('doneSummary').innerHTML = `<div>💊 <strong>${esc(med.name)}</strong>${med.dosage ? ' · ' + esc(med.dosage) : ''}</div>
+      <div>⏰ Every day at <strong>${med.times.map(fmt).join(' & ')}</strong></div>
+      <div>📅 ${days ? `For <strong>${days} days</strong> — reminders stop automatically` : '<strong>Ongoing</strong> — stop any time from My medicines'}</div>`;
+    const who = name || (JSON.parse(localStorage.getItem('user') || '{}').name) || '';
+    $('waHello').href = `https://wa.me/${WA_NUMBER}?text=${encodeURIComponent(`Hi Biomexa! ${who ? 'This is ' + who + '. ' : ''}I just set up reminders for ${med.name}.`)}`;
+    document.getElementById('formCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+})();
+</script>
+</body>
+</html>
