@@ -186,7 +186,7 @@ tbody tr:hover { background: #f6f8fc !important; }
       <h2>Doctor Login</h2>
       <p>Access patient adherence data & AI risk intelligence</p>
       <div class="input-group">
-        <label>WhatsApp Number</label>
+        <label>WhatsApp Number (or staff username)</label>
         <input type="text" id="username" placeholder="e.g. +919812345678">
       </div>
       <div class="input-group">
@@ -420,7 +420,7 @@ function login() {
 function tryLegacyLogin(u, p) {
   authHeader = 'Basic ' + btoa(u + ':' + p);
   fetch(API_BASE + '/api/doctor/login', { headers: { 'Authorization': authHeader } })
-    .then(r => { if (!r.ok) throw new Error('Invalid WhatsApp number/password. If you signed up on Join Biomexa Connect, use that number here.'); return r.json(); })
+    .then(r => { if (!r.ok) throw new Error('Wrong login details. Doctors: use the WhatsApp number and password from Join Biomexa Connect. Biomexa staff: use your admin username and password.'); return r.json(); })
     .then(() => enterDashboard())
     .catch(e => {
       const err = document.getElementById('loginError');

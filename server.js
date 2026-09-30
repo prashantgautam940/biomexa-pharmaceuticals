@@ -3483,9 +3483,16 @@ app.get('/api/doctor/login', async (req, res) => {
     return res.status(401).json({ message: 'Basic auth required' });
   }
   const creds = Buffer.from(auth.split(' ')[1], 'base64').toString().split(':');
-  if (isDemoDoctorLogin(creds[0], creds.slice(1).join(':'))) {
+  const user = creds[0], pw = creds.slice(1).join(':');
+  if (isDemoDoctorLogin(user, pw)) {
     return res.json({ message: 'Doctor authenticated' });
   }
+  // The Biomexa admin can open the doctor portal with the admin username/password
+  // (the same credentials staffAuth already accepts for every patient-data route).
+  try {
+    const admin = await Admin.findOne({ username: user });
+    if (admin && await bcrypt.compare(pw, admin.password)) return res.json({ message: 'Admin authenticated' });
+  } catch { /* fall through */ }
   res.status(401).json({ message: 'Invalid credentials' });
 });
 
