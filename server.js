@@ -473,6 +473,31 @@ async function analyzeReferenceImage(fileType, fileData, adminNote) {
 // infrastructure already built for document analysis (same providers, same fallback chain,
 // text-only instead of vision) to rewrite them in plain language, in the patient's preferred
 // language, without losing any of the actual substance.
+
+// The engine writes for clinicians ("Consider dose increase or add ARB/ACE-i"). A patient must
+// never be told to change their dose or add a medicine by an app — that line is replaced with a
+// prompt to review the report with their doctor. Urgent readings are kept, reworded as "see a
+// doctor soon". Doctors still get the full clinical text in the doctor dashboard.
+const CLINICAL_ACTION_RE = /\b(dose|dosing|escalat|titrat|increase|add[- ]on|add (an?|another)|ARB|ACE|inhibitor|metformin|combination therapy|alternative therapy|discontinu|switch|regimen)\b/i;
+function patientSafeAdvice(lines, isRecommendation = false) {
+  const out = [];
+  let doctorLine = false;
+  for (const raw of lines || []) {
+    const line = String(raw || '');
+    if (/^URGENT/i.test(line)) { out.push(line.replace(/Needs prompt medical review\.?/i, 'Please contact your doctor soon.')); continue; }
+    if (CLINICAL_ACTION_RE.test(line)) {
+      // Keep the observation part (before the first ". ") if it's safe, drop the treatment advice.
+      const observation = line.split(/\.\s+/)[0];
+      if (!isRecommendation && observation && !CLINICAL_ACTION_RE.test(observation)) out.push(observation + '.');
+      doctorLine = true;
+      continue;
+    }
+    out.push(line);
+  }
+  if (doctorLine) out.push('Share this report with your doctor — only your doctor should decide whether to change your dose or medicines.');
+  return out;
+}
+
 function buildSimplifyPrompt(insights, recommendations, language) {
   const languageInstruction = language && language !== 'English'
     ? `Write your entire response in ${language}.`
@@ -480,7 +505,7 @@ function buildSimplifyPrompt(insights, recommendations, language) {
 
   return `Rewrite these clinical treatment notes for a patient with no medical background — keep every real fact and number, just explain it in everyday words instead of clinical shorthand. ${languageInstruction}
 
-Rules: don't drop any point, don't add anything that isn't implied by the original, explain any medical term you have to keep (e.g. "ARB/ACE-i" → say "a type of blood pressure medicine"), keep each point to one short sentence. Respond with ONLY valid JSON in exactly this shape, nothing else — no markdown, no code fences:
+Rules: don't drop any point, don't add anything that isn't implied by the original, explain any medical term you have to keep, keep each point to one short sentence. Never tell the patient to change, increase, reduce, stop, add or switch any medicine or dose, and never name a medicine they should take — if a point implies that, say "talk to your doctor about this" instead. Keep any "URGENT" point clearly urgent. Respond with ONLY valid JSON in exactly this shape, nothing else — no markdown, no code fences:
 {"insights": ["...", "..."], "recommendations": ["...", "..."]}
 
 Clinical insights to rewrite:
@@ -1828,6 +1853,10 @@ app.post('/api/quick-vitals', signupLimiter, async (req, res) => {
     if (!phone || (!glucose && !bpSystolic && !temperature && !heartRate)) {
       return res.status(400).json({ message: 'Phone number and at least one vital reading are required.' });
     }
+    const check = cleanVitals({ bpSystolic, bpDiastolic, temperature, heartRate, glucose });
+    if (check.rejected.length) {
+      return res.status(400).json({ message: `This reading looks incorrect: ${check.rejected.join(', ')}. Please check the numbers and try again.` });
+    }
 
     let patient = await findAccountByPhone('patient', phone);
     if (!patient) {
@@ -2418,6 +2447,94 @@ app.get('/api/patient/missed-doses', auth, async (req, res) => {
 // WhatsApp-sending counterpart below call, so the portal view and the WhatsApp summary are
 // always built from the exact same real analysis, never two different computations drifting
 // apart.
+
+// ========== VITALS: PLAUSIBILITY + TREATMENT-ANALYSIS INPUT ==========
+// Readings outside these ranges are almost certainly typos (BP 280/130, temperature 110°F) and
+// used to flow straight into averages, trends and "time in range". Rejected at entry, and
+// ignored in analysis for anything already stored. Very high but real values (sugar 580) pass —
+// they're exactly what the report must flag, not hide.
+const VITAL_LIMITS = {
+  bpSystolic: { min: 60, max: 260, label: 'Top BP number', unit: 'mmHg' },
+  bpDiastolic: { min: 30, max: 160, label: 'Bottom BP number', unit: 'mmHg' },
+  temperature: { min: 90, max: 108, label: 'Temperature', unit: '°F' },
+  heartRate: { min: 25, max: 250, label: 'Pulse', unit: 'bpm' },
+  glucose: { min: 20, max: 700, label: 'Blood sugar', unit: 'mg/dL' }
+};
+function cleanVitals(v) {
+  const clean = {}, rejected = [];
+  for (const [k, lim] of Object.entries(VITAL_LIMITS)) {
+    const n = v?.[k] == null || v[k] === '' ? null : Number(v[k]);
+    if (n == null || Number.isNaN(n)) continue;
+    if (n < lim.min || n > lim.max) rejected.push(`${lim.label} ${n} ${lim.unit}`);
+    else clean[k] = n;
+  }
+  // A BP reading is a pair — if either number is impossible, neither is trusted.
+  if ((clean.bpSystolic == null) !== (clean.bpDiastolic == null) && (v?.bpSystolic != null && v?.bpDiastolic != null)) {
+    delete clean.bpSystolic; delete clean.bpDiastolic;
+  }
+  if (clean.bpSystolic != null && clean.bpDiastolic != null && clean.bpDiastolic >= clean.bpSystolic) {
+    rejected.push(`BP ${clean.bpSystolic}/${clean.bpDiastolic}`); delete clean.bpSystolic; delete clean.bpDiastolic;
+  }
+  return { clean, rejected };
+}
+
+// One builder for both the doctor view and the patient's report, so they can never disagree.
+//  • one entry per scheduled dose (adherence = taken ÷ doses scheduled)
+//  • every REAL reading is its own data point ("vitals_only") — days without a reading add
+//    nothing (they used to be filled with the patient's latest reading, which faked "time in
+//    range" and trends), and impossible readings are ignored
+//  • baseline = the FIRST real reading of each vital (it used to be the latest one, so every
+//    "change from baseline" was 0%)
+//  • BP and blood sugar both assessed ('general'); symptoms aren't collected yet
+function buildAnalysisInput(patient, doses, vitalsLogs) {
+  const FIELDS = { bpSystolic: 'bp_systolic', bpDiastolic: 'bp_diastolic', glucose: 'glucose', temperature: 'temperature' };
+  const byDay = {}, first = {}, readings = [];
+  let ignored = 0;
+  for (const v of [...vitalsLogs].sort((a, b) => a.recordedAt - b.recordedAt)) {
+    const { clean, rejected } = cleanVitals(v);
+    ignored += rejected.length;
+    const iso = v.recordedAt.toISOString();
+    const day = iso.split('T')[0];
+    const bucket = byDay[day] || (byDay[day] = {});
+    for (const [f, val] of Object.entries(clean)) {
+      bucket[f] = val;                             // for the day-by-day table: latest of the day
+      if (FIELDS[f] && first[f] == null) first[f] = val;
+    }
+    // Every real reading is its own data point — two readings in a day are both kept (a 580
+    // sugar in the morning must not disappear behind a 450 in the evening).
+    const eng = Object.fromEntries(Object.entries(FIELDS).map(([k, e]) => [e, clean[k] ?? null]));
+    if (Object.values(eng).some(x => x != null)) readings.push({ key: iso, date: day, status: 'vitals_only', vitals: eng, symptoms: [] });
+  }
+  const none = Object.fromEntries(Object.values(FIELDS).map(e => [e, null]));
+
+  const relevant = doses.filter(d => d.status !== 'pending');
+  const entries = [
+    // One entry per scheduled dose — adherence = taken ÷ doses due. Doses carry no vitals.
+    ...relevant.map(d => ({ key: `${d.scheduledDate}T${d.scheduledTime || '00:00'}`, date: d.scheduledDate, status: d.status === 'taken' ? 'taken' : 'not_taken', vitals: none, symptoms: [] })),
+    ...readings
+  ].sort((a, b) => a.key.localeCompare(b.key)).map(({ key, ...e }) => e);
+
+  const active = (patient.medicines || []).filter(m => m.active);
+  const primaryMed = active[0] || patient.medicines?.[0] || { name: relevant[0]?.medicineName, dosage: relevant[0]?.dosage };
+  const payload = {
+    patient: {
+      id: patient.phone,
+      drug_name: primaryMed.name || 'Unknown',
+      drug_dose: primaryMed.dosage || '',
+      schedule: [...new Set(relevant.map(d => d.scheduledTime))],
+      baseline_bp: [first.bpSystolic ?? null, first.bpDiastolic ?? null],
+      baseline_glucose: first.glucose ?? null,
+      baseline_temp: first.temperature ?? null,
+      history: patient.medicalHistory || [],
+      baseline_blood_test: {}
+    },
+    dose_history: entries,
+    indication: 'general',
+    symptoms_tracked: false
+  };
+  return { payload, byDay, relevant, doseCount: relevant.length, usedRealVitals: readings.length > 0, ignoredReadings: ignored };
+}
+
 async function buildPatientTreatmentReport(phone) {
   const patient = await Patient.findOne({ phone });
   if (!patient) return { error: 'Patient not found', status: 404 };
@@ -2426,71 +2543,21 @@ async function buildPatientTreatmentReport(phone) {
   if (!doses.length) return { error: 'No dose history yet — add a medicine and confirm a few doses first, then check back.', status: 400 };
 
   const vitalsLogs = await VitalsLog.find({ patientPhone: phone }).sort({ recordedAt: 1 });
-  const vitalsByDay = {};
-  for (const v of vitalsLogs) {
-    const day = v.recordedAt.toISOString().split('T')[0];
-    vitalsByDay[day] = v;
-  }
-  const usedRealVitals = vitalsLogs.length > 0;
+  const { payload, byDay, relevant, usedRealVitals } = buildAnalysisInput(patient, doses, vitalsLogs);
+  if (!relevant.length) return { error: 'All your doses so far are still pending — check back once you\'ve confirmed a few.', status: 400 };
+  const dose_history = payload.dose_history;
 
-  const primaryMed = patient.medicines?.[0] || { name: doses[0].medicineName, dosage: doses[0].dosage, time: doses[0].scheduledTime };
-  const schedule = [...new Set(patient.medicines?.map(m => m.time) || [doses[0].scheduledTime])];
-
-  const relevantDoses = doses.filter(d => d.status !== 'pending');
-  const dose_history = relevantDoses.map(d => {
-    const dayLog = vitalsByDay[d.scheduledDate];
+  // Day-by-day table the patient sees: each dose, and that day's real readings if any were logged.
+  const dailyBreakdown = relevant.map(d => {
+    const day = byDay[d.scheduledDate];
     return {
-      date: d.scheduledDate,
-      status: d.status === 'taken' ? 'taken' : 'not_taken',
-      vitals: {
-        bp_systolic: dayLog?.bpSystolic || patient.baselineVitals?.bpSystolic || 130,
-        bp_diastolic: dayLog?.bpDiastolic || patient.baselineVitals?.bpDiastolic || 85,
-        glucose: dayLog?.glucose || patient.baselineVitals?.glucose || 110,
-        temperature: dayLog?.temperature || patient.baselineVitals?.temperature || 98.6
-      },
-      symptoms: []
+      date: d.scheduledDate, time: d.scheduledTime, medicineName: d.medicineName, dosage: d.dosage, status: d.status,
+      vitalsSource: day ? 'logged' : 'none',
+      vitals: day ? { bpSystolic: day.bpSystolic, bpDiastolic: day.bpDiastolic, temperature: day.temperature, heartRate: day.heartRate, glucose: day.glucose } : null
     };
-  });
+  }).reverse();
 
-  // The day-by-day breakdown the patient actually sees — same data used to build the AI
-  // payload above, just kept in a shape the frontend can render directly as a per-day table:
-  // date, medicine, dose status, and whether that day's vitals are real (logged) or an estimate
-  // (baseline/default fallback), so the patient can tell which rows to trust as real readings.
-  const dailyBreakdown = relevantDoses.map(d => {
-    const dayLog = vitalsByDay[d.scheduledDate];
-    return {
-      date: d.scheduledDate,
-      time: d.scheduledTime,
-      medicineName: d.medicineName,
-      dosage: d.dosage,
-      status: d.status,
-      vitalsSource: dayLog ? 'logged' : 'estimated',
-      vitals: dayLog ? {
-        bpSystolic: dayLog.bpSystolic, bpDiastolic: dayLog.bpDiastolic,
-        temperature: dayLog.temperature, heartRate: dayLog.heartRate, glucose: dayLog.glucose
-      } : null
-    };
-  }).reverse(); // most recent day first, matching how the rest of the dashboard reads
-
-  if (!dose_history.length) return { error: 'All your doses so far are still pending — check back once you\'ve confirmed a few.', status: 400 };
-
-  const payload = {
-    patient: {
-      id: patient.phone,
-      drug_name: primaryMed.name || 'Unknown',
-      drug_dose: primaryMed.dosage || '',
-      schedule: schedule.length ? schedule : ['08:00'],
-      baseline_bp: [patient.baselineVitals?.bpSystolic || 140, patient.baselineVitals?.bpDiastolic || 90],
-      baseline_glucose: patient.baselineVitals?.glucose || 110,
-      baseline_temp: patient.baselineVitals?.temperature || 98.6,
-      history: patient.medicalHistory || [],
-      baseline_blood_test: {}
-    },
-    dose_history,
-    indication: 'hypertension'
-  };
-
-  console.log(`📊 Treatment report requested for ${phone} — ${dose_history.length} dose(s) in range`);
+  console.log(`📊 Treatment report requested for ${phone} — ${relevant.length} dose(s), ${Object.keys(byDay).length} day(s) with readings`);
   const result = await callAiEngine('/analyze', payload);
   if (!result.ok) {
     console.log(`⚠️ Treatment report AI call failed for ${phone}: ${result.reason} — ${result.detail || ''}`);
@@ -2515,7 +2582,10 @@ async function buildPatientTreatmentReport(phone) {
   // patient's preferred language, before ever reaching the portal or WhatsApp. Falls back to the
   // original clinical text if simplification fails for any reason, rather than showing nothing.
   const language = patient.preferredLanguage || 'English';
-  const simplified = await simplifyTreatmentReport(report.clinical_insights || [], report.treatment_recommendations || [], language);
+  // Dose / drug-change advice is for doctors — patients see "discuss with your doctor" instead.
+  report.clinical_insights = patientSafeAdvice(report.clinical_insights || []);
+  report.treatment_recommendations = patientSafeAdvice(report.treatment_recommendations || [], true);
+  const simplified = await simplifyTreatmentReport(report.clinical_insights, report.treatment_recommendations, language);
   if (simplified) {
     report.clinical_insights = simplified.insights;
     report.treatment_recommendations = simplified.recommendations;
@@ -2586,6 +2656,10 @@ app.post('/api/patient/vitals', auth, async (req, res) => {
     const { bpSystolic, bpDiastolic, temperature, heartRate, glucose } = req.body;
     if (!bpSystolic && !temperature && !heartRate && !glucose) {
       return res.status(400).json({ message: 'Enter at least one reading.' });
+    }
+    const check = cleanVitals({ bpSystolic, bpDiastolic, temperature, heartRate, glucose });
+    if (check.rejected.length) {
+      return res.status(400).json({ message: `This reading looks incorrect: ${check.rejected.join(', ')}. Please check the numbers and try again.` });
     }
 
     const patient = await Patient.findOne({ phone: req.user.phone });
@@ -3315,7 +3389,12 @@ app.post('/api/webhooks/msg91-whatsapp', async (req, res) => {
         return;
       }
 
-      const vitals = parseVitalsFromText(freeText);
+      const parsed = parseVitalsFromText(freeText);
+      const { clean: vitals, rejected } = cleanVitals(parsed);
+      if (rejected.length && Object.keys(vitals).length === 0) {
+        await sendWhatsAppFree(phone, `Hmm, that reading looks like a typo: ${rejected.join(', ')}.\n\nPlease check and send it again, e.g. "BP 120/80, sugar 110" — or reply "skip".`);
+        return;
+      }
       if (Object.keys(vitals).length === 0) {
         await sendWhatsAppFree(phone, 'Sorry, I couldn\'t read any numbers from that.\n\nGot all 4? Copy the numbers below (skip the bracketed words):\n```\n120/80(BP) 98.6(Temp) 72(Pulse) 110(Sugar)\n```\n\nOnly some? Use labels:\n"sugar 110" or "BP 120/80"\n\nOr reply "skip".');
         return;
@@ -3337,7 +3416,7 @@ app.post('/api/webhooks/msg91-whatsapp', async (req, res) => {
         vitals.temperature && `Temp ${vitals.temperature}°F`,
         vitals.heartRate && `Pulse ${vitals.heartRate}`,
         vitals.glucose && `Sugar ${vitals.glucose} mg/dL`
-      ].filter(Boolean).join(', ');
+      ].filter(Boolean).join(', ') + (rejected.length ? ` (not saved — looks like a typo: ${rejected.join(', ')})` : '');
 
       // Risk check — if this reading is dangerous, triggerRiskAlert handles notifying both the
       // patient and an available doctor. The "logged" confirmation still goes out either way.
@@ -3356,6 +3435,42 @@ app.post('/api/webhooks/msg91-whatsapp', async (req, res) => {
   }
 });
 
+
+// ========== STAFF ACCESS (doctor or admin) ==========
+// Patient health data (patient list, vitals, treatment analysis, risk alerts) used to be served
+// with no login check at all — anyone with a patient's phone number could read their report.
+// Access now needs one of:
+//   • a real doctor account's login token (Bearer JWT, role "doctor"), or
+//   • the admin username/password (Basic auth, checked against the Admin collection), or
+//   • the shared demo staff login — ONLY if DEMO_DOCTOR_USER and DEMO_DOCTOR_PASSWORD are set.
+//     The old hard-coded drsharma/biomexa2026 was printed on the public login page, so it gave
+//     every visitor access to real patient data; it no longer works unless you choose to enable
+//     a private demo login of your own.
+function isDemoDoctorLogin(user, pass) {
+  const u = process.env.DEMO_DOCTOR_USER, p = process.env.DEMO_DOCTOR_PASSWORD;
+  return !!(u && p && user === u && pass === p);
+}
+async function staffAuth(req, res, next) {
+  try {
+    const auth = req.headers.authorization || '';
+    if (auth.startsWith('Bearer ')) {
+      const decoded = jwt.verify(auth.slice(7), JWT_SECRET);
+      if (decoded.role === 'doctor') { req.doctor = decoded; return next(); }
+      return res.status(403).json({ message: 'Doctor or admin login required' });
+    }
+    if (auth.startsWith('Basic ')) {
+      const [u, ...rest] = Buffer.from(auth.slice(6), 'base64').toString().split(':');
+      const pw = rest.join(':');
+      if (isDemoDoctorLogin(u, pw)) return next();
+      const admin = await Admin.findOne({ username: u });
+      if (admin && await bcrypt.compare(pw, admin.password)) { req.admin = admin; return next(); }
+    }
+    return res.status(401).json({ message: 'Doctor or admin login required' });
+  } catch {
+    return res.status(401).json({ message: 'Your session has expired — please log in again.' });
+  }
+}
+
 // ========== DOCTOR ROUTES (Mock login kept for the legacy staff dashboard) ==========
 app.get('/api/doctor/login', async (req, res) => {
   const auth = req.headers.authorization;
@@ -3363,7 +3478,7 @@ app.get('/api/doctor/login', async (req, res) => {
     return res.status(401).json({ message: 'Basic auth required' });
   }
   const creds = Buffer.from(auth.split(' ')[1], 'base64').toString().split(':');
-  if (creds[0] === 'drsharma' && creds[1] === 'biomexa2026') {
+  if (isDemoDoctorLogin(creds[0], creds.slice(1).join(':'))) {
     return res.json({ message: 'Doctor authenticated' });
   }
   res.status(401).json({ message: 'Invalid credentials' });
@@ -3684,7 +3799,7 @@ const MEDICINE_CATALOG = {
 };
 const CATALOG_NAMES = Object.keys(MEDICINE_CATALOG);
 
-app.get('/api/patients', async (req, res) => {
+app.get('/api/patients', staffAuth, async (req, res) => {
   // Uses the trained AI risk model (Admin panel → AI Risk Engine) when one exists.
   // Falls back to a deterministic adherence-based heuristic — never random — if no model has
   // been trained yet. BP figures remain baseline/simulated until real vitals logging is wired up.
@@ -3734,10 +3849,10 @@ app.get('/api/patients', async (req, res) => {
 });
 
 // 7-day adherence + BP trend for one patient — powers the "View Trends" panel in the doctor dashboard
-app.get('/api/doctor/patient/:phone/vitals', async (req, res) => {
+app.get('/api/doctor/patient/:phone/vitals', staffAuth, async (req, res) => {
   try {
-    const phone = req.params.phone;
-    const patient = await Patient.findOne({ phone });
+    const patient = await findAccountByPhone('patient', req.params.phone);
+    const phone = patient?.phone;
     if (!patient) return res.status(404).json({ message: 'Patient not found' });
 
     const allVitals = await VitalsLog.find({ patientPhone: phone }).sort({ recordedAt: 1 });
@@ -3755,19 +3870,22 @@ app.get('/api/doctor/patient/:phone/vitals', async (req, res) => {
 
       // Real vitals logged that day (last one wins if several) — falls back to the baseline
       // snapshot only when nothing was actually logged that day, and marks which is which.
+      // Only real, plausible readings — a day with nothing logged shows as a gap, not a copy
+      // of the patient's latest reading.
       const dayVitals = allVitals.filter(v => v.recordedAt.toISOString().split('T')[0] === dateStr);
-      const latest = dayVitals[dayVitals.length - 1];
+      const merged = dayVitals.reduce((acc, v) => Object.assign(acc, cleanVitals(v).clean), {});
+      const latest = Object.keys(merged).length ? merged : null;
 
       days.push({
         date: dateStr,
         label: d.toLocaleDateString('en-IN', { weekday: 'short' }),
         adherence,
-        bpSystolic: latest?.bpSystolic || patient.baselineVitals?.bpSystolic || null,
-        bpDiastolic: latest?.bpDiastolic || patient.baselineVitals?.bpDiastolic || null,
-        temperature: latest?.temperature || null,
-        heartRate: latest?.heartRate || null,
-        glucose: latest?.glucose || patient.baselineVitals?.glucose || null,
-        hasRealVitals: !!latest
+        bpSystolic: latest?.bpSystolic ?? null,
+        bpDiastolic: latest?.bpDiastolic ?? null,
+        temperature: latest?.temperature ?? null,
+        heartRate: latest?.heartRate ?? null,
+        glucose: latest?.glucose ?? null,
+        hasRealVitals: !!(latest && Object.keys(latest).length)
       });
     }
     res.json({ patient: { name: patient.name, phone: patient.phone, baselineVitals: patient.baselineVitals }, days });
@@ -3780,66 +3898,22 @@ app.get('/api/doctor/patient/:phone/vitals', async (req, res) => {
 // analysis, adherence scoring, clinical insights and treatment recommendations, computed from
 // this patient's actual dose history and real WhatsApp-logged vitals (VitalsLog) where available,
 // falling back to their baseline snapshot for any day without a logged reading.
-app.get('/api/doctor/patient/:phone/effectiveness', async (req, res) => {
+app.get('/api/doctor/patient/:phone/effectiveness', staffAuth, async (req, res) => {
   try {
-    const phone = req.params.phone;
-    const patient = await Patient.findOne({ phone });
+    const patient = await findAccountByPhone('patient', req.params.phone);
     if (!patient) return res.status(404).json({ message: 'Patient not found' });
+    const phone = patient.phone;
 
     const doses = await Dose.find({ patientPhone: phone }).sort({ scheduledDate: 1 });
     if (!doses.length) {
       return res.status(400).json({ message: 'No dose history yet for this patient — nothing to analyze.' });
     }
-
-    // Real vitals logged via the WhatsApp flow, if any — grouped by calendar day so each dose
-    // can use the vitals actually recorded closest to that day instead of a flat baseline.
     const vitalsLogs = await VitalsLog.find({ patientPhone: phone }).sort({ recordedAt: 1 });
-    const vitalsByDay = {};
-    for (const v of vitalsLogs) {
-      const day = v.recordedAt.toISOString().split('T')[0];
-      vitalsByDay[day] = v; // last log of the day wins if there are several
-    }
-    const usedRealVitals = vitalsLogs.length > 0;
-
-    const primaryMed = patient.medicines?.[0] || { name: doses[0].medicineName, dosage: doses[0].dosage, time: doses[0].scheduledTime };
-    const schedule = [...new Set(patient.medicines?.map(m => m.time) || [doses[0].scheduledTime])];
-
-    const dose_history = doses
-      .filter(d => d.status !== 'pending') // only doses that have actually happened
-      .map(d => {
-        const dayLog = vitalsByDay[d.scheduledDate];
-        return {
-          date: d.scheduledDate,
-          status: d.status === 'taken' ? 'taken' : 'not_taken',
-          vitals: {
-            bp_systolic: dayLog?.bpSystolic || patient.baselineVitals?.bpSystolic || 130,
-            bp_diastolic: dayLog?.bpDiastolic || patient.baselineVitals?.bpDiastolic || 85,
-            glucose: patient.baselineVitals?.glucose || 110,
-            temperature: dayLog?.temperature || patient.baselineVitals?.temperature || 98.6
-          },
-          symptoms: []
-        };
-      });
-
-    if (!dose_history.length) {
+    // Same builder as the patient's own report, so doctor and patient always see the same numbers.
+    const { payload, relevant, usedRealVitals } = buildAnalysisInput(patient, doses, vitalsLogs);
+    if (!relevant.length) {
       return res.status(400).json({ message: 'All doses for this patient are still pending — nothing to analyze yet.' });
     }
-
-    const payload = {
-      patient: {
-        id: patient.phone,
-        drug_name: primaryMed.name || 'Unknown',
-        drug_dose: primaryMed.dosage || '',
-        schedule: schedule.length ? schedule : ['08:00'],
-        baseline_bp: [patient.baselineVitals?.bpSystolic || 140, patient.baselineVitals?.bpDiastolic || 90],
-        baseline_glucose: patient.baselineVitals?.glucose || 110,
-        baseline_temp: patient.baselineVitals?.temperature || 98.6,
-        history: patient.medicalHistory || [],
-        baseline_blood_test: {}
-      },
-      dose_history,
-      indication: req.query.indication || 'hypertension'
-    };
 
     const result = await callAiEngine('/analyze', payload);
     if (!result.ok) {
@@ -3857,10 +3931,10 @@ app.get('/api/doctor/patient/:phone/effectiveness', async (req, res) => {
   }
 });
 
-// Recent risk alerts — powers the alert banner on the doctor dashboard. Open (not doctorAuth-gated)
-// to match the existing pattern of /api/doctors and /api/doctor/patient/:phone/vitals, since any
-// doctor viewing the dashboard should see active alerts regardless of which patients are "theirs."
-app.get('/api/doctor/alerts', async (req, res) => {
+// Recent risk alerts — powers the alert banner on the doctor dashboard and admin panel. Any
+// logged-in doctor or admin sees all active alerts (staffAuth), regardless of which patients are
+// "theirs" — but never the public.
+app.get('/api/doctor/alerts', staffAuth, async (req, res) => {
   try {
     const alerts = await RiskAlert.find({ acknowledged: false }).sort({ createdAt: -1 }).limit(50);
     res.json(alerts);
@@ -3869,7 +3943,7 @@ app.get('/api/doctor/alerts', async (req, res) => {
   }
 });
 
-app.patch('/api/doctor/alerts/:id/acknowledge', async (req, res) => {
+app.patch('/api/doctor/alerts/:id/acknowledge', staffAuth, async (req, res) => {
   try {
     const { doctorName } = req.body;
     await RiskAlert.findByIdAndUpdate(req.params.id, { acknowledged: true, acknowledgedBy: doctorName || 'Doctor' });
@@ -3890,7 +3964,7 @@ app.get('/api/patient/latest-alert', auth, async (req, res) => {
   }
 });
 
-app.get('/api/export/patients', async (req, res) => {
+app.get('/api/export/patients', staffAuth, async (req, res) => {
   try {
     const patients = await Patient.find();
     let csv = 'Name,Phone,Medicines,AdherenceBaselineBP,RegisteredAt\n';
@@ -3974,7 +4048,9 @@ async function computePatientFeatures(patient) {
   const total = doses.length;
   const missed = doses.filter(d => d.status === 'missed').length;
   const taken = doses.filter(d => d.status === 'taken').length;
-  const adherence = total ? taken / total : 1;
+  // Only doses that are due count — pending ones (later today, not yet reminded) aren't "missed".
+  const due = doses.filter(d => d.status !== 'pending').length;
+  const adherence = due ? taken / due : 1;
   const daysSince = patient.createdAt ? Math.max(1, Math.floor((Date.now() - new Date(patient.createdAt)) / 86400000)) : 1;
   const numMedicines = (patient.medicines || []).length || 1;
   const doseFreq = total / daysSince;

@@ -1387,7 +1387,7 @@ html { scroll-padding-top: 80px; }
       const rows = breakdown.map(d => {
         const dateLabel = new Date(d.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
         const statusBadge = d.status === 'taken' ? '<span style="color: #11663a;">✓ Taken</span>' : '<span style="color: #c0262d;">✕ Missed</span>';
-        let vitalsCell = '<span style="color:#64748b;font-size:11.5px;">Estimated</span>';
+        let vitalsCell = '<span style="color:#64748b;font-size:11.5px;">Not logged</span>';
         if (d.vitalsSource === 'logged' && d.vitals) {
           const parts = [];
           if (d.vitals.bpSystolic) parts.push(`BP ${d.vitals.bpSystolic}/${d.vitals.bpDiastolic || '?'}`);
@@ -1457,7 +1457,7 @@ html { scroll-padding-top: 80px; }
           <ul style="margin:0;padding-left:18px;font-size:13px;color: #34425e;">${recsList}</ul>
         </div>
         ${renderDailyBreakdownTable(r.dailyBreakdown)}
-        ${!r.usedRealVitals ? '<div style="margin-top:14px;font-size:11.5px;color:#64748b;">📌 Based on estimated vitals — log real readings on WhatsApp or above for a more accurate report.</div>' : ''}
+        ${!r.usedRealVitals ? '<div style="margin-top:14px;font-size:11.5px;color:#64748b;">📌 No readings logged yet — log your BP or sugar on WhatsApp or above so this report can show how your treatment is working.</div>' : ''}
       `;
       content.style.display = 'block';
     }

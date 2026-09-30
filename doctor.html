@@ -187,7 +187,7 @@ tbody tr:hover { background: #f6f8fc !important; }
       <p>Access patient adherence data & AI risk intelligence</p>
       <div class="input-group">
         <label>WhatsApp Number</label>
-        <input type="text" id="username" placeholder="e.g. +919812345678 (or demo username)">
+        <input type="text" id="username" placeholder="e.g. +919812345678">
       </div>
       <div class="input-group">
         <label>Password</label>
@@ -195,7 +195,7 @@ tbody tr:hover { background: #f6f8fc !important; }
       </div>
       <button class="btn" onclick="login()"><i class="fas fa-lock"></i> Secure Login</button>
       <div id="loginError" class="error"></div>
-      <p style="margin-top:1rem;font-size:0.78rem;color:var(--text-muted);">Signed up on <a href="doctor-signup.html" style="color:var(--primary-light);">Join Biomexa Connect</a>? Log in here with the same WhatsApp number and password. Just exploring? Try username <strong>drsharma</strong> / password <strong>biomexa2026</strong>.</p>
+      <p style="margin-top:1rem;font-size:0.78rem;color:var(--text-muted);">Signed up on <a href="doctor-signup.html" style="color:var(--primary-light);">Join Biomexa Connect</a>? Log in here with the same WhatsApp number and password.</p>
       <p style="margin-top:0.75rem;font-size:0.85rem;color:var(--text-muted);">New doctor? <a href="doctor-signup.html" style="color:var(--primary-light);font-weight:600;text-decoration:none;">Join Biomexa Connect →</a></p>
       <p style="margin-top:0.5rem;font-size:0.85rem;"><a href="forgot-password.html?role=doctor" style="color:var(--primary-light);text-decoration:none;">Forgot password?</a></p>
     </div>
@@ -400,7 +400,7 @@ function login() {
       if (ok) {
         localStorage.setItem('doctorToken', data.token);
         localStorage.setItem('doctorProfile', JSON.stringify(data.doctor));
-        authHeader = 'Basic ' + btoa('drsharma:biomexa2026'); // dashboard data endpoints are demo/open — reuse the shared view
+        authHeader = 'Bearer ' + data.token; // the doctor's own login token — patient data needs a real doctor/admin login
         enterDashboard();
         return;
       }
@@ -435,7 +435,7 @@ function enterDashboard() {
 // ========== RISK ALERTS ==========
 function loadRiskAlerts() {
   fetch(API_BASE + '/api/doctor/alerts', { headers: { 'Authorization': authHeader } })
-    .then(r => r.json())
+    .then(r => { if (!r.ok) throw new Error('auth'); return r.json(); })
     .then(renderRiskAlerts)
     .catch(() => {});
 }
@@ -484,7 +484,11 @@ function timeAgo(dateStr) {
 
 function loadPatients() {
   fetch(API_BASE + '/api/patients', { headers: { 'Authorization': authHeader } })
-    .then(r => r.json())
+    .then(r => {
+      // Login expired or not a doctor/admin — back to the login screen instead of a broken table.
+      if (r.status === 401 || r.status === 403) { logout(); throw new Error('auth'); }
+      return r.json();
+    })
     .then(data => {
       allPatients = data;
       renderPatients(data);
@@ -657,7 +661,16 @@ function filterPatients(type, btn) {
   else renderPatients(allPatients);
 }
 
-function exportCSV() { window.open(API_BASE + '/api/export/patients', '_blank'); }
+function exportCSV() {
+  // Authenticated download — the export is no longer public, so it can't just be opened in a tab.
+  fetch(API_BASE + '/api/export/patients', { headers: { 'Authorization': authHeader } })
+    .then(r => { if (!r.ok) throw new Error('Please log in again to export.'); return r.blob(); })
+    .then(blob => {
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'biomexa-patients.csv';
+      document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    })
+    .catch(e => alert(e.message));
+}
 
 function logout() {
   authHeader = '';

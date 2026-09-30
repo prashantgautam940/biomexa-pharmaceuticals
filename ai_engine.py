@@ -65,7 +65,12 @@ class PatientData:
 
 class AdherenceScorer:
     def calculate(self, daily_logs, drug_schedule):
-        total_doses_expected = len(daily_logs) * len(drug_schedule)
+        # Each daily_log entry is ONE scheduled dose (the backend sends one entry per dose, for
+        # every reminder time of every medicine). This used to multiply by the number of
+        # distinct reminder times as well, counting each dose several times over — a patient
+        # who took 20 of 22 doses was reported at 30.3% (20/66) instead of 90.9% (20/22).
+        daily_logs = [log for log in daily_logs if log['adherence'] != 'vitals_only']
+        total_doses_expected = len(daily_logs)
         taken_count = sum(1 for log in daily_logs if log['adherence'] == 'taken')
         missed_count = sum(1 for log in daily_logs if log['adherence'] == 'not_taken')
         delayed_count = sum(1 for log in daily_logs if log['adherence'] == 'remind_later')
@@ -131,9 +136,14 @@ class EffectivenessAnalyzer:
                 'temperature': {'target': 98.6, 'acceptable_range': [97, 99.5]}
             }
         }
+        if self.indication == 'general':
+            # Assess every vital the patient actually logs — a report must never call dangerous
+            # blood sugar "stable" just because the medicine was assumed to be for BP.
+            return {**targets['hypertension'], **targets['diabetes']}
         return targets.get(self.indication, {})
 
-    def analyze(self, patient_data, adherence_report):
+    def analyze(self, patient_data, adherence_report, symptoms_tracked=True):
+        self.symptoms_tracked = symptoms_tracked
         daily_logs = patient_data.daily_logs
         baseline = patient_data.baseline
 
@@ -156,7 +166,8 @@ class EffectivenessAnalyzer:
         return {
             'patient_id': patient_data.patient_id,
             'drug_name': patient_data.drug_name,
-            'course_duration_days': len(daily_logs),
+            'course_duration_days': len({log['date'] for log in daily_logs if log['adherence'] != 'vitals_only'}),
+            'doses_tracked': sum(1 for log in daily_logs if log['adherence'] != 'vitals_only'),
             'effectiveness_score': round(effectiveness_score, 2),
             'effectiveness_category': self._categorize_effectiveness(effectiveness_score),
             'adherence_summary': adherence_report,
@@ -294,12 +305,18 @@ class EffectivenessAnalyzer:
             else: trend_scores.append(25)
         trend_score = np.mean(trend_scores) if trend_scores else 50
 
+        adherence_score = adherence_report['adherence_rate']
+
+        if not getattr(self, 'symptoms_tracked', True):
+            # Symptoms aren't collected yet — scoring them as "no symptoms = 100" handed every
+            # patient 20 free points. Re-weight the three parts we actually measure.
+            effectiveness = target_score * 0.375 + trend_score * 0.375 + adherence_score * 0.25
+            return min(100, max(0, effectiveness))
+
         severity = symptom_analysis['severity_score']
         symptom_score = max(0, 100 - (severity * 8))
         if symptom_analysis['adverse_event_flag']:
             symptom_score = max(0, symptom_score - 25)
-
-        adherence_score = adherence_report['adherence_rate']
 
         effectiveness = (
             target_score * 0.30 +
@@ -313,6 +330,17 @@ class EffectivenessAnalyzer:
     def _generate_insights(self, trends, target_achievement, symptom_analysis, adherence_report, patient_data):
         insights = []
 
+        # Dangerous readings come first, whatever the averages say.
+        g = trends.get('glucose')
+        if g and g['max_value'] >= 300:
+            insights.append(f"URGENT — VERY HIGH BLOOD SUGAR: reached {g['max_value']:g} mg/dL. Needs prompt medical review.")
+        if g and g['min_value'] < 70:
+            insights.append(f"URGENT — LOW BLOOD SUGAR: fell to {g['min_value']:g} mg/dL. Needs prompt medical review.")
+        sbp, dbp = trends.get('bp_systolic'), trends.get('bp_diastolic')
+        if (sbp and sbp['max_value'] >= 180) or (dbp and dbp['max_value'] >= 120):
+            top = f"{sbp['max_value']:g}" if sbp else '—'
+            insights.append(f"URGENT — VERY HIGH BLOOD PRESSURE: reached {top} mmHg systolic. Needs prompt medical review.")
+
         if adherence_report['adherence_rate'] < 80:
             insights.append(f"LOW ADHERENCE ({adherence_report['adherence_rate']}%): May be masking true drug effectiveness. Address before changing therapy.")
         elif adherence_report['adherence_rate'] > 95:
@@ -320,10 +348,10 @@ class EffectivenessAnalyzer:
 
         for vital, trend in trends.items():
             vital_name = vital.replace('_', ' ').upper()
-            if trend['trend_direction'] == 'improving':
-                insights.append(f"IMPROVING {vital_name}: {trend['percent_change']}% change from baseline. Drug effective for this parameter.")
+            if trend['trend_direction'] == 'improving' and trend['percent_change'] <= -2:
+                insights.append(f"IMPROVING {vital_name}: {trend['percent_change']}% change from the first reading.")
             elif trend['trend_direction'] == 'worsening' and abs(trend['percent_change']) > 5:
-                insights.append(f"WORSENING {vital_name}: {trend['percent_change']}% change from baseline. Consider dose adjustment or add-on therapy.")
+                insights.append(f"WORSENING {vital_name}: {trend['percent_change']}% change from the first reading. Consider dose adjustment or add-on therapy.")
 
         for vital, achievement in target_achievement.items():
             vital_name = vital.replace('_', ' ').upper()
@@ -466,7 +494,7 @@ def analyze():
         adherence = scorer.calculate(patient.daily_logs, patient.drug_schedule)
 
         analyzer = EffectivenessAnalyzer(drug_indication=indication)
-        result = analyzer.analyze(patient, adherence)
+        result = analyzer.analyze(patient, adherence, symptoms_tracked=data.get('symptoms_tracked', True))
 
         # Add risk label
         risk = calculate_risk_label(

@@ -427,7 +427,7 @@ function loadWaSystemStatus() {
     })
     .catch(() => {});
 
-  fetch(API_BASE + '/api/doctor/alerts')
+  fetch(API_BASE + '/api/doctor/alerts', { headers: { 'Authorization': authHeader } })
     .then(r => r.json())
     .then(alerts => { document.getElementById('waActiveAlerts').textContent = (alerts || []).length; })
     .catch(() => {});
