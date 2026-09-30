@@ -1412,6 +1412,7 @@ const patientSchema = new mongoose.Schema({
     // End-of-course follow-up (see processCompletedCourses): 0 = nothing sent yet, 1 = "course
     // complete + report" sent, 2 = doctor/refill follow-up sent, 3 = final refill nudge sent.
     completedAt: Date,
+    stoppedByPatient: { type: Boolean, default: false }, // removed from the portal before its course ended
     followUpStage: { type: Number, default: 0 },
     lastFollowUpAt: Date,
     courseSummary: { taken: Number, missed: Number, adherence: Number }
@@ -2751,6 +2752,42 @@ app.get('/api/doses/today', auth, async (req, res) => {
 // Lets a patient delete a single dose entry — e.g. a test entry or one added by mistake.
 // Scoped to the patient's own phone so this can never touch another patient's records, even
 // with a guessed/valid-looking dose ID.
+// Stop a medicine from the portal (the 🗑️ on a dose, or "Stop" in My medicines). Deleting just
+// today's dose used to leave the medicine active, so the next morning's run recreated it and
+// reminders carried on. This ends the medicine now: no more doses or reminders, and the single
+// refill / Biomexa message goes out via processCompletedCourses (9 AM–9 PM).
+app.delete('/api/patient/medicines/:name', auth, async (req, res) => {
+  try {
+    const name = String(req.params.name || '').trim().toLowerCase();
+    const patient = await Patient.findOne({ phone: req.user.phone });
+    if (!patient) return res.status(404).json({ message: 'Patient not found.' });
+    const now = new Date();
+    const todayStr = now.toISOString().split('T')[0];
+    const matches = patient.medicines.filter(m => m.active && String(m.name).trim().toLowerCase() === name);
+    if (!matches.length) return res.status(404).json({ message: 'That medicine is not active any more.' });
+    for (const m of matches) {
+      m.active = false; m.endDate = now; m.completedAt = now; m.stoppedByPatient = true; m.followUpStage = 0;
+    }
+    await patient.save();
+    const removed = await Dose.deleteMany({
+      patientPhone: patient.phone, medicineName: matches[0].name, status: 'pending', sentReminder: false, scheduledDate: { $gte: todayStr }
+    });
+    // Clear a pending "Taken / Not taken" only if it was for this medicine.
+    const convo = await ConversationState.findOne({ patientPhone: patient.phone, state: 'awaiting_dose_confirm' });
+    if (convo && convo.doseId) {
+      const d = await Dose.findById(convo.doseId).catch(() => null);
+      if (!d || String(d.medicineName).trim().toLowerCase() === name) {
+        await ConversationState.updateOne({ _id: convo._id }, { state: null, doseId: null });
+      }
+    }
+    console.log(`🛑 ${patient.phone} stopped ${matches[0].name} (${matches.length} reminder time${matches.length > 1 ? 's' : ''}, ${removed.deletedCount} upcoming dose(s) removed)`);
+    processCompletedCourses(); // refill message now if it's 9 AM–9 PM, otherwise in the morning
+    res.json({ message: `Reminders for ${matches[0].name} have stopped.`, stopped: matches.length });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 app.delete('/api/doses/:id', auth, async (req, res) => {
   try {
     const dose = await Dose.findOneAndDelete({ _id: req.params.id, patientPhone: req.user.phone });
@@ -2863,7 +2900,6 @@ async function generateTodaysDoses(todayStr) {
 // otherwise the message introduces the Biomexa range, always framed as "ask your doctor" —
 // patients shouldn't switch medicines on the strength of a WhatsApp message alone.
 const SITE_URL = (process.env.SITE_URL || 'https://biomexa-website.onrender.com').replace(/\/+$/, '');
-const FOLLOW_UP_DAYS = { 2: 2, 3: 7 }; // stage -> days after completion
 const COURSE_MSG_START_HOUR = 9, COURSE_MSG_END_HOUR = 21;
 
 // Optional approved template so these reach patients outside WhatsApp's 24-hour session window
@@ -2955,32 +2991,29 @@ async function summarizeCourse(phone, med) {
   return { taken, missed, unconfirmed, total, adherence };
 }
 
-function courseMessages(stage, patient, med, summary) {
+// The one WhatsApp message sent when reminders for a medicine end — either its course days ran
+// out or the patient removed it from the portal. Nothing else is sent afterwards: it's a refill
+// prompt for Biomexa products, or an introduction to Biomexa medicines for anything else (always
+// "ask your doctor" — nobody should switch medicines on the strength of a WhatsApp message).
+function courseMessages(patient, med) {
   const first = (patient.name || 'there').split(' ')[0];
-  const reportUrl = `${SITE_URL}/patient.html#treatment-report`;
-  const doctorUrl = `${SITE_URL}/patient.html#connect-doctor`;
-  const refill = refillLine(med.name);
   const days = med.durationDays ? `${med.durationDays}-day ` : '';
-
-  if (stage === 1) {
-    const stats = summary.total
-      ? `✅ Taken: ${summary.taken} of ${summary.total} doses (${summary.adherence}% adherence)${summary.missed ? `\n❌ Missed: ${summary.missed}` : ''}${summary.unconfirmed ? `\n❔ Not confirmed: ${summary.unconfirmed}` : ''}`
-      : `We didn't receive any dose confirmations for this course.`;
-    const praise = summary.adherence == null ? '' : summary.adherence >= 90 ? '🌟 Excellent consistency — well done!' : summary.adherence >= 70 ? '👍 Good effort — a few doses were missed.' : '⚠️ Several doses were missed — please mention this to your doctor.';
+  const why = med.stoppedByPatient
+    ? `you've removed *${med.name}* from Biomexa, so its reminders have stopped`
+    : `your ${days}course of *${med.name}* is complete, so its reminders have stopped`;
+  const whyShort = med.stoppedByPatient ? 'Reminders for this medicine have stopped.' : `Your ${days}course is complete and reminders have stopped.`;
+  const product = findBiomexaProduct(med.name);
+  if (product) {
+    const url = `${SITE_URL}${product.url}#orderForm`;
     return {
-      summaryLine: `Your ${days}course is complete and reminders have stopped. Adherence: ${summary.adherence ?? 'n/a'}%. View your treatment report at ${reportUrl} and review it with your doctor before stopping or continuing.`,
-      full: `🎉 *Treatment Course Complete*\n\nHi ${first}, your ${days}course of *${med.name}* has finished, so we've stopped its reminders.\n\n📊 *Course summary*\n${stats}\n${praise}\n\n📄 *Your treatment report* — see how the course went, day by day:\n${reportUrl}\n\n👨‍⚕️ *Next step:* please check with your doctor whether to stop, continue or change this medicine. Don't restart or stop on your own.\nConnect with a doctor: ${doctorUrl}\n\n${refill.text}\n\n- Biomexa Team`
+      summaryLine: `${whyShort} Need a refill of ${product.name}? Order it for home delivery: ${url} . If your doctor asked you to continue, please don't stop suddenly.`,
+      full: `💊 *Time to refill ${product.name}?*\n\nHi ${first}, ${why}.\n\n🛒 *Order ${product.name}* — delivered to your home:\n${url}\n\nIf your doctor has asked you to continue, please don't stop suddenly — keep your supply going. Add it again on Biomexa any time and your reminders restart.\n\n- Biomexa Team`
     };
   }
-  if (stage === 2) {
-    return {
-      summaryLine: `It's been 2 days since your course ended. Have you consulted your doctor? Connect: ${doctorUrl}. ${refill.short}`,
-      full: `👨‍⚕️ *Time for a check-up?*\n\nHi ${first}, it's been 2 days since your *${med.name}* course ended.\n\nIf you haven't yet, please consult your doctor — share your treatment report so they can decide whether to continue:\n📄 ${reportUrl}\n\nNeed a doctor? Connect instantly: ${doctorUrl}\n\n${refill.text}\n\nIf your doctor restarts it, add it again on Biomexa and your reminders resume automatically.\n\n- Biomexa Team`
-    };
-  }
+  const url = `${SITE_URL}/products/index.html`;
   return {
-    summaryLine: `A week since your course ended. If your doctor continued it, don't run out. ${refill.short}`,
-    full: `💊 *Don't run out*\n\nHi ${first}, it's been a week since your *${med.name}* course ended.\n\nIf your doctor asked you to continue, make sure you have enough stock so you don't miss doses.\n\n${refill.text}\n\nNot sure whether to continue? Talk to a doctor: ${doctorUrl}\n\nThis is our last reminder about this course. Take care!\n\n- Biomexa Team`
+    summaryLine: `${whyShort} For your next prescription, ask your doctor about Biomexa medicines (Telmexa AM for BP, Diabmexa M 500 for diabetes) with free WhatsApp reminders: ${url}`,
+    full: `💊 *Your next refill — try Biomexa*\n\nHi ${first}, ${why}.\n\nBiomexa medicines come with free WhatsApp dose reminders, an AI pharmacist and treatment reports:\n• *Telmexa AM* — for blood pressure\n• *Diabmexa M 500* — for diabetes\n\nAsk your doctor if one is right for you, and order here:\n${url}\n\n- Biomexa Team`
   };
 }
 
@@ -3015,9 +3048,12 @@ async function processCompletedCourses() {
           console.log(`🏁 Course ended: ${med.name} for ${patient.phone} — reminders stopped${removed.deletedCount ? `, ${removed.deletedCount} upcoming dose(s) removed` : ''}`);
         }
 
-        // Patient restarted the same medicine (new active entry) — no refill nudges needed.
+        // Patient restarted the same medicine (new active entry) — no refill message needed.
         const restarted = patient.medicines.some(m => m !== med && m.active && m.name.toLowerCase() === med.name.toLowerCase());
-        if (restarted && (med.followUpStage || 0) >= 1) { med.followUpStage = 3; changed = true; continue; }
+        if (restarted) {
+          await Patient.updateOne({ _id: patient._id, 'medicines._id': med._id }, { $set: { 'medicines.$.followUpStage': 3, 'medicines.$.active': false } });
+          med.followUpStage = 3; continue;
+        }
 
         // Courses that ended before this feature shipped (or while the service was down for days)
         // shouldn't suddenly get a "your course just finished" message — close them out silently.
@@ -3027,34 +3063,29 @@ async function processCompletedCourses() {
           continue;
         }
 
-        const nextStage = (med.followUpStage || 0) + 1;
-        const dueAt = nextStage === 1 ? new Date(med.completedAt)
-          : new Date(new Date(med.completedAt).getTime() + FOLLOW_UP_DAYS[nextStage] * 86400000);
-        if (now < dueAt || !withinSendingHours) continue;
+        // Exactly one message per ended medicine, sent 9 AM–9 PM.
+        if ((med.followUpStage || 0) >= 1 || !withinSendingHours) continue;
 
-        // Claim this stage atomically so two instances (zero-downtime deploys) never double-send.
+        // Claim it atomically (0 -> 3 = done) so two instances during a deploy never double-send.
         const claimed = await Patient.updateOne(
-          { _id: patient._id, medicines: { $elemMatch: { _id: med._id, followUpStage: { $in: nextStage === 1 ? [0, null] : [nextStage - 1] } } } },
-          { $set: { 'medicines.$.followUpStage': nextStage, 'medicines.$.lastFollowUpAt': now, 'medicines.$.active': false, 'medicines.$.completedAt': med.completedAt } }
+          { _id: patient._id, medicines: { $elemMatch: { _id: med._id, followUpStage: { $in: [0, null] } } } },
+          { $set: { 'medicines.$.followUpStage': 3, 'medicines.$.lastFollowUpAt': now, 'medicines.$.active': false, 'medicines.$.completedAt': med.completedAt } }
         );
         if (!claimed.modifiedCount) continue;
-        med.followUpStage = nextStage;
+        med.followUpStage = 3;
 
-        const summary = med.courseSummary?.taken != null && nextStage > 1
-          ? med.courseSummary : await summarizeCourse(patient.phone, med);
-        if (nextStage === 1) {
-          await Patient.updateOne({ _id: patient._id, 'medicines._id': med._id },
-            { $set: { 'medicines.$.courseSummary': { taken: summary.taken, missed: summary.missed, adherence: summary.adherence } } });
-        }
+        const summary = await summarizeCourse(patient.phone, med);
+        await Patient.updateOne({ _id: patient._id, 'medicines._id': med._id },
+          { $set: { 'medicines.$.courseSummary': { taken: summary.taken, missed: summary.missed, adherence: summary.adherence } } });
 
-        const { summaryLine, full } = courseMessages(nextStage, patient, med, summary);
+        const { summaryLine, full } = courseMessages(patient, med);
         const result = await sendCourseMessage(patient.phone, patient.name, med.name, summaryLine, full);
         if (!result.success) {
-          // Delivery failed outright (MSG91 down) — roll the stage back so the next check retries.
-          await Patient.updateOne({ _id: patient._id, 'medicines._id': med._id }, { $set: { 'medicines.$.followUpStage': nextStage - 1 } });
-          med.followUpStage = nextStage - 1;
+          // Delivery failed outright (MSG91 down) — release the claim so the next check retries.
+          await Patient.updateOne({ _id: patient._id, 'medicines._id': med._id }, { $set: { 'medicines.$.followUpStage': 0 } });
+          med.followUpStage = 0;
         }
-        console.log(`📨 Course follow-up stage ${nextStage} for ${med.name} → ${patient.phone}: ${result.success ? 'sent' : 'failed, will retry'}`);
+        console.log(`📨 Refill message for ${med.name}${med.stoppedByPatient ? ' (removed by patient)' : ''} → ${patient.phone}: ${result.success ? 'sent' : 'failed, will retry'}`);
       }
       if (changed) {
         // Only the active/completedAt flags were changed in memory; stages were written atomically above.
