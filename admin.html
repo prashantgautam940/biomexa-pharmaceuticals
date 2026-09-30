@@ -96,6 +96,26 @@ tr:hover { background: rgba(28,154,85,0.05); }
 thead th { background: #f6f8fc !important; color: #5b6b86 !important; }
 tbody tr:hover { background: #f6f8fc !important; }
 .btn, .train-btn { border-radius: 12px !important; }
+
+/* Doctor approvals */
+.doc-badge { display: inline-block; background: #c0262d; color: #fff; font-size: 0.75rem; font-weight: 700; padding: 2px 9px; border-radius: 999px; vertical-align: middle; margin-left: 6px; }
+.doc-tabs { display: flex; gap: 8px; flex-wrap: wrap; margin: 6px 0 14px; }
+.doc-tab { border: 1px solid #e2e8f2; background: #fff; color: #5b6b86; padding: 8px 14px; border-radius: 999px; font-weight: 600; font-size: 0.85rem; cursor: pointer; }
+.doc-tab.active { background: #16336b; border-color: #16336b; color: #fff; }
+.doc-card { border: 1px solid #e2e8f2; border-radius: 16px; padding: 16px; margin-bottom: 10px; background: #fff; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: start; }
+@media (max-width: 720px) { .doc-card { grid-template-columns: minmax(0, 1fr); } }
+.doc-card h3 { font-size: 1.02rem; color: #13213d; margin-bottom: 4px; }
+.doc-meta { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 6px 16px; font-size: 0.86rem; color: #34425e; margin-top: 8px; }
+.doc-meta span b { color: #5b6b86; font-weight: 600; display: block; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; }
+.doc-bio { font-size: 0.85rem; color: #5b6b86; margin-top: 8px; }
+.doc-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.doc-actions button { border: none; border-radius: 10px; padding: 9px 14px; font-weight: 650; font-size: 0.85rem; cursor: pointer; }
+.doc-approve { background: #1c9a55; color: #fff; }
+.doc-reject { background: #fff; color: #c0262d; border: 1px solid #f5c7c9 !important; }
+.doc-status { font-size: 0.72rem; font-weight: 700; padding: 3px 9px; border-radius: 999px; text-transform: uppercase; letter-spacing: 0.04em; }
+.doc-status.pending { background: #fff6e6; color: #b45309; } .doc-status.verified { background: #e8f6ee; color: #11663a; }
+.doc-status.rejected, .doc-status.suspended { background: #fdecec; color: #c0262d; }
+.doc-note { font-size: 0.82rem; color: #c0262d; margin-top: 6px; }
 </style>
 <link rel="stylesheet" href="css/biomexa-ui.css">
 <script src="js/biomexa-ui.js" defer></script>
@@ -163,6 +183,22 @@ tbody tr:hover { background: #f6f8fc !important; }
     </div>
   </div>
 
+
+  <div class="ai-panel" id="doctorApprovalsPanel">
+    <div class="ai-panel-head">
+      <div>
+        <h2><i class="fas fa-user-doctor"></i> Doctor Approvals <span id="pendingDocBadge" class="doc-badge" style="display:none"></span></h2>
+        <p style="color:var(--text-muted);font-size:0.88rem;margin-top:4px;max-width:720px;">New doctors can't see any patient data, appear in "Talk to a doctor" or receive patient alerts until you approve them. Check the licence number with the state medical council / NMC register before approving.</p>
+      </div>
+      <button class="btn" onclick="loadDoctors()" style="padding:9px 16px;"><i class="fas fa-rotate"></i> Refresh</button>
+    </div>
+    <div class="doc-tabs">
+      <button class="doc-tab active" data-status="pending" onclick="setDocTab('pending')">Awaiting approval</button>
+      <button class="doc-tab" data-status="verified" onclick="setDocTab('verified')">Approved</button>
+      <button class="doc-tab" data-status="other" onclick="setDocTab('other')">Rejected / suspended</button>
+    </div>
+    <div id="doctorList"><div class="loading">Loading doctors…</div></div>
+  </div>
 
   <div class="ai-panel" id="changePasswordPanel" style="border-color: var(--border);">
     <div class="ai-panel-head">
@@ -380,6 +416,71 @@ function logout() {
   document.getElementById('logoutBtn').style.display = 'none';
 }
 
+
+// ========== DOCTOR APPROVALS ==========
+let allDoctors = [], docTab = 'pending';
+function escDoc(t) { return String(t ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+function setDocTab(tab) {
+  docTab = tab;
+  document.querySelectorAll('.doc-tab').forEach(b => b.classList.toggle('active', b.dataset.status === tab));
+  renderDoctors();
+}
+function loadDoctors() {
+  authFetch('/api/admin/doctors').then(r => r.json()).then(list => {
+    allDoctors = Array.isArray(list) ? list : [];
+    const pending = allDoctors.filter(d => (d.status || 'pending') === 'pending').length;
+    const badge = document.getElementById('pendingDocBadge');
+    badge.textContent = pending ? `${pending} waiting` : ''; badge.style.display = pending ? 'inline-block' : 'none';
+    renderDoctors();
+  }).catch(e => { document.getElementById('doctorList').innerHTML = `<div class="empty">${escDoc(e.message)}</div>`; });
+}
+function renderDoctors() {
+  const st = (d) => d.status || 'pending';
+  const list = allDoctors.filter(d => docTab === 'other' ? ['rejected', 'suspended'].includes(st(d)) : st(d) === docTab);
+  const el = document.getElementById('doctorList');
+  if (!list.length) { el.innerHTML = `<div class="empty">${docTab === 'pending' ? 'No doctors waiting for approval. 🎉' : 'Nobody here yet.'}</div>`; return; }
+  el.innerHTML = list.map(d => {
+    const s = st(d);
+    const actions = s === 'pending'
+      ? `<button class="doc-approve" onclick="reviewDoctor('${d._id}','approve')"><i class="fas fa-check"></i> Approve</button><button class="doc-reject" onclick="reviewDoctor('${d._id}','reject')">Reject</button>`
+      : s === 'verified'
+        ? `<button class="doc-reject" onclick="reviewDoctor('${d._id}','suspend')">Suspend</button>`
+        : `<button class="doc-approve" onclick="reviewDoctor('${d._id}','approve')">Approve</button>`;
+    return `<div class="doc-card">
+      <div>
+        <h3>Dr. ${escDoc(String(d.name || '').replace(/^dr\.?\s+/i, ''))} <span class="doc-status ${s}">${s === 'verified' ? 'approved' : s}</span></h3>
+        <div class="doc-meta">
+          <span><b>Licence no.</b>${escDoc(d.licenseNumber) || '—'}</span>
+          <span><b>Specialty</b>${escDoc(d.specialty) || '—'}</span>
+          <span><b>Experience</b>${d.experienceYears ? escDoc(d.experienceYears) + ' yrs' : '—'}</span>
+          <span><b>WhatsApp</b>${escDoc(d.phone)}</span>
+          <span><b>Email</b>${escDoc(d.email) || '—'}</span>
+          <span><b>Signed up</b>${d.createdAt ? new Date(d.createdAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'}</span>
+        </div>
+        ${d.bio ? `<div class="doc-bio">${escDoc(d.bio)}</div>` : ''}
+        ${d.reviewNote && s !== 'verified' ? `<div class="doc-note">Reason: ${escDoc(d.reviewNote)}</div>` : ''}
+        ${d.reviewedAt ? `<div class="doc-bio">Last reviewed ${new Date(d.reviewedAt).toLocaleDateString('en-IN')} by ${escDoc(d.reviewedBy || 'admin')}</div>` : ''}
+      </div>
+      <div class="doc-actions">${actions}</div>
+    </div>`;
+  }).join('');
+}
+function reviewDoctor(id, action) {
+  const d = allDoctors.find(x => x._id === id); const name = d ? 'Dr. ' + String(d.name || '').replace(/^dr\.?\s+/i, '') : 'this doctor';
+  let note = '';
+  if (action === 'approve') {
+    if (!confirm(`Approve ${name}?\n\nThey will be able to see all patients' adherence, vitals and reports, and receive patient requests. Only approve after checking licence ${d?.licenseNumber || ''}.`)) return;
+  } else {
+    note = prompt(`${action === 'reject' ? 'Reject' : 'Suspend'} ${name} — reason (sent to the doctor on WhatsApp):`);
+    if (note === null) return;
+    if (!note.trim()) { alert('Please enter a short reason.'); return; }
+  }
+  authFetch(`/api/admin/doctors/${id}/${action}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ note }) })
+    .then(r => r.json().then(data => ({ ok: r.ok, data })))
+    .then(({ ok, data }) => { if (!ok) throw new Error(data.message); alert(data.message + (data.whatsappSent ? '\nThe doctor has been notified on WhatsApp.' : '')); loadDoctors(); })
+    .catch(e => alert(e.message));
+}
+
 function enterDashboard() {
   document.getElementById('loginSection').classList.add('hidden');
   document.getElementById('dashboardSection').classList.remove('hidden');
@@ -389,6 +490,7 @@ function enterDashboard() {
   loadWaSystemStatus();
   loadClinicalData();
   loadOrders();
+  loadDoctors();
 }
 
 function loadWaSystemStatus() {

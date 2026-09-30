@@ -1478,7 +1478,12 @@ const doctorSchema = new mongoose.Schema({
   experienceYears: { type: Number, default: 0 },
   bio: String,
   available: { type: Boolean, default: true }, // toggled by doctor from dashboard
-  status: { type: String, default: 'pending' }, // pending | verified (admin can flip later)
+  // Admin approval: pending (just signed up) | verified (approved — can see patients and be
+  // contacted) | rejected | suspended. Nothing but "verified" gets any access.
+  status: { type: String, default: 'pending' },
+  reviewedAt: Date,
+  reviewedBy: String,
+  reviewNote: String,
   createdAt: { type: Date, default: Date.now }
 });
 
@@ -1673,7 +1678,7 @@ async function triggerRiskAlert(patient, vitals) {
   const danger = checkVitalsDanger(vitals);
   if (!danger) return null;
 
-  const availableDoctor = await Doctor.findOne({ available: true }).sort({ createdAt: -1 });
+  const availableDoctor = await Doctor.findOne({ available: true, status: 'verified' }).sort({ createdAt: -1 });
 
   const alert = await RiskAlert.create({
     patientPhone: patient.phone,
@@ -3454,9 +3459,9 @@ async function staffAuth(req, res, next) {
   try {
     const auth = req.headers.authorization || '';
     if (auth.startsWith('Bearer ')) {
-      const decoded = jwt.verify(auth.slice(7), JWT_SECRET);
-      if (decoded.role === 'doctor') { req.doctor = decoded; return next(); }
-      return res.status(403).json({ message: 'Doctor or admin login required' });
+      const r = await approvedDoctorFromToken(auth.slice(7));
+      if (r.error) return res.status(r.error).json({ message: r.message, code: r.code });
+      req.doctor = r.decoded; return next();
     }
     if (auth.startsWith('Basic ')) {
       const [u, ...rest] = Buffer.from(auth.slice(6), 'base64').toString().split(':');
@@ -3485,13 +3490,28 @@ app.get('/api/doctor/login', async (req, res) => {
 });
 
 // ========== DOCTOR SIGNUP / LOGIN / AVAILABILITY (real accounts) ==========
-const doctorAuth = (req, res, next) => {
+// Doctor JWT + the account must be approved ("verified") by an admin. Checked on every request,
+// so suspending a doctor in the admin panel cuts access immediately, not when their token expires.
+const DOCTOR_STATUS_MESSAGES = {
+  pending: 'Your doctor account is being reviewed by the Biomexa team. We\'ll message you on WhatsApp as soon as it\'s approved.',
+  rejected: 'Your doctor account was not approved. Please contact Biomexa if you think this is a mistake.',
+  suspended: 'Your doctor account has been suspended. Please contact Biomexa.'
+};
+async function approvedDoctorFromToken(token) {
+  const decoded = jwt.verify(token, JWT_SECRET);
+  if (decoded.role !== 'doctor') return { error: 403, message: 'Doctor account required' };
+  const doctor = await Doctor.findById(decoded.id).select('status');
+  if (!doctor) return { error: 401, message: 'Doctor account not found' };
+  if (doctor.status !== 'verified') return { error: 403, code: 'not_approved', message: DOCTOR_STATUS_MESSAGES[doctor.status] || DOCTOR_STATUS_MESSAGES.pending };
+  return { decoded };
+}
+const doctorAuth = async (req, res, next) => {
   const token = req.headers.authorization?.split(' ')[1];
   if (!token) return res.status(401).json({ message: 'No token provided' });
   try {
-    const decoded = jwt.verify(token, JWT_SECRET);
-    if (decoded.role !== 'doctor') return res.status(403).json({ message: 'Doctor account required' });
-    req.doctor = decoded;
+    const r = await approvedDoctorFromToken(token);
+    if (r.error) return res.status(r.error).json({ message: r.message, code: r.code });
+    req.doctor = r.decoded;
     next();
   } catch {
     res.status(401).json({ message: 'Invalid token' });
@@ -3508,19 +3528,23 @@ app.post('/api/doctors/register', signupLimiter, async (req, res) => {
     if (!name || !phone || !password || !licenseNumber) {
       return res.status(400).json({ message: 'Name, WhatsApp number, password and license number are required' });
     }
-    const existing = await Doctor.findOne({ phone });
+    const cleanPhone = normalizePhone(phone);
+    if (!/^\+\d{11,15}$/.test(cleanPhone)) return res.status(400).json({ message: 'Please enter a valid WhatsApp number.' });
+    if (String(password).length < 6) return res.status(400).json({ message: 'Password must be at least 6 characters.' });
+    const existing = await findAccountByPhone('doctor', cleanPhone);
     if (existing) return res.status(400).json({ message: 'A doctor account already exists with this phone number' });
 
+    // New doctors start as "pending": no access to patient data, not listed for patients, no
+    // patient alerts — until an admin checks their licence and approves them (admin panel).
     const hashed = await bcrypt.hash(password, 10);
-    const doctor = new Doctor({ name, email, phone, password: hashed, specialty, licenseNumber, experienceYears, bio, available: true });
+    const doctor = new Doctor({ name, email: email || undefined, phone: cleanPhone, password: hashed, specialty, licenseNumber: String(licenseNumber).trim(), experienceYears, bio, available: false, status: 'pending' });
     await doctor.save();
+    console.log(`🩺 New doctor sign-up awaiting approval: Dr. ${name} (${cleanPhone}), licence ${doctor.licenseNumber}`);
 
-    const token = jwt.sign({ id: doctor._id, phone, role: 'doctor' }, JWT_SECRET, { expiresIn: '7d' });
+    const welcomeMsg = `👨‍⚕️ *Thanks for joining Biomexa, Dr. ${name}!*\n\nWe've received your details and our team is verifying your medical licence (${doctor.licenseNumber}). This usually takes up to 24 hours.\n\nWe'll message you here as soon as your account is approved — you can then log in, see patients and receive connect requests.\n\n- Biomexa Team`;
+    sendWelcomeMessage(cleanPhone, `Dr. ${name}`, welcomeMsg);
 
-    const welcomeMsg = `👨‍⚕️ *Welcome to Biomexa, Dr. ${name}!*\n\nYour doctor profile is now live on the Biomexa Connect network. Patients with a high risk score can reach you instantly via WhatsApp.\n\nYou're marked *Available* by default — toggle this anytime from your dashboard.\n\n- Biomexa Team`;
-    sendWelcomeMessage(phone, `Dr. ${name}`, welcomeMsg);
-
-    res.json({ message: 'Doctor registered successfully', token, doctor: { id: doctor._id, name, phone, specialty: doctor.specialty, available: doctor.available } });
+    res.json({ message: 'Your account has been created and is awaiting verification.', pending: true, doctor: { name, phone: cleanPhone, specialty: doctor.specialty } });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -3530,13 +3554,16 @@ app.post('/api/doctors/register', signupLimiter, async (req, res) => {
 app.post('/api/doctors/login', loginLimiter, async (req, res) => {
   try {
     const { phone, password } = req.body;
-    const doctor = await Doctor.findOne({ phone });
+    const doctor = await findAccountByPhone('doctor', phone);
     if (!doctor) return res.status(400).json({ message: 'No doctor account found with this number' });
 
     const match = await bcrypt.compare(password, doctor.password);
     if (!match) return res.status(400).json({ message: 'Invalid password' });
+    if (doctor.status !== 'verified') {
+      return res.status(403).json({ code: 'not_approved', status: doctor.status, message: DOCTOR_STATUS_MESSAGES[doctor.status] || DOCTOR_STATUS_MESSAGES.pending });
+    }
 
-    const token = jwt.sign({ id: doctor._id, phone, role: 'doctor' }, JWT_SECRET, { expiresIn: '7d' });
+    const token = jwt.sign({ id: doctor._id, phone: doctor.phone, role: 'doctor' }, JWT_SECRET, { expiresIn: '7d' });
     res.json({ token, doctor: { id: doctor._id, name: doctor.name, phone: doctor.phone, specialty: doctor.specialty, available: doctor.available, experienceYears: doctor.experienceYears } });
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -3758,7 +3785,7 @@ app.post('/api/doctors/test-whatsapp', doctorAuth, async (req, res) => {
 // Public list of doctors — powers the "Doctors Available" section on the home page & patient portal
 app.get('/api/doctors', async (req, res) => {
   try {
-    const doctors = await Doctor.find().select('-password').sort({ available: -1, createdAt: -1 }).limit(50);
+    const doctors = await Doctor.find({ status: 'verified' }).select('-password -email -licenseNumber -reviewNote -reviewedBy -reviewedAt').sort({ available: -1, createdAt: -1 }).limit(50);
     res.json(doctors);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -3770,7 +3797,7 @@ app.get('/api/doctors', async (req, res) => {
 app.post('/api/doctors/:id/connect', async (req, res) => {
   try {
     const { patientName, patientPhone, urgency, message } = req.body;
-    const doctor = await Doctor.findById(req.params.id);
+    const doctor = await Doctor.findOne({ _id: req.params.id, status: 'verified' });
     if (!doctor) return res.status(404).json({ message: 'Doctor not found' });
 
     const flag = urgency === 'high' ? '🚨 *HIGH RISK PATIENT — PLEASE RESPOND PROMPTLY*' : '📩 *New Patient Connect Request*';
@@ -4273,6 +4300,46 @@ app.get('/api/doctors/clinical-data', doctorAuth, async (req, res) => {
 
 // Admin's patient view — risk scores come from the trained model when one exists,
 // and fall back to a deterministic adherence-based heuristic (never random) otherwise.
+// ========== ADMIN: DOCTOR APPROVALS ==========
+// New doctors can't see patients, appear in "Talk to a doctor" or receive patient alerts until
+// approved here. Suspending cuts access immediately (checked on every request).
+app.get('/api/admin/doctors', adminAuth, async (req, res) => {
+  try {
+    const doctors = await Doctor.find().select('-password').sort({ createdAt: -1 }).limit(200);
+    res.json(doctors);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+app.post('/api/admin/doctors/:id/:action', adminAuth, async (req, res) => {
+  try {
+    const { id, action } = req.params;
+    const next = { approve: 'verified', reject: 'rejected', suspend: 'suspended' }[action];
+    if (!next) return res.status(400).json({ message: 'Unknown action.' });
+    const note = String(req.body?.note || '').trim().slice(0, 300);
+    if ((action === 'reject' || action === 'suspend') && !note) return res.status(400).json({ message: 'Please add a short reason — it is sent to the doctor.' });
+
+    const update = { status: next, reviewedAt: new Date(), reviewedBy: req.admin?.username || 'admin', reviewNote: note || undefined };
+    if (next !== 'verified') update.available = false;
+    const doctor = await Doctor.findByIdAndUpdate(id, update, { new: true }).select('-password');
+    if (!doctor) return res.status(404).json({ message: 'Doctor not found.' });
+
+    const loginUrl = `${SITE_URL}/doctor.html`;
+    const dn = String(doctor.name || '').replace(/^dr\.?\s+/i, ''); // older accounts may include "Dr."
+    const msg = next === 'verified'
+      ? `✅ *Your Biomexa doctor account is approved, Dr. ${dn}!*\n\nYou can now log in, see patient adherence and reports, and receive patient connect requests:\n${loginUrl}\n\nTurn on *Available* in your dashboard when you're ready to take patient requests.\n\n- Biomexa Team`
+      : next === 'rejected'
+        ? `Dr. ${dn}, we couldn't approve your Biomexa doctor account.\n\nReason: ${note}\n\nIf you think this is a mistake, please reply to this message with your details.\n\n- Biomexa Team`
+        : `Dr. ${dn}, your Biomexa doctor account has been suspended.\n\nReason: ${note}\n\nPlease reply to this message if you have questions.\n\n- Biomexa Team`;
+    const wa = await sendWhatsAppFree(doctor.phone, msg);
+    console.log(`🩺 Doctor ${doctor.phone} -> ${next} by ${update.reviewedBy}${note ? ` (${note})` : ''}`);
+    res.json({ message: `Dr. ${dn} is now ${next === 'verified' ? 'approved' : next}.`, doctor, whatsappSent: !!wa?.success });
+  } catch (err) {
+    res.status(500).json({ message: err.name === 'CastError' ? 'Doctor not found.' : err.message });
+  }
+});
+
 app.get('/api/admin/patients', adminAuth, async (req, res) => {
   try {
     const model = await TrainedModel.findOne().sort({ trainedAt: -1 });

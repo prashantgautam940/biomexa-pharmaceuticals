@@ -196,12 +196,17 @@ document.getElementById('doctorSignupForm').addEventListener('submit', async (e)
     const data = await res.json();
     if (!res.ok) throw new Error(data.message || 'Signup failed');
 
-    localStorage.setItem('doctorToken', data.token);
-    localStorage.setItem('doctorProfile', JSON.stringify(data.doctor));
-
-    msg.className = 'msg ok';
-    msg.textContent = 'Account created! You are now listed as available on Biomexa Connect. Redirecting to your dashboard...';
-    setTimeout(() => { window.location.href = 'doctor.html'; }, 1600);
+    // New doctor accounts are reviewed by the Biomexa team before they get any access.
+    localStorage.removeItem('doctorToken'); localStorage.removeItem('doctorProfile');
+    const form = document.getElementById('doctorSignupForm');
+    form.innerHTML = `<div style="text-align:center;padding:10px 4px;">
+      <div style="width:64px;height:64px;border-radius:50%;background:#e8f6ee;color:#1c9a55;display:grid;place-items:center;font-size:1.7rem;margin:0 auto 12px;"><i class="fas fa-hourglass-half"></i></div>
+      <h2 style="font-size:1.35rem;margin-bottom:8px;">Thanks, Dr. ${String(payload.name).replace(/^dr\.?\s+/i, '').replace(/</g, '&lt;')}!</h2>
+      <p style="color:#5b6b86;line-height:1.6;">We're verifying your medical licence <strong>${String(payload.licenseNumber).replace(/</g, '&lt;')}</strong>. This usually takes up to 24 hours.</p>
+      <p style="color:#5b6b86;line-height:1.6;margin-top:8px;">We'll message you on WhatsApp as soon as your account is approved — you can then log in, see patients and receive connect requests.</p>
+      <a href="index.html" style="display:inline-block;margin-top:16px;color:#16336b;font-weight:600;">Back to Biomexa home</a>
+    </div>`;
+    msg.className = 'msg'; msg.textContent = '';
   } catch (err) {
     msg.className = 'msg err';
     msg.textContent = err.message || 'Something went wrong. Please try again.';

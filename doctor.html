@@ -404,6 +404,13 @@ function login() {
         enterDashboard();
         return;
       }
+      // Real account, right password, but not approved yet (or rejected / suspended): say so,
+      // don't fall through to the demo login and show a misleading "wrong password".
+      if (data && data.code === 'not_approved') {
+        err.textContent = data.message;
+        err.style.display = 'block';
+        return;
+      }
       // 2) Fall back to the built-in demo staff login (username/password combo)
       tryLegacyLogin(u, p);
     })
