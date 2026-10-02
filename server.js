@@ -1086,6 +1086,15 @@ function localDateStr(d = new Date()) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
+// A reminder time that passed only a few minutes ago (e.g. set for "now", or the form took a
+// minute to fill in) still goes out right away instead of silently waiting until tomorrow.
+const JUST_MISSED_MINUTES = 15;
+function hhmmToMin(t) { const [h, m] = String(t).split(':').map(Number); return h * 60 + m; }
+function startsTomorrow(time, currentTime) {
+  const late = hhmmToMin(currentTime) - hhmmToMin(time);
+  return late > JUST_MISSED_MINUTES;
+}
+
 const logDuration = days => (days ? ` for ${days} day(s)` : ', ongoing');
 
 function normalizePhone(raw) {
@@ -1815,7 +1824,7 @@ app.post('/api/quick-reminder', signupLimiter, async (req, res) => {
     // generation create the first real one instead.
     const now = new Date();
     const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-    const timeAlreadyPassedToday = time <= currentTime;
+    const timeAlreadyPassedToday = startsTomorrow(time, currentTime);
 
     if (!timeAlreadyPassedToday) {
       const today = localDateStr(new Date());
@@ -2795,7 +2804,7 @@ app.post('/api/medicines', auth, async (req, res) => {
     const createdToday = [];
     const deferredToTomorrow = [];
     for (const t of times) {
-      if (t <= currentTime) {
+      if (startsTomorrow(t, currentTime)) {
         deferredToTomorrow.push(t);
       } else {
         await Dose.create({
