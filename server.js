@@ -1,4 +1,6 @@
 require('dotenv').config();
+// Reminder times are Indian times (HH:MM as the patient typed them), so the server clock must be too.
+process.env.TZ = process.env.TZ || 'Asia/Kolkata';
 const express = require('express');
 const cors = require('cors');
 const cron = require('node-cron');
@@ -1075,6 +1077,17 @@ function phoneVariants(raw) {
 // One canonical format for numbers typed into public forms ("+91 98765 43210", "09876543210",
 // "9876543210" all -> "+919876543210") — the same shape signup and login use, so a patient who
 // sets a reminder from a product page can later log in with the same number.
+// Calendar date (YYYY-MM-DD) in the server's own time zone — the same zone getHours() uses for
+// reminder times. toISOString() gives the UTC date, which in India is still "yesterday" until
+// 5:30 AM, so doses for 12:00–5:29 AM were only created at 5:30 AM and fired late, and the
+// portal showed yesterday's doses before 5:30 AM.
+function localDateStr(d = new Date()) {
+  d = new Date(d);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+const logDuration = days => (days ? ` for ${days} day(s)` : ', ongoing');
+
 function normalizePhone(raw) {
   const digits = String(raw || '').replace(/\D/g, '');
   if (digits.length === 10) return '+91' + digits;
@@ -1805,7 +1818,7 @@ app.post('/api/quick-reminder', signupLimiter, async (req, res) => {
     const timeAlreadyPassedToday = time <= currentTime;
 
     if (!timeAlreadyPassedToday) {
-      const today = new Date().toISOString().split('T')[0];
+      const today = localDateStr(new Date());
       await Dose.create({
         patientPhone: phone,
         medicineName,
@@ -1816,6 +1829,8 @@ app.post('/api/quick-reminder', signupLimiter, async (req, res) => {
         status: 'pending'
       });
     }
+
+    console.log(`🗓️ Reminder set (sign-up): ${phone} — ${medicineName} at ${time}${logDuration(days)}${isNewAccount ? ', new account' : ''} (${timeAlreadyPassedToday ? 'starts tomorrow' : 'first one today'})`);
 
     const firstReminderNote = timeAlreadyPassedToday
       ? `Today's ${time} slot has already passed, so your first reminder will be tomorrow at ${time}.`
@@ -2050,7 +2065,7 @@ app.post('/api/auth/login', loginLimiter, async (req, res) => {
     const token = jwt.sign({ id: patient._id, phone }, JWT_SECRET, { expiresIn: '7d' });
 
     // Get today's doses for the welcome message
-    const today = new Date().toISOString().split('T')[0];
+    const today = localDateStr(new Date());
     const todayDoses = await Dose.find({
       patientPhone: phone,
       scheduledDate: today,
@@ -2499,7 +2514,7 @@ function buildAnalysisInput(patient, doses, vitalsLogs) {
     const { clean, rejected } = cleanVitals(v);
     ignored += rejected.length;
     const iso = v.recordedAt.toISOString();
-    const day = iso.split('T')[0];
+    const day = localDateStr(v.recordedAt);
     const bucket = byDay[day] || (byDay[day] = {});
     for (const [f, val] of Object.entries(clean)) {
       bucket[f] = val;                             // for the day-by-day table: latest of the day
@@ -2752,7 +2767,7 @@ app.post('/api/medicines', auth, async (req, res) => {
     const endDate = days ? new Date(startDate.getTime() + days * 86400000) : null;
     const now = new Date();
     const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-    const today = now.toISOString().split('T')[0];
+    const today = localDateStr(now);
 
     // One medicine sub-document per time — this keeps every existing piece of logic (daily
     // regeneration, the reminder cron's exact-time match, per-dose confirmation and vitals
@@ -2796,6 +2811,8 @@ app.post('/api/medicines', auth, async (req, res) => {
       }
     }
 
+    console.log(`🗓️ Reminder set: ${req.user.phone} — ${name} at ${times.join(', ')}${logDuration(days)} (today: ${createdToday.join(', ') || 'none'}, from tomorrow: ${deferredToTomorrow.join(', ') || 'none'})`);
+
     const timesLabel = times.join(' & ');
     let scheduleNote;
     if (deferredToTomorrow.length === 0) {
@@ -2832,7 +2849,7 @@ app.get('/api/medicines', auth, async (req, res) => {
 // Get Today's Doses
 app.get('/api/doses/today', auth, async (req, res) => {
   try {
-    const today = new Date().toISOString().split('T')[0];
+    const today = localDateStr(new Date());
     const doses = await Dose.find({
       patientPhone: req.user.phone,
       scheduledDate: today
@@ -2856,7 +2873,7 @@ app.delete('/api/patient/medicines/:name', auth, async (req, res) => {
     const patient = await Patient.findOne({ phone: req.user.phone });
     if (!patient) return res.status(404).json({ message: 'Patient not found.' });
     const now = new Date();
-    const todayStr = now.toISOString().split('T')[0];
+    const todayStr = localDateStr(now);
     const matches = patient.medicines.filter(m => m.active && String(m.name).trim().toLowerCase() === name);
     if (!matches.length) return res.status(404).json({ message: 'That medicine is not active any more.' });
     for (const m of matches) {
@@ -3075,7 +3092,7 @@ function refillLine(medicineName) {
 
 async function summarizeCourse(phone, med) {
   const query = { patientPhone: phone, medicineName: med.name };
-  if (med.startDate) query.scheduledDate = { $gte: new Date(med.startDate).toISOString().split('T')[0] };
+  if (med.startDate) query.scheduledDate = { $gte: localDateStr(new Date(med.startDate)) };
   const doses = await Dose.find(query);
   const taken = doses.filter(d => d.status === 'taken').length;
   const missed = doses.filter(d => d.status !== 'taken' && d.status !== 'pending').length;
@@ -3119,7 +3136,7 @@ async function processCompletedCourses() {
     const now = new Date();
     const hour = now.getHours();
     const withinSendingHours = hour >= COURSE_MSG_START_HOUR && hour < COURSE_MSG_END_HOUR;
-    const todayStr = now.toISOString().split('T')[0];
+    const todayStr = localDateStr(now);
 
     const patients = await Patient.find({
       medicines: { $elemMatch: { endDate: { $ne: null, $lte: now }, followUpStage: { $not: { $gte: 3 } } } }
@@ -3199,7 +3216,7 @@ async function processCompletedCourses() {
 cron.schedule('* * * * *', async () => {
   const now = new Date();
   const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-  const today = now.toISOString().split('T')[0];
+  const today = localDateStr(now);
 
   if (lastDoseGenerationDate !== today) {
     lastDoseGenerationDate = today;
@@ -3896,7 +3913,7 @@ app.get('/api/doctor/patient/:phone/vitals', staffAuth, async (req, res) => {
     for (let i = 6; i >= 0; i--) {
       const d = new Date(today);
       d.setDate(d.getDate() - i);
-      const dateStr = d.toISOString().split('T')[0];
+      const dateStr = localDateStr(d);
 
       const dayDoses = await Dose.find({ patientPhone: phone, scheduledDate: dateStr });
       const taken = dayDoses.filter(x => x.status === 'taken').length;
@@ -3906,7 +3923,7 @@ app.get('/api/doctor/patient/:phone/vitals', staffAuth, async (req, res) => {
       // snapshot only when nothing was actually logged that day, and marks which is which.
       // Only real, plausible readings — a day with nothing logged shows as a gap, not a copy
       // of the patient's latest reading.
-      const dayVitals = allVitals.filter(v => v.recordedAt.toISOString().split('T')[0] === dateStr);
+      const dayVitals = allVitals.filter(v => localDateStr(v.recordedAt) === dateStr);
       const merged = dayVitals.reduce((acc, v) => Object.assign(acc, cleanVitals(v).clean), {});
       const latest = Object.keys(merged).length ? merged : null;
 
