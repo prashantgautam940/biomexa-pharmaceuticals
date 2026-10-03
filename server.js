@@ -8,6 +8,7 @@ const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
+const ivfCare = require('./ivf/routes'); // Biomexa IVF Care — separate module, mounted near the end of this file
 
 const app = express();
 app.set('trust proxy', 1); // Render sits behind a reverse proxy — without this, req.ip returns
@@ -3419,6 +3420,11 @@ app.post('/api/webhooks/msg91-whatsapp', async (req, res) => {
     const convo = await ConversationState.findOne({ patientPhone: phone });
     const patient = await Patient.findOne({ phone });
 
+    // IVF Care replies (IVF medicine / trigger-shot "Taken" buttons) are handled by the IVF module.
+    if (convo && typeof convo.state === 'string' && convo.state.startsWith('ivf_')) {
+      if (await ivfCare.handleWhatsAppReply({ phone, convo, buttonText, freeText })) return;
+    }
+
     if (convo && convo.state === 'awaiting_dose_confirm') {
       const reply = buttonText || freeText.toLowerCase();
       const took = /taken|yes|confirm/.test(reply) && !/not\s*taken|no\b/.test(reply);
@@ -4594,6 +4600,17 @@ app.get('/api/whatsapp-status', (req, res) => {
 // it keeps the process (and its once-a-minute reminder cron) running continuously instead of
 // depending on patient/doctor traffic to wake it back up.
 app.get('/health', (req, res) => res.status(200).json({ status: 'ok', time: new Date().toISOString() }));
+
+// ========== BIOMEXA IVF CARE ==========
+// Completely separate feature area (own collections, own /api/ivf routes, own pages ivf.html and
+// ivf-doctor.html). It only borrows the existing logins and WhatsApp senders, passed in here.
+ivfCare.mount(app, {
+  auth, doctorAuth, Patient, Doctor, ConversationState,
+  phoneVariants, localDateStr, SITE_URL,
+  sendWhatsAppFree, sendDoseReminderTemplate, sendRiskAlertTemplate, sendDoctorAlertMessage,
+  analyzeDocument, ALLOWED_DOCUMENT_TYPES, MAX_FILES_PER_UPLOAD, MAX_DOCUMENT_BASE64_LENGTH,
+  disableScheduler: process.env.IVF_SCHEDULER_DISABLED === 'true'
+});
 
 // ========== START SERVER ==========
 const PORT = process.env.PORT || 3000;
