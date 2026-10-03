@@ -1236,6 +1236,20 @@ async function sendLoginMessage(phone, patientName, statusLine, fallbackMsg) {
 // "/" shape (safe, unambiguous), temperature by a decimal point (people essentially never write
 // a decimal for pulse or sugar, so this is a real signal, not a guess), and whatever whole
 // numbers are left are taken in order — first remaining is pulse, next is sugar.
+// Body temperature in °F (what the rest of the platform stores), or null if the number can't be
+// a body temperature. Unit 'f' / 'c' when the patient wrote one; otherwise 34–42 is read as °C.
+function toFahrenheit(n, unit) {
+  if (!Number.isFinite(n)) return null;
+  const isF = v => v >= 93 && v <= 108;
+  const isC = v => v >= 34 && v <= 42;
+  const c2f = v => Math.round((v * 9 / 5 + 32) * 10) / 10;
+  if (unit === 'f') return isF(n) ? n : null;
+  if (unit === 'c') return isC(n) ? c2f(n) : null;
+  if (isF(n)) return n;
+  if (isC(n)) return c2f(n);
+  return null;
+}
+
 function parseVitalsFromText(text) {
   const result = {};
   let consumed = text;
@@ -1247,10 +1261,18 @@ function parseVitalsFromText(text) {
     consumed = consumed.replace(bpMatch[0], ' ');
   }
 
-  const tempLabelMatch = text.match(/temp(?:erature)?[:\s]*([\d.]+)/i) || text.match(/([\d.]{3,5})\s*(?:f|°f|degrees)/i);
+  // Temperature: "temp 99", "temperature: 98.6", "fever 101", "99F", "99 °F", "37.2C", "99°".
+  // Whole numbers count too — most thermometers people read out show "99" or "101", not "99.0".
+  const labelledTemp = text.match(/(?:temp(?:erature)?|tmp|fever|bukhar)\s*[:=\-]?\s*(\d{2,3}(?:[.,]\d{1,2})?)\s*(?:°\s*)?([fc](?![a-z]))?/i);
+  const tempLabelMatch = labelledTemp ||
+    text.match(/\b(\d{2,3}(?:[.,]\d{1,2})?)\s*(?:°\s*([fc])?|([fc])(?![a-z])|\s*degrees?\s*([fc])?)/i);
   if (tempLabelMatch) {
-    result.temperature = parseFloat(tempLabelMatch[1]);
-    consumed = consumed.replace(tempLabelMatch[0], ' ');
+    const unit = (tempLabelMatch[2] || tempLabelMatch[3] || tempLabelMatch[4] || '').toLowerCase();
+    const t = toFahrenheit(parseFloat(tempLabelMatch[1].replace(',', '.')), unit);
+    if (t !== null) result.temperature = t;
+    // A labelled but impossible temperature ("temp 150") is a typo — drop it rather than let the
+    // number fall through and be saved as a pulse or sugar reading.
+    if (t !== null || labelledTemp) consumed = consumed.replace(tempLabelMatch[0], ' ');
   }
 
   const hrLabelMatch = text.match(/(?:pulse|hr|heart\s*rate)[:\s]*(\d{2,3})/i);
@@ -1267,10 +1289,26 @@ function parseVitalsFromText(text) {
 
   // Bare-number fallback for whatever wasn't caught by a label above.
   if (result.temperature === undefined) {
-    const bareDecimal = consumed.match(/\b(\d{2,3}\.\d)\b/);
-    if (bareDecimal) {
-      result.temperature = parseFloat(bareDecimal[1]);
+    const bareDecimal = consumed.match(/\b(\d{2,3}[.,]\d{1,2})\b/);
+    const t = bareDecimal && toFahrenheit(parseFloat(bareDecimal[1].replace(',', '.')), '');
+    if (t !== null && t !== undefined && bareDecimal) {
+      result.temperature = t;
       consumed = consumed.replace(bareDecimal[0], ' ');
+    }
+  }
+
+  // Whole-number temperature in the check-in's own order — "BP Temp Pulse Sugar", e.g.
+  // "120/80 99 72 110". This used to save 99 as the pulse and 72 as the sugar, and no
+  // temperature at all. With two or more bare numbers, the first is the temperature when it's a
+  // believable one (93–108 °F or 34–42 °C); "120/80 72 110" (no temp) still reads as pulse +
+  // sugar because 72 can't be a body temperature. A single bare number stays ambiguous
+  // (99 could be pulse, sugar or temp), so it is not guessed as a temperature.
+  if (result.temperature === undefined) {
+    const wholes = consumed.match(/\b\d{2,3}\b/g) || [];
+    const asTemp = wholes.length >= 2 ? toFahrenheit(parseInt(wholes[0], 10), '') : null;
+    if (asTemp !== null) {
+      result.temperature = asTemp;
+      consumed = consumed.replace(new RegExp(`\\b${wholes[0]}\\b`), ' ');
     }
   }
 
@@ -3403,7 +3441,7 @@ app.post('/api/webhooks/msg91-whatsapp', async (req, res) => {
         await Dose.findByIdAndUpdate(convo.doseId, { status: took ? 'taken' : 'missed' });
 
         if (took) {
-          await sendWhatsAppFree(phone, '✅ Logged as taken!\n\n📋 *Quick check-in*\n\nGot all 4? Just copy the numbers below (skip the words in brackets):\n\n```\n120/80(BP) 98.6(Temp) 72(Pulse) 110(Sugar)\n```\n\nOnly have some? Use labels instead:\n"sugar 110" or "BP 120/80, pulse 72"\n\nOr reply "skip".');
+          await sendWhatsAppFree(phone, '✅ Logged as taken!\n\n📋 *Quick check-in*\n\nGot all 4? Just copy the numbers below (skip the words in brackets):\n\n```\n120/80(BP) 98.6(Temp) 72(Pulse) 110(Sugar)\n```\n\nOnly have some? Use labels instead:\n"temp 99", "sugar 110" or "BP 120/80, pulse 72"\n\nOr reply "skip".');
           await ConversationState.findOneAndUpdate({ patientPhone: phone }, { state: 'awaiting_vitals', updatedAt: new Date() });
         } else {
           await sendWhatsAppFree(phone, `Noted — marked as not taken. Please try to take it as soon as possible, or reach out to your doctor via the Biomexa app if you're having trouble with this medicine.`);
@@ -3427,7 +3465,7 @@ app.post('/api/webhooks/msg91-whatsapp', async (req, res) => {
         return;
       }
       if (Object.keys(vitals).length === 0) {
-        await sendWhatsAppFree(phone, 'Sorry, I couldn\'t read any numbers from that.\n\nGot all 4? Copy the numbers below (skip the bracketed words):\n```\n120/80(BP) 98.6(Temp) 72(Pulse) 110(Sugar)\n```\n\nOnly some? Use labels:\n"sugar 110" or "BP 120/80"\n\nOr reply "skip".');
+        await sendWhatsAppFree(phone, 'Sorry, I couldn\'t read any numbers from that.\n\nGot all 4? Copy the numbers below (skip the bracketed words):\n```\n120/80(BP) 98.6(Temp) 72(Pulse) 110(Sugar)\n```\n\nOnly some? Use labels:\n"temp 99", "sugar 110" or "BP 120/80"\n\nOr reply "skip".');
         return;
       }
 
