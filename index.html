@@ -50,6 +50,45 @@
         white-space: nowrap;
     }
     .nav-dropdown-link:hover { background: rgba(28,154,85,0.15); color: #13804a; }
+
+    /* Biomexa IVF Care promo */
+    .nav-ivf { color: #b83a6e !important; font-weight: 600; }
+    .navbar .logo { flex-shrink: 0; margin-right: 1.25rem; }
+    .navbar .nav-links { gap: 1.15rem; }
+    @media (max-width: 1366px) { .navbar { padding-left: 1.25rem; padding-right: 1.25rem; } .navbar .nav-links { gap: .95rem; } .navbar .nav-links a { font-size: .84rem; } .navbar .logo { margin-right: .75rem; } .navbar .nav-cta { margin-left: .75rem; } }
+    .navbar .nav-cta { flex-shrink: 0; margin-left: 1.25rem; }
+    .nav-new { background: #b83a6e; color: #fff; font-size: .65rem; font-weight: 700; padding: 1px 6px; border-radius: 99px; margin-left: 3px; vertical-align: 2px; }
+    .ivf-promo { padding: 4.5rem 2rem; background: linear-gradient(180deg, #fbf4f8 0%, #ffffff 100%); }
+    .ivf-promo-inner { max-width: 1150px; margin: 0 auto; display: grid; grid-template-columns: 1.15fr .85fr; gap: 3rem; align-items: center;
+        background: linear-gradient(135deg, #16336b 0%, #3b2a6b 55%, #b83a6e 100%); border-radius: 28px; padding: 3rem; color: #fff; box-shadow: 0 30px 70px rgba(59,42,107,.25); }
+    .ivf-promo-badge { display: inline-block; background: rgba(255,255,255,.16); border: 1px solid rgba(255,255,255,.3); padding: .4rem .9rem; border-radius: 99px; font-size: .8rem; font-weight: 700; letter-spacing: .03em; }
+    .ivf-promo h2 { font-size: clamp(1.8rem, 3.2vw, 2.6rem); line-height: 1.15; margin: 1rem 0 .9rem; color: #fff; }
+    .ivf-promo p { color: rgba(255,255,255,.88); font-size: 1.05rem; line-height: 1.65; }
+    .ivf-promo-list { list-style: none; margin: 1.4rem 0 1.8rem; padding: 0; display: grid; gap: .7rem; }
+    .ivf-promo-list li { display: flex; gap: .7rem; align-items: flex-start; color: #fff; font-size: .98rem; }
+    .ivf-promo-list li span { flex: none; width: 30px; height: 30px; display: grid; place-items: center; background: rgba(255,255,255,.14); border-radius: 8px; }
+    .ivf-promo-cta { display: flex; gap: .8rem; flex-wrap: wrap; }
+    .ivf-btn { display: inline-block; padding: .85rem 1.5rem; border-radius: 12px; font-weight: 700; text-decoration: none; transition: transform .2s, background .2s; }
+    .ivf-btn:hover { transform: translateY(-2px); }
+    .ivf-btn-primary { background: #fff; color: #962a57; }
+    .ivf-btn-ghost { border: 1.5px solid rgba(255,255,255,.6); color: #fff; }
+    .ivf-btn-ghost:hover { background: rgba(255,255,255,.1); }
+    .ivf-promo-card { background: #fff; color: #13213d; border-radius: 20px; padding: 1.4rem; box-shadow: 0 20px 50px rgba(0,0,0,.25); transform: rotate(1.5deg); }
+    .ivf-mock-head { display: flex; justify-content: space-between; gap: .5rem; font-weight: 700; font-size: .9rem; flex-wrap: wrap; }
+    .ivf-mock-pill { background: #e9f7ef; color: #11663a; border-radius: 99px; padding: 2px 10px; font-size: .75rem; }
+    .ivf-mock-steps { display: flex; gap: 4px; margin: 1rem 0; }
+    .ivf-mock-steps i { flex: 1; height: 6px; border-radius: 99px; background: #ece9f2; }
+    .ivf-mock-steps i.done { background: #1c9a55; } .ivf-mock-steps i.cur { background: #b83a6e; }
+    .ivf-mock-row { display: flex; justify-content: space-between; gap: .75rem; padding: .75rem 0; border-bottom: 1px solid #eee9f2; font-size: .88rem; }
+    .ivf-mock-row span { color: #5b6b86; text-align: right; } .ivf-mock-row span.ok { color: #11663a; font-weight: 600; }
+    .ivf-mock-note { margin-top: .9rem; background: #fbeef4; color: #962a57; border-radius: 10px; padding: .7rem .8rem; font-size: .82rem; }
+    @media (max-width: 900px) { .ivf-promo-inner { grid-template-columns: 1fr; padding: 2rem 1.4rem; } .ivf-promo-card { transform: none; } .ivf-promo { padding: 3rem 1rem; } }
+    /* Doctor dashboard capabilities (replaces the old sample metrics) */
+    .dash-capabilities { max-width: 1100px; margin: 0 auto; display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 1.25rem; }
+    .dash-cap { background: #fff; border: 1px solid #e2e8f2; border-radius: 16px; padding: 1.5rem; box-shadow: 0 8px 30px rgba(0,0,0,.05); }
+    .dash-cap-icon { font-size: 1.8rem; margin-bottom: .6rem; }
+    .dash-cap h4 { color: #13213d; margin-bottom: .4rem; }
+    .dash-cap p { color: #5b6b86; font-size: .92rem; line-height: 1.6; }
 </style>
 <link rel="stylesheet" href="css/biomexa-ui.css">
 <script src="js/biomexa-ui.js" defer></script>
@@ -68,6 +107,7 @@
             <img class="logo-full-img" src="images/logo-full.png" alt="Biomexa Pharmaceuticals">
         </a>
         <ul class="nav-links" id="navLinks">
+            <li><a href="ivf.html" class="nav-link nav-ivf">IVF Care <span class="nav-new">New</span></a></li>
             <li><a href="#challenge" class="nav-link">The Challenge</a></li>
             <li><a href="#journey" class="nav-link">Patient Journey</a></li>
             <li><a href="#products" class="nav-link">Products</a></li>
@@ -81,6 +121,8 @@
                     <li><a href="doctor.html" class="nav-dropdown-link">Doctor Login</a></li>
                     <li><a href="doctor-signup.html" class="nav-dropdown-link">Doctor Sign Up</a></li>
                     <li><a href="patient.html" class="nav-dropdown-link">Patient Portal</a></li>
+                    <li><a href="ivf.html" class="nav-dropdown-link">IVF Care (Patients)</a></li>
+                    <li><a href="ivf-doctor.html" class="nav-dropdown-link">IVF Centre Dashboard</a></li>
                     <li><a href="admin.html" class="nav-dropdown-link">Admin</a></li>
                 </ul>
             </li>
@@ -95,6 +137,7 @@
 
     <!-- Mobile Menu -->
     <div class="mobile-menu" id="mobileMenu">
+        <a href="ivf.html" style="color:#b83a6e;font-weight:600;">IVF Care · New</a>
         <a href="#challenge">The Challenge</a>
         <a href="#journey">Patient Journey</a>
         <a href="#products">Products</a>
@@ -130,26 +173,42 @@
                 <a href="signup.html" class="cta-btn primary">Get Started</a>
                 <a href="products/" class="cta-btn secondary">Our Products</a>
             </div>
-            <div class="hero-stats">
-                <div class="stat-item">
-                    <span class="stat-number" data-count="50">0</span><span class="stat-suffix">%</span>
-                    <div class="stat-label">of patients don't take meds as prescribed</div>
-                </div>
-                <div class="stat-item">
-                    <span class="stat-number" data-count="300">0</span><span class="stat-suffix">B</span>
-                    <div class="stat-label">Annual cost of non-adherence</div>
-                </div>
-                <div class="stat-item">
-                    <span class="stat-number" data-count="125">0</span><span class="stat-suffix">K</span>
-                    <div class="stat-label">Deaths per year from non-adherence</div>
-                </div>
-            </div>
         </div>
         <div class="scroll-indicator">
             <div class="mouse">
                 <div class="wheel"></div>
             </div>
             <span>Scroll to explore</span>
+        </div>
+    </section>
+
+    <!-- NEW: Biomexa IVF Care — promotional banner -->
+    <section class="ivf-promo" id="ivf-care" aria-labelledby="ivfPromoTitle">
+        <div class="ivf-promo-inner fade-in">
+            <div class="ivf-promo-copy">
+                <span class="ivf-promo-badge">✨ New · Biomexa IVF Care</span>
+                <h2 id="ivfPromoTitle">IVF treatment, monitored every single day</h2>
+                <p>The days between clinic visits are when IVF patients need support most. Biomexa IVF Care connects patients with their IVF centre for daily monitoring, timely medicine reminders and virtual follow-ups — from stimulation to the pregnancy test.</p>
+                <ul class="ivf-promo-list">
+                    <li><span>📋</span> Daily symptom &amp; vitals check-ins with automatic OHSS red-flag alerts</li>
+                    <li><span>💉</span> Injection and trigger-shot reminders on WhatsApp, timed to the minute</li>
+                    <li><span>📄</span> Upload blood tests and scans — your IVF doctor analyses them online</li>
+                    <li><span>🎥</span> Virtual video, audio or chat follow-ups with your IVF centre</li>
+                </ul>
+                <div class="ivf-promo-cta">
+                    <a href="ivf.html" class="ivf-btn ivf-btn-primary">Start IVF monitoring →</a>
+                    <a href="ivf-doctor.html" class="ivf-btn ivf-btn-ghost">For IVF centres</a>
+                </div>
+            </div>
+            <div class="ivf-promo-card" aria-hidden="true">
+                <div class="ivf-mock-head"><span>Today · Stimulation day 7</span><span class="ivf-mock-pill">Check-in done ✓</span></div>
+                <div class="ivf-mock-steps"><i class="done"></i><i class="cur"></i><i></i><i></i><i></i><i></i></div>
+                <div class="ivf-mock-row"><b>💉 FSH injection</b><span class="ok">Taken 9:02 PM</span></div>
+                <div class="ivf-mock-row"><b>💉 Antagonist injection</b><span>Due 8:00 AM</span></div>
+                <div class="ivf-mock-row"><b>📄 Hormone blood test</b><span class="ok">Reviewed by doctor</span></div>
+                <div class="ivf-mock-row"><b>🎥 Video follow-up</b><span>Tomorrow, 6:30 PM</span></div>
+                <div class="ivf-mock-note">Your centre is notified instantly if your check-in shows warning signs.</div>
+            </div>
         </div>
     </section>
 
@@ -508,90 +567,30 @@
             <h2 class="section-title">Doctor & Healthcare Dashboard</h2>
             <p class="section-subtitle">Real-time visibility into treatment response. Data-driven clinical decisions.</p>
         </div>
-        <div class="dashboard-preview fade-in">
-            <div class="dash-header">
-                <div class="dash-title">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
-                    Biomexa Clinical Dashboard
-                </div>
-                <div class="dash-filters">
-                    <button class="dash-filter active">Today</button>
-                    <button class="dash-filter">Week</button>
-                    <button class="dash-filter">Month</button>
-                    <button class="dash-filter">Quarter</button>
-                </div>
+        <div class="dash-capabilities fade-in">
+            <div class="dash-cap">
+                <div class="dash-cap-icon">📈</div>
+                <h4>Adherence tracking</h4>
+                <p>Every dose confirmed or missed on WhatsApp shows up for the treating doctor in real time.</p>
             </div>
-            <div class="dash-grid">
-                <div class="dash-metric">
-                    <div class="dash-metric-value" data-count="87">0</div>
-                    <div class="dash-metric-suffix">%</div>
-                    <div class="dash-metric-label">Avg Adherence</div>
-                    <div class="dash-metric-trend up">↑ 4.2%</div>
-                </div>
-                <div class="dash-metric">
-                    <div class="dash-metric-value" data-count="12">0</div>
-                    <div class="dash-metric-label">At-Risk Patients</div>
-                    <div class="dash-metric-trend down">↓ 3</div>
-                </div>
-                <div class="dash-metric">
-                    <div class="dash-metric-value" data-count="94">0</div>
-                    <div class="dash-metric-suffix">%</div>
-                    <div class="dash-metric-label">Dose Confirmation</div>
-                    <div class="dash-metric-trend up">↑ 2.1%</div>
-                </div>
-                <div class="dash-metric">
-                    <div class="dash-metric-value" data-count="3">0</div>
-                    <div class="dash-metric-label">Interventions Today</div>
-                    <div class="dash-metric-trend neutral">—</div>
-                </div>
-                <div class="dash-chart-area">
-                    <div class="chart-header">
-                        <span>Adherence Trend (Last 7 Days)</span>
-                        <span class="chart-legend"><span class="legend-dot"></span>Confirmed Doses</span>
-                    </div>
-                    <div class="chart-bar-container" id="adherenceChart"></div>
-                </div>
-                <div class="dash-chart-area">
-                    <div class="chart-header">
-                        <span>Therapeutic Effect Score</span>
-                        <span class="chart-legend"><span class="legend-dot teal"></span>Effect Score</span>
-                    </div>
-                    <div class="chart-bar-container" id="therapeuticChart"></div>
-                </div>
+            <div class="dash-cap">
+                <div class="dash-cap-icon">🚨</div>
+                <h4>Risk alerts</h4>
+                <p>Dangerous vitals readings raise an alert to an available doctor and the patient within seconds.</p>
             </div>
-            <div class="dash-patients">
-                <div class="dash-patients-header">
-                    <h4>Patients Requiring Attention</h4>
-                    <a href="#" class="view-all">View All →</a>
-                </div>
-                <div class="patient-row">
-                    <div class="patient-avatar">RK</div>
-                    <div class="patient-info">
-                        <span class="patient-name">Ravi Kumar</span>
-                        <span class="patient-condition">Hypertension · 3 missed doses</span>
-                    </div>
-                    <div class="patient-risk high">High Risk</div>
-                    <button class="patient-action">Intervene</button>
-                </div>
-                <div class="patient-row">
-                    <div class="patient-avatar">SP</div>
-                    <div class="patient-info">
-                        <span class="patient-name">Sunita Patel</span>
-                        <span class="patient-condition">Diabetes · Timing issue</span>
-                    </div>
-                    <div class="patient-risk medium">Medium Risk</div>
-                    <button class="patient-action">Review</button>
-                </div>
-                <div class="patient-row">
-                    <div class="patient-avatar">AM</div>
-                    <div class="patient-info">
-                        <span class="patient-name">Amit Mishra</span>
-                        <span class="patient-condition">TB · Food interaction alert</span>
-                    </div>
-                    <div class="patient-risk medium">Medium Risk</div>
-                    <button class="patient-action">Review</button>
-                </div>
+            <div class="dash-cap">
+                <div class="dash-cap-icon">🧪</div>
+                <h4>Report review</h4>
+                <p>Uploaded prescriptions and lab reports are summarised for the doctor to confirm or correct.</p>
             </div>
+            <div class="dash-cap">
+                <div class="dash-cap-icon">📤</div>
+                <h4>Treatment reports</h4>
+                <p>Effectiveness reports and patient data exports support follow-up decisions.</p>
+            </div>
+        </div>
+        <div style="text-align:center;margin-top:2rem;">
+            <a href="doctor.html" class="cta-btn primary">Open the Doctor Dashboard →</a>
         </div>
     </section>
 
@@ -751,6 +750,7 @@
                 <a href="#food">Food Interactions</a>
                 <a href="#dashboard">Doctor Dashboard</a>
                 <a href="#connect-doctor">Doctor Connect</a>
+                <a href="ivf.html">IVF Care</a>
             </div>
             <div class="footer-col">
                 <h4>Company</h4>

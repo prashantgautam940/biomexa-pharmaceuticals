@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IVF Care | Biomexa</title>
+<meta name="description" content="Biomexa IVF Care — daily symptom and vitals monitoring, IVF medicine and trigger-shot reminders, report review and virtual follow-ups with your IVF centre.">
+<link rel="icon" type="image/svg+xml" href="logo.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/ivf.css">
+</head>
+<body>
+<nav class="ivf-nav">
+  <a class="ivf-brand" href="index.html"><img src="images/logo-full.png" alt="Biomexa Pharmaceuticals"><span class="tag">IVF Care</span></a>
+  <div class="ivf-nav-links">
+    <a href="index.html">Home</a>
+    <a href="patient.html">Main patient portal</a>
+    <button class="btn btn-ghost btn-sm" onclick="logout()">Logout</button>
+  </div>
+</nav>
+
+<main class="wrap">
+  <div id="loading" class="empty">Loading your IVF programme…</div>
+
+  <!-- ========== ENROLMENT ========== -->
+  <section id="enrolView" class="hidden">
+    <div class="ivf-hero">
+      <span class="eyebrow">Biomexa IVF Care</span>
+      <h1>Your IVF journey, monitored every day</h1>
+      <p>Daily symptom and vitals check-ins, medicine and trigger-shot reminders on WhatsApp, report review by your IVF doctor, and virtual follow-ups — all in one place.</p>
+    </div>
+    <div id="declinedNote" class="notice watch hidden"></div>
+    <div class="card">
+      <h2>1. Choose your IVF centre</h2>
+      <p class="sub">Only centres registered with Biomexa IVF Care are listed. Your centre will accept your request before monitoring starts.</p>
+      <div id="centreList" class="grid grid-2"><div class="empty">Loading centres…</div></div>
+    </div>
+    <form id="enrolForm" class="card">
+      <h2>2. A few details</h2>
+      <p class="sub">Your centre can update these later.</p>
+      <div class="grid grid-3">
+        <div class="field"><label for="eAge">Your age</label><input id="eAge" type="number" min="18" max="60"></div>
+        <div class="field"><label for="ePartner">Partner's name (optional)</label><input id="ePartner" type="text" maxlength="80"></div>
+        <div class="field"><label for="eWeight">Current weight (kg)</label><input id="eWeight" type="number" step="0.1" min="30" max="200"></div>
+      </div>
+      <div class="grid grid-2">
+        <div class="field"><label for="eProtocol">Treatment type (if you know it)</label>
+          <select id="eProtocol"><option value="other">Not sure — my centre will set it</option></select></div>
+        <div class="field"><label for="eCycle">Which IVF cycle is this?</label><input id="eCycle" type="number" min="1" max="20" placeholder="1"></div>
+      </div>
+      <div class="field"><label for="eNotes">Anything your doctor should know?</label><textarea id="eNotes" maxlength="1500" placeholder="E.g. previous cycles, allergies, current medicines"></textarea></div>
+      <h2 class="mt">3. Consent</h2>
+      <p id="consentText" class="sub"></p>
+      <label class="check"><input type="checkbox" id="eConsent"> I have read and agree to this consent.</label>
+      <div id="enrolMsg" class="notice critical hidden mt"></div>
+      <button class="btn btn-primary mt" id="enrolBtn" type="submit">Send request to IVF centre</button>
+    </form>
+  </section>
+
+  <!-- ========== PROGRAMME DASHBOARD ========== -->
+  <section id="mainView" class="hidden">
+    <div class="ivf-hero" id="hero"></div>
+    <div id="statusNotice"></div>
+    <div id="alertNotice"></div>
+
+    <div class="tabs" role="tablist">
+      <button class="tab active" data-tab="today" role="tab">Today</button>
+      <button class="tab" data-tab="reports" role="tab">Reports</button>
+      <button class="tab" data-tab="followups" role="tab">Virtual follow-ups</button>
+      <button class="tab" data-tab="messages" role="tab">Messages <span class="count hidden" id="unreadCount"></span></button>
+      <button class="tab" data-tab="history" role="tab">My history</button>
+    </div>
+
+    <!-- TODAY -->
+    <div class="tab-panel" id="tab-today">
+      <div class="grid grid-2">
+        <div>
+          <div class="card">
+            <h2>Today's IVF medicines</h2>
+            <p class="sub">Set by your IVF centre. You also get a WhatsApp reminder at each time.</p>
+            <div id="doseList"></div>
+          </div>
+          <div class="card" id="planCard"></div>
+        </div>
+        <form class="card" id="checkinForm">
+          <div class="spread"><div><h2>Daily check-in</h2><p class="sub" id="checkinSub">Takes about a minute. Your centre sees it straight away.</p></div><span id="checkedBadge"></span></div>
+          <div class="grid grid-2">
+            <div class="field"><label for="cWeight">Weight (kg)</label><input id="cWeight" type="number" step="0.1" min="30" max="200"></div>
+            <div class="field"><label for="cTemp">Temperature (°F or °C)</label><input id="cTemp" type="number" step="0.1"></div>
+            <div class="field"><label for="cBp">Blood pressure</label><input id="cBp" type="text" placeholder="120/80" inputmode="numeric"></div>
+            <div class="field"><label for="cPulse">Pulse (bpm)</label><input id="cPulse" type="number" min="30" max="220"></div>
+            <div class="field ohss-only"><label for="cGirth">Waist / tummy measurement (cm)</label><input id="cGirth" type="number" step="0.5" min="40" max="200"></div>
+          </div>
+          <div class="field"><label>Pain (0 = none, 10 = worst)</label><div class="pain-scale" id="painScale"></div></div>
+          <div class="field"><label>Bloating</label><div class="chips" data-name="bloating" data-opts="none:None,mild:Mild,moderate:Moderate,severe:Severe"></div></div>
+          <div class="field"><label>Nausea</label><div class="chips" data-name="nausea" data-opts="none:None,mild:Mild,vomiting:Vomiting"></div></div>
+          <div class="field"><label>Bleeding</label><div class="chips" data-name="bleeding" data-opts="none:None,spotting:Spotting,light:Light,heavy:Heavy"></div></div>
+          <div class="field"><label>Anything else today?</label>
+            <div class="grid grid-2">
+              <label class="check"><input type="checkbox" id="cBreath"> Short of breath</label>
+              <label class="check"><input type="checkbox" id="cUrine"> Passing less urine</label>
+              <label class="check"><input type="checkbox" id="cHead"> Headache</label>
+              <label class="check"><input type="checkbox" id="cSite"> Injection-site redness / swelling</label>
+            </div>
+          </div>
+          <div class="field"><label>How are you feeling emotionally?</label><div class="chips" data-name="mood" data-opts="good:Good,okay:Okay,low:Low,very_low:Very low"></div></div>
+          <div class="field"><label for="cNotes">Notes for your doctor</label><textarea id="cNotes" maxlength="1000"></textarea></div>
+          <div id="checkinResult"></div>
+          <button class="btn btn-primary" id="checkinBtn" type="submit">Save today's check-in</button>
+          <p class="small muted mt">Severe pain, trouble breathing, fainting or heavy bleeding? Don't wait for a reply — call your IVF centre or go to the nearest emergency department.</p>
+        </form>
+      </div>
+    </div>
+
+    <!-- REPORTS -->
+    <div class="tab-panel hidden" id="tab-reports">
+      <form class="card" id="reportForm">
+        <h2>Upload a report for your IVF doctor</h2>
+        <p class="sub">Blood tests, scans, semen analysis, beta-hCG… Photos (JPG/PNG/WEBP) or PDF, up to 3 files, 5MB each.</p>
+        <div class="grid grid-3">
+          <div class="field"><label for="rCategory">Type of report</label><select id="rCategory"></select></div>
+          <div class="field"><label for="rTitle">Title (optional)</label><input id="rTitle" type="text" maxlength="120" placeholder="E.g. Day 6 hormone test"></div>
+          <div class="field"><label for="rDate">Report date</label><input id="rDate" type="date"></div>
+        </div>
+        <div class="field"><label for="rFiles">Files</label><input id="rFiles" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" multiple></div>
+        <div class="field"><label for="rNote">Note for your doctor (optional)</label><textarea id="rNote" maxlength="1000"></textarea></div>
+        <button class="btn btn-primary" id="reportBtn" type="submit">Upload report</button>
+      </form>
+      <div class="card"><h2>Your reports</h2><div id="reportList" class="list mt"></div></div>
+    </div>
+
+    <!-- FOLLOW-UPS -->
+    <div class="tab-panel hidden" id="tab-followups">
+      <form class="card" id="consultForm">
+        <h2>Request a virtual follow-up</h2>
+        <p class="sub">Your centre confirms a time and sends you a video/audio link on WhatsApp.</p>
+        <div class="grid grid-2">
+          <div class="field"><label>How would you like to talk?</label><div class="chips" data-name="mode" data-opts="video:Video call,audio:Audio call,chat:Chat"></div></div>
+          <div class="field"><label for="fSlot">Preferred time</label><input id="fSlot" type="text" maxlength="120" placeholder="E.g. Tomorrow after 5 PM"></div>
+        </div>
+        <div class="field"><label for="fReason">What would you like to discuss?</label><textarea id="fReason" maxlength="600" required></textarea></div>
+        <button class="btn btn-primary" id="consultBtn" type="submit">Request follow-up</button>
+      </form>
+      <div class="card"><h2>Your follow-ups</h2><div id="consultList" class="list mt"></div></div>
+    </div>
+
+    <!-- MESSAGES -->
+    <div class="tab-panel hidden" id="tab-messages">
+      <div class="card">
+        <h2>Messages with your IVF centre</h2>
+        <p class="sub">For non-urgent questions. Your doctor is notified on WhatsApp.</p>
+        <div class="thread" id="thread"></div>
+        <form class="composer" id="msgForm">
+          <textarea id="msgText" maxlength="2000" placeholder="Type a message…" aria-label="Message"></textarea>
+          <button class="btn btn-primary" type="submit">Send</button>
+        </form>
+      </div>
+    </div>
+
+    <!-- HISTORY -->
+    <div class="tab-panel hidden" id="tab-history">
+      <div class="card"><h2>Weight trend</h2><p class="sub">A fast rise during stimulation can be an early warning sign — your centre watches this.</p><div id="weightChart"></div></div>
+      <div class="card"><h2>Past check-ins</h2><div id="logList" class="list mt"></div></div>
+    </div>
+  </section>
+
+  <p class="disclaimer">Biomexa IVF Care supports your treatment between visits. It does not replace in-person care or emergency services.</p>
+</main>
+
+<script src="js/ivf-common.js"></script>
+<script>
+const token = localStorage.getItem('token');
+if (!token) window.location.href = 'login.html?next=ivf.html';
+let state = null, selectedCentre = null, msgTimer = null;
+
+function logout() { localStorage.clear(); window.location.href = 'login.html'; }
+const $ = id => document.getElementById(id);
+const call = (path, opts = {}) => IVF.api(path, { ...opts, token }).catch(err => {
+  if (err.status === 401) logout();
+  throw err;
+});
+
+// Chip groups are declared in markup with data-name/data-opts
+function buildChips() {
+  document.querySelectorAll('.chips[data-name]').forEach(el => {
+    const name = el.dataset.name;
+    el.innerHTML = el.dataset.opts.split(',').map(o => {
+      const [v, l] = o.split(':');
+      return `<label class="chip-opt"><input type="radio" name="${name}" value="${v}"><span>${l}</span></label>`;
+    }).join('');
+  });
+  $('painScale').innerHTML = Array.from({ length: 11 }, (_, i) => `<label class="chip-opt"><input type="radio" name="pain" value="${i}"><span>${i}</span></label>`).join('');
+  const video = document.querySelector('input[name=mode][value=video]'); if (video) video.checked = true;
+}
+const radio = name => document.querySelector(`input[name="${name}"]:checked`)?.value;
+
+// ---------- load ----------
+async function load() {
+  try {
+    await IVF.loadMeta();
+    state = await call('/api/ivf/me');
+    $('loading').classList.add('hidden');
+    if (!state.cycle || state.cycle.status === 'declined') return showEnrol();
+    showMain();
+  } catch (err) {
+    $('loading').textContent = 'Could not load: ' + err.message;
+  }
+}
+
+// ---------- enrolment ----------
+async function showEnrol() {
+  $('enrolView').classList.remove('hidden');
+  $('mainView').classList.add('hidden');
+  if (state.cycle?.status === 'declined') {
+    $('declinedNote').textContent = `${state.cycle.centerName} wasn't able to accept your last request. Please choose another centre.`;
+    $('declinedNote').classList.remove('hidden');
+  }
+  $('consentText').textContent = IVF.meta.consentText;
+  $('eProtocol').innerHTML += IVF.meta.protocols.filter(p => p !== 'other').map(p => `<option value="${p}">${IVF.protocolLabel(p)}</option>`).join('');
+  const centres = await IVF.api('/api/ivf/centers');
+  $('centreList').innerHTML = centres.length ? centres.map(c => `
+    <label class="centre" data-id="${IVF.esc(c.doctorId)}">
+      <input type="radio" name="centre" value="${IVF.esc(c.doctorId)}">
+      <div class="title">${IVF.esc(c.centerName)}</div>
+      <div class="small muted">${IVF.esc(c.city || '')}${c.city ? ' · ' : ''}Dr. ${IVF.esc(c.doctorName)}${c.experienceYears ? ` · ${c.experienceYears} yrs` : ''}</div>
+      ${c.about ? `<p class="small mt">${IVF.esc(c.about)}</p>` : ''}
+      <div class="row mt">${(c.consultationModes || []).map(m => `<span class="badge b-rose">${m}</span>`).join('')}</div>
+    </label>`).join('') : '<div class="empty">No IVF centres have joined yet. Please check back soon.</div>';
+  document.querySelectorAll('.centre').forEach(el => el.addEventListener('click', () => {
+    document.querySelectorAll('.centre').forEach(x => x.classList.remove('selected'));
+    el.classList.add('selected'); selectedCentre = el.dataset.id;
+  }));
+}
+
+$('enrolForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const msg = $('enrolMsg'); msg.classList.add('hidden');
+  if (!selectedCentre) { msg.textContent = 'Please choose an IVF centre above.'; return msg.classList.remove('hidden'); }
+  if (!$('eConsent').checked) { msg.textContent = 'Please accept the consent to continue.'; return msg.classList.remove('hidden'); }
+  $('enrolBtn').disabled = true;
+  try {
+    const r = await call('/api/ivf/enroll', { method: 'POST', body: {
+      doctorId: selectedCentre, consent: true, patientAge: $('eAge').value, partnerName: $('ePartner').value,
+      baselineWeightKg: $('eWeight').value, protocol: $('eProtocol').value, cycleNumber: $('eCycle').value, notes: $('eNotes').value
+    } });
+    IVF.toast(r.message);
+    $('enrolView').classList.add('hidden');
+    load();
+  } catch (err) { msg.textContent = err.message; msg.classList.remove('hidden'); }
+  finally { $('enrolBtn').disabled = false; }
+});
+
+// ---------- main dashboard ----------
+function showMain() {
+  $('mainView').classList.remove('hidden');
+  const c = state.cycle;
+  const trig = c.dates?.triggerAt && new Date(c.dates.triggerAt) > Date.now() - 36e5 ? c.dates.triggerAt : null;
+  $('hero').innerHTML = `
+    <span class="eyebrow">${IVF.esc(c.centerName)}${state.doctorName ? ' · Dr. ' + IVF.esc(state.doctorName) : ''}</span>
+    <h1>${IVF.esc(state.stage.label)}</h1>
+    <p>Cycle ${c.cycleNumber} · ${IVF.protocolLabel(c.protocol)} protocol</p>
+    <div class="meta">
+      ${trig ? `<span>💉 Trigger shot <b>${IVF.fmtDateTime(trig)}</b> (${IVF.countdown(trig)})</span>` : ''}
+      ${c.dates?.retrievalAt ? `<span>Egg retrieval <b>${IVF.fmtDateTime(c.dates.retrievalAt)}</b></span>` : ''}
+      ${c.dates?.transferAt ? `<span>Transfer <b>${IVF.fmtDateTime(c.dates.transferAt)}</b></span>` : ''}
+      ${c.dates?.betaHcgTestAt ? `<span>Pregnancy test <b>${IVF.fmtDate(c.dates.betaHcgTestAt)}</b></span>` : ''}
+    </div>
+    ${IVF.stepperHtml(c.stage)}`;
+
+  $('statusNotice').innerHTML = c.status === 'pending'
+    ? `<div class="notice info">⏳ <b>Waiting for ${IVF.esc(c.centerName)} to accept your request.</b> You can already do check-ins and upload reports — your doctor will see them once they accept.</div>`
+    : c.status === 'completed' ? `<div class="notice info">This IVF cycle is closed${c.outcome ? ` — outcome: <b>${IVF.esc(c.outcome)}</b>` : ''}. Your history stays available here.</div>` : '';
+
+  const openAlert = (state.recentAlerts || []).find(a => !a.acknowledged && a.severity !== 'watch');
+  $('alertNotice').innerHTML = openAlert
+    ? `<div class="notice ${openAlert.severity}"><b>${openAlert.severity === 'critical' ? 'Urgent: please call your IVF centre now.' : 'Your IVF centre has been alerted.'}</b> ${IVF.esc(openAlert.reasons.join('; '))} <span class="small">(${IVF.ago(openAlert.createdAt)})</span></div>` : '';
+
+  const u = state.unreadMessages; $('unreadCount').textContent = u; $('unreadCount').classList.toggle('hidden', !u);
+
+  renderDoses(); renderPlan(); renderCheckinState();
+}
+
+function renderDoses() {
+  const doses = (state.doses || []).filter(d => !d.isTrigger || new Date(d.scheduledAt) > Date.now() - 24 * 36e5);
+  $('doseList').innerHTML = doses.length ? doses.map(d => `
+    <div class="dose ${d.isTrigger ? 'trigger' : ''}">
+      <div><div class="name">${d.isTrigger ? '💉 Trigger shot — ' : ''}${IVF.esc(d.medicineName)}</div>
+        <div class="small muted">${IVF.esc(d.dosage || '')} · ${d.isTrigger ? IVF.fmtDateTime(d.scheduledAt) + ' (' + IVF.countdown(d.scheduledAt) + ')' : IVF.fmtTime(d.scheduledAt)}</div></div>
+      ${d.status === 'pending'
+        ? `<div class="row"><button class="btn btn-green btn-sm" onclick="markDose('${d._id}','taken')">Taken</button><button class="btn btn-ghost btn-sm" onclick="markDose('${d._id}','missed')">Missed</button></div>`
+        : `<span class="badge ${d.status === 'taken' ? 'b-ok' : 'b-high'}">${d.status === 'taken' ? 'Taken ' + IVF.fmtTime(d.takenAt) : 'Missed'}</span>`}
+    </div>`).join('') : '<div class="empty">No IVF medicines scheduled for today.</div>';
+}
+async function markDose(id, status) {
+  if (status === 'missed' && !confirm('Mark this dose as missed? Your centre will be told.')) return;
+  try { const r = await call(`/api/ivf/doses/${id}/status`, { method: 'POST', body: { status } }); IVF.toast(r.message); state = await call('/api/ivf/me'); showMain(); }
+  catch (err) { IVF.toast(err.message, true); }
+}
+
+function renderPlan() {
+  const c = state.cycle, meds = state.medications || [];
+  $('planCard').innerHTML = `<h2>Your centre's plan</h2>
+    ${c.doctorPlanNotes ? `<p class="pre mt">${IVF.esc(c.doctorPlanNotes)}</p>` : '<p class="sub">Your doctor hasn\'t added plan notes yet.</p>'}
+    ${meds.length ? `<h3 class="mt">Current IVF medicines</h3><div class="list">${meds.map(m => `<div class="item"><div class="title">${IVF.esc(m.name)} <span class="small muted">${IVF.esc(m.dosage || '')}</span></div>
+      <div class="small muted">${m.isTrigger ? 'Trigger shot · ' + IVF.fmtDateTime(m.triggerAt) : `${IVF.esc(m.route)} · ${(m.times || []).join(', ')}${m.endDate ? ' · until ' + IVF.esc(m.endDate) : ''}`}</div>
+      ${m.instructions ? `<div class="small mt">${IVF.esc(m.instructions)}</div>` : ''}</div>`).join('')}</div>` : ''}`;
+}
+
+function renderCheckinState() {
+  const stage = state.cycle.stage;
+  const ohss = ['stimulation', 'trigger', 'retrieval', 'embryo_culture', 'transfer', 'two_week_wait'].includes(stage);
+  document.querySelectorAll('.ohss-only').forEach(el => el.classList.toggle('hidden', !ohss));
+  $('checkinSub').textContent = ohss
+    ? 'During this stage your weight, tummy size, bloating and urine matter most — please weigh yourself at the same time each morning.'
+    : 'Takes about a minute. Your centre sees it straight away.';
+  $('checkedBadge').innerHTML = state.todayLog ? '<span class="badge b-ok">Done today ✓</span>' : '<span class="badge b-rose">Due today</span>';
+}
+
+$('checkinForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const bp = $('cBp').value.match(/(\d{2,3})\s*[\/\\-]\s*(\d{2,3})/);
+  const body = {
+    weightKg: $('cWeight').value, temperatureF: $('cTemp').value, heartRate: $('cPulse').value, abdominalGirthCm: $('cGirth').value,
+    bpSystolic: bp?.[1], bpDiastolic: bp?.[2],
+    painScore: radio('pain'), bloating: radio('bloating'), nausea: radio('nausea'), bleeding: radio('bleeding'), mood: radio('mood'),
+    breathlessness: $('cBreath').checked, reducedUrine: $('cUrine').checked, headache: $('cHead').checked, injectionSiteReaction: $('cSite').checked,
+    notes: $('cNotes').value
+  };
+  $('checkinBtn').disabled = true;
+  try {
+    const r = await call('/api/ivf/logs', { method: 'POST', body });
+    const cls = r.severity || 'ok';
+    $('checkinResult').innerHTML = `<div class="notice ${cls}"><b>${IVF.esc(r.message)}</b>${r.flags?.length ? '<ul style="margin:6px 0 0 18px">' + r.flags.map(f => `<li>${IVF.esc(f.message)}</li>`).join('') + '</ul>' : ''}</div>`;
+    $('checkinForm').querySelectorAll('input[type=number],input[type=text],textarea').forEach(i => i.value = '');
+    $('checkinForm').querySelectorAll('input[type=radio],input[type=checkbox]').forEach(i => i.checked = false);
+    state = await call('/api/ivf/me'); showMain();
+    $('checkinResult').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  } catch (err) { $('checkinResult').innerHTML = `<div class="notice critical">${IVF.esc(err.message)}</div>`; }
+  finally { $('checkinBtn').disabled = false; }
+});
+
+// ---------- reports ----------
+async function loadReports() {
+  const list = await call('/api/ivf/reports');
+  const cats = IVF.meta.reportCategories;
+  const vLabels = { amh: 'AMH', fsh: 'FSH', lh: 'LH', estradiol: 'Estradiol (E2)', progesterone: 'Progesterone', betaHcg: 'Beta-hCG', follicleCountLeft: 'Follicles (L)', follicleCountRight: 'Follicles (R)', leadFollicleMm: 'Lead follicle (mm)', endometriumMm: 'Endometrium (mm)' };
+  $('reportList').innerHTML = list.length ? list.map(r => {
+    const vals = Object.entries(r.values || {}).filter(([, v]) => v !== null && v !== undefined);
+    return `<div class="item">
+      <div class="spread"><div><div class="title">${IVF.esc(r.title)}</div><div class="small muted">${IVF.esc(cats[r.category] || r.category)} · uploaded ${IVF.fmtDate(r.uploadedAt)}${r.reportDate ? ' · dated ' + IVF.esc(r.reportDate) : ''}</div></div>
+        ${r.reviewStatus === 'reviewed' ? '<span class="badge b-ok">Reviewed by doctor</span>' : '<span class="badge b-watch">Awaiting doctor review</span>'}</div>
+      <div class="row mt">${(r.files || []).map((f, i) => `<button class="btn btn-ghost btn-sm" onclick="viewFile('${r._id}',${i})">📄 ${IVF.esc(f.fileName)}</button>`).join('')}
+        ${r.reviewStatus !== 'reviewed' ? `<button class="btn btn-danger btn-sm" onclick="deleteReport('${r._id}')">Delete</button>` : ''}</div>
+      ${r.reviewStatus === 'reviewed' ? `<div class="notice ok mt"><b>Doctor's findings (${IVF.esc(r.reviewedBy || '')}, ${IVF.fmtDate(r.reviewedAt)}):</b><div class="pre">${IVF.esc(r.doctorFindings)}</div>
+        ${r.doctorAdvice ? `<div class="mt"><b>Advice:</b> <span class="pre">${IVF.esc(r.doctorAdvice)}</span></div>` : ''}
+        ${r.needsFollowUp ? '<div class="mt">📅 Your doctor would like a follow-up — request one in the Virtual follow-ups tab.</div>' : ''}</div>
+        ${vals.length ? `<div class="kv">${vals.map(([k, v]) => `<div>${vLabels[k] || k}<b>${v}</b></div>`).join('')}</div>` : ''}`
+        : r.aiStatus === 'done' && r.aiSummary ? `<details class="mt"><summary class="small muted">Automatic summary (not yet checked by your doctor)</summary><div class="small pre mt">${IVF.rich(r.aiSummary)}</div></details>` : ''}
+    </div>`;
+  }).join('') : '<div class="empty">No reports yet.</div>';
+}
+async function viewFile(id, i) { try { IVF.showFile(await call(`/api/ivf/reports/${id}/file/${i}`)); } catch (err) { IVF.toast(err.message, true); } }
+async function deleteReport(id) {
+  if (!confirm('Delete this report?')) return;
+  try { await call(`/api/ivf/reports/${id}`, { method: 'DELETE' }); IVF.toast('Report deleted.'); loadReports(); } catch (err) { IVF.toast(err.message, true); }
+}
+$('reportForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  $('reportBtn').disabled = true; $('reportBtn').textContent = 'Uploading…';
+  try {
+    const files = await IVF.readFiles($('rFiles'));
+    if (!files.length) throw new Error('Please choose at least one file.');
+    const r = await call('/api/ivf/reports', { method: 'POST', body: { category: $('rCategory').value, title: $('rTitle').value, reportDate: $('rDate').value, note: $('rNote').value, files } });
+    IVF.toast(r.message); $('reportForm').reset(); loadReports();
+  } catch (err) { IVF.toast(err.message, true); }
+  finally { $('reportBtn').disabled = false; $('reportBtn').textContent = 'Upload report'; }
+});
+
+// ---------- follow-ups ----------
+async function loadConsults() {
+  const list = await call('/api/ivf/consults');
+  const badge = { requested: 'b-watch', scheduled: 'b-navy', completed: 'b-ok', cancelled: 'b-neutral' };
+  $('consultList').innerHTML = list.length ? list.map(c => `
+    <div class="item"><div class="spread"><div><div class="title">${c.mode === 'video' ? '🎥' : c.mode === 'audio' ? '📞' : '💬'} ${IVF.esc(c.reason)}</div>
+      <div class="small muted">${c.scheduledAt ? IVF.fmtDateTime(c.scheduledAt) + ` · ${c.durationMin} min` : 'Preferred: ' + IVF.esc(c.preferredSlot || 'any time')}</div></div>
+      <span class="badge ${badge[c.status]}">${c.status}</span></div>
+      ${c.status === 'scheduled' && c.meetingLink ? `<div class="row mt"><a class="btn btn-primary btn-sm" href="${IVF.esc(c.meetingLink)}" target="_blank" rel="noopener">Join ${c.mode} call</a><span class="small muted">${IVF.countdown(c.scheduledAt)}</span></div>` : ''}
+      ${c.status === 'scheduled' && c.mode === 'chat' ? '<div class="small mt">This follow-up happens in the Messages tab.</div>' : ''}
+      ${c.doctorSummary ? `<div class="notice ok mt"><b>Doctor's notes:</b> <span class="pre">${IVF.esc(c.doctorSummary)}</span></div>` : ''}
+      ${['requested', 'scheduled'].includes(c.status) ? `<button class="btn btn-ghost btn-sm mt" onclick="cancelConsult('${c._id}')">Cancel</button>` : ''}
+    </div>`).join('') : '<div class="empty">No follow-ups yet.</div>';
+}
+async function cancelConsult(id) {
+  if (!confirm('Cancel this follow-up?')) return;
+  try { await call(`/api/ivf/consults/${id}/cancel`, { method: 'POST' }); loadConsults(); } catch (err) { IVF.toast(err.message, true); }
+}
+$('consultForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  $('consultBtn').disabled = true;
+  try {
+    const r = await call('/api/ivf/consults', { method: 'POST', body: { mode: radio('mode'), preferredSlot: $('fSlot').value, reason: $('fReason').value } });
+    IVF.toast(r.message); $('fSlot').value = ''; $('fReason').value = ''; loadConsults();
+  } catch (err) { IVF.toast(err.message, true); }
+  finally { $('consultBtn').disabled = false; }
+});
+
+// ---------- messages ----------
+async function loadMessages() {
+  const msgs = await call('/api/ivf/messages');
+  const t = $('thread'); const atBottom = t.scrollHeight - t.scrollTop - t.clientHeight < 40;
+  t.innerHTML = msgs.length ? msgs.map(m => `<div class="bubble ${m.from === 'patient' ? 'me' : 'them'}">${IVF.esc(m.text)}<span class="t">${m.from === 'doctor' ? IVF.esc(m.senderName || 'Doctor') + ' · ' : ''}${IVF.fmtDateTime(m.createdAt)}</span></div>`).join('')
+    : '<div class="empty">No messages yet. Ask your centre anything non-urgent.</div>';
+  if (atBottom || !msgs.length || t.dataset.first !== '1') { t.scrollTop = t.scrollHeight; t.dataset.first = '1'; }
+  $('unreadCount').classList.add('hidden');
+}
+$('msgForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const text = $('msgText').value.trim(); if (!text) return;
+  try { await call('/api/ivf/messages', { method: 'POST', body: { text } }); $('msgText').value = ''; loadMessages(); } catch (err) { IVF.toast(err.message, true); }
+});
+$('msgText').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('msgForm').requestSubmit(); } });
+
+// ---------- history ----------
+async function loadHistory() {
+  const logs = await call('/api/ivf/logs');
+  $('weightChart').innerHTML = IVF.sparkline(logs.slice().reverse().map(l => ({ t: l.createdAt, v: l.vitals?.weightKg })), ' kg');
+  $('logList').innerHTML = logs.length ? logs.map(l => {
+    const worst = (l.flags || []).reduce((a, f) => ({ critical: 3, high: 2, watch: 1 }[f.severity] > ({ critical: 3, high: 2, watch: 1 }[a] || 0) ? f.severity : a), null);
+    return `<div class="item ${worst === 'critical' ? 'critical' : worst ? 'flagged' : ''}"><div class="spread"><b>${IVF.fmtDateTime(l.createdAt)}</b>${worst ? IVF.sevBadge(worst) : ''}</div>
+      <div class="small mt">${IVF.esc(IVF.logSummary(l)) || '—'}</div>${l.notes ? `<div class="small muted mt">“${IVF.esc(l.notes)}”</div>` : ''}
+      ${(l.flags || []).length ? `<div class="small mt" style="color:var(--high)">${l.flags.map(f => IVF.esc(f.message)).join(' · ')}</div>` : ''}</div>`;
+  }).join('') : '<div class="empty">No check-ins yet.</div>';
+}
+
+// ---------- tabs ----------
+const loaders = { reports: loadReports, followups: loadConsults, messages: loadMessages, history: loadHistory };
+document.querySelectorAll('.tab').forEach(tab => tab.addEventListener('click', () => {
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t === tab));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('hidden', p.id !== 'tab-' + tab.dataset.tab));
+  clearInterval(msgTimer);
+  const fn = loaders[tab.dataset.tab];
+  if (fn) fn().catch(err => IVF.toast(err.message, true));
+  if (tab.dataset.tab === 'messages') msgTimer = setInterval(() => loadMessages().catch(() => {}), 20000);
+}));
+
+buildChips();
+IVF.loadMeta().then(m => {
+  $('rCategory').innerHTML = Object.entries(m.reportCategories).map(([k, v]) => `<option value="${k}">${IVF.esc(v)}</option>`).join('');
+}).catch(() => {});
+if (token) load();
+</script>
+</body>
+</html>

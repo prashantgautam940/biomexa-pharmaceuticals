@@ -317,55 +317,6 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     // ============================================
-    // DASHBOARD CHARTS
-    // ============================================
-    function renderChart(containerId, data, color) {
-        const container = document.getElementById(containerId);
-        if (!container) return;
-
-        const maxVal = Math.max(...data);
-        const labels = containerId === 'adherenceChart' 
-            ? ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-            : ['W1', 'W2', 'W3', 'W4', 'W5', 'W6', 'W7'];
-
-        container.innerHTML = data.map((val, i) => {
-            const height = (val / maxVal) * 100;
-            return `
-                <div class="chart-bar" style="height: 0%;" data-height="${height}%">
-                    <span class="chart-bar-label">${labels[i]}</span>
-                </div>
-            `;
-        }).join('');
-
-        // Animate bars
-        setTimeout(() => {
-            container.querySelectorAll('.chart-bar').forEach((bar, i) => {
-                setTimeout(() => {
-                    bar.style.height = bar.dataset.height;
-                }, i * 100);
-            });
-        }, 500);
-    }
-
-    const adherenceData = [60, 75, 65, 85, 90, 70, 88];
-    const therapeuticData = [45, 55, 62, 70, 78, 85, 92];
-
-    const chartObserver = new IntersectionObserver((entries) => {
-        entries.forEach(entry => {
-            if (entry.isIntersecting) {
-                renderChart('adherenceChart', adherenceData, 'var(--accent)');
-                renderChart('therapeuticChart', therapeuticData, 'var(--accent-light)');
-                chartObserver.unobserve(entry.target);
-            }
-        });
-    }, { threshold: 0.3 });
-
-    const dashboardPreview = document.querySelector('.dashboard-preview');
-    if (dashboardPreview) {
-        chartObserver.observe(dashboardPreview);
-    }
-
-    // ============================================
     // DASHBOARD FILTER BUTTONS
     // ============================================
     document.querySelectorAll('.dash-filter').forEach(btn => {
