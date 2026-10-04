@@ -1072,7 +1072,10 @@ function phoneVariants(raw) {
   const s = String(raw || '').trim();
   const digits = s.replace(/\D/g, '');
   const last10 = digits.slice(-10);
-  return [...new Set([s, '+' + digits, digits, last10, '+91' + last10, '91' + last10].filter(Boolean))];
+  // '+91 ' + last10 covers accounts saved with a space after the country code — without it the
+  // WhatsApp webhook (which sees "+91XXXXXXXXXX") never found their conversation, so Taken /
+  // Not Taken / Remind Me Later taps were silently ignored.
+  return [...new Set([s, '+' + digits, digits, last10, '+91' + last10, '+91 ' + last10, '91' + last10].filter(Boolean))];
 }
 
 // One canonical format for numbers typed into public forms ("+91 98765 43210", "09876543210",
@@ -3385,7 +3388,7 @@ app.post('/api/webhooks/msg91-whatsapp', async (req, res) => {
     const rawPhone = payload.customerNumber || payload.mobile || payload.msisdn
       || (payload.user && payload.user.msisdn) || payload.from;
     if (!rawPhone) { console.log('⚠️ Could not find sender phone in MSG91 webhook payload'); return; }
-    const phone = '+' + rawPhone.replace(/\D/g, '');
+    let phone = '+' + rawPhone.replace(/\D/g, '');
 
     // Button reply — confirmed as a flat top-level "button" field, not nested. Its own value can
     // still be a JSON string like {"payload":"Taken","text":"Taken"} depending on message type,
@@ -3417,8 +3420,13 @@ app.post('/api/webhooks/msg91-whatsapp', async (req, res) => {
       return;
     }
 
-    const convo = await ConversationState.findOne({ patientPhone: phone });
-    const patient = await Patient.findOne({ phone });
+    // MSG91 always sends "+91XXXXXXXXXX", but older accounts were saved as "+91 XXXXXXXXXX" (and
+    // reminders/conversation state use the stored format), so match any variant and then carry on
+    // with the number exactly as it's stored — every update below keys off `phone`.
+    const variants = phoneVariants(phone);
+    const convo = await ConversationState.findOne({ patientPhone: { $in: variants } }).sort({ updatedAt: -1 });
+    const patient = await Patient.findOne({ phone: { $in: variants } });
+    phone = (convo && convo.patientPhone) || (patient && patient.phone) || phone;
 
     // IVF Care replies (IVF medicine / trigger-shot "Taken" buttons) are handled by the IVF module.
     if (convo && typeof convo.state === 'string' && convo.state.startsWith('ivf_')) {
