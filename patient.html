@@ -736,7 +736,7 @@ html { scroll-padding-top: 80px; }
     }
 
     async function deleteDose(id) {
-      if (!confirm('Delete this dose entry? This cannot be undone.')) return;
+      if (!confirm('Delete this dose and stop its reminders at this time?\n\nThis is permanent — you can add the medicine again any time.')) return;
       try {
         const res = await fetch(`${API_URL}/api/doses/${id}`, {
           method: 'DELETE',

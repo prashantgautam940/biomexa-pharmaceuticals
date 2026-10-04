@@ -1506,6 +1506,9 @@ const patientSchema = new mongoose.Schema({
     lastFollowUpAt: Date,
     courseSummary: { taken: Number, missed: Number, adherence: Number }
   }],
+  // Product message every AD_INTERVAL_DAYS (see processProductAds). Patients can reply STOP.
+  lastAdSentAt: Date,
+  adOptOut: { type: Boolean, default: false },
   createdAt: { type: Date, default: Date.now }
 });
 
@@ -2954,7 +2957,23 @@ app.delete('/api/doses/:id', auth, async (req, res) => {
   try {
     const dose = await Dose.findOneAndDelete({ _id: req.params.id, patientPhone: req.user.phone });
     if (!dose) return res.status(404).json({ message: 'Dose not found.' });
-    res.json({ message: 'Dose deleted.' });
+    // Deleting a dose also ends that medicine's reminder at that time — otherwise the medicine
+    // stayed active and the next morning's run quietly recreated it. Other times of a
+    // twice-daily medicine are left alone; the portal's "Stop" ends the whole medicine.
+    const now = new Date();
+    const patient = await Patient.findOne({ phone: req.user.phone });
+    let stopped = 0;
+    if (patient) {
+      for (const m of patient.medicines) {
+        if (m.active && m.name === dose.medicineName && m.time === dose.scheduledTime) {
+          m.active = false; m.endDate = now; m.completedAt = now; m.stoppedByPatient = true; m.followUpStage = 0; stopped++;
+        }
+      }
+      if (stopped) await patient.save();
+    }
+    await Dose.deleteMany({ patientPhone: req.user.phone, medicineName: dose.medicineName, scheduledTime: dose.scheduledTime, status: 'pending' });
+    if (stopped) console.log(`🛑 ${req.user.phone} deleted ${dose.medicineName} at ${dose.scheduledTime} — that reminder is stopped`);
+    res.json({ message: stopped ? `Deleted. No more ${dose.scheduledTime} reminders for ${dose.medicineName}.` : 'Dose deleted.' });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -3264,6 +3283,92 @@ async function processCompletedCourses() {
   }
 }
 
+// ========== PRODUCT MESSAGE EVERY 10 DAYS (marketing) ==========
+// Separate from dose reminders. Once a day (11 AM) every patient who hasn't had one in
+// AD_INTERVAL_DAYS gets a short Telmexa AM / Diabmexa M 500 message. New patients wait out their
+// first AD_INTERVAL_DAYS so it never lands next to their welcome message; replying STOP opts out.
+// WhatsApp only delivers unsolicited promotional content through an approved MARKETING template —
+// there is deliberately no free-text fallback. Until MSG91_AD_TEMPLATE_NAME is set this just logs
+// that it skipped. See .env.example for the template to create.
+const MSG91_AD_TEMPLATE_NAME = process.env.MSG91_AD_TEMPLATE_NAME || null;
+const MSG91_AD_TEMPLATE_NAMESPACE = process.env.MSG91_AD_TEMPLATE_NAMESPACE || MSG91_TEMPLATE_NAMESPACE;
+const AD_INTERVAL_DAYS = Math.max(1, parseInt(process.env.AD_INTERVAL_DAYS, 10) || 10);
+const AD_SEND_HOUR = 11;
+const AD_MAX_PER_RUN = 300;
+const AD_STOP_RE = /^\s*(stop|unsubscribe|stop ads|no ads)\s*[.!]?\s*$/i;
+const AD_START_RE = /^\s*(start|subscribe)\s*[.!]?\s*$/i;
+
+async function sendAdTemplate(phone, patientName) {
+  try {
+    const res = await fetch('https://api.msg91.com/api/v5/whatsapp/whatsapp-outbound-message/bulk/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'authkey': MSG91_AUTH_KEY },
+      body: JSON.stringify({
+        integrated_number: MSG91_INTEGRATED_NUMBER,
+        content_type: 'template',
+        payload: {
+          messaging_product: 'whatsapp',
+          type: 'template',
+          template: {
+            name: MSG91_AD_TEMPLATE_NAME,
+            language: { code: MSG91_TEMPLATE_LANG, policy: 'deterministic' },
+            namespace: MSG91_AD_TEMPLATE_NAMESPACE,
+            to_and_components: [{
+              to: [phone.replace(/\D/g, '')],
+              components: {
+                body_1: { type: 'text', value: sanitizeTemplateParam(String(patientName || 'there').split(' ')[0], 40), parameter_name: 'patient_name' }
+              }
+            }]
+          }
+        }
+      }),
+      signal: AbortSignal.timeout(10000)
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      console.log('⚠️ MSG91 product message failed:', JSON.stringify(data).substring(0, 300));
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.log('⚠️ MSG91 product message error:', err.message);
+    return false;
+  }
+}
+
+let lastAdRunDate = null;
+async function processProductAds(now = new Date()) {
+  const today = localDateStr(now);
+  if (lastAdRunDate === today || now.getHours() < AD_SEND_HOUR || now.getHours() >= 20) return;
+  lastAdRunDate = today;
+  if (!MSG91_CONFIGURED || !MSG91_AD_TEMPLATE_NAME) {
+    console.log('ℹ️ 10-day product message skipped — set MSG91_AD_TEMPLATE_NAME once the marketing template is approved');
+    return;
+  }
+  try {
+    const cutoff = new Date(now.getTime() - AD_INTERVAL_DAYS * 86400000);
+    const due = await Patient.find({
+      adOptOut: { $ne: true },
+      createdAt: { $lte: cutoff },
+      $or: [{ lastAdSentAt: null }, { lastAdSentAt: { $exists: false } }, { lastAdSentAt: { $lte: cutoff } }]
+    }).select('name phone').limit(AD_MAX_PER_RUN);
+    let sent = 0;
+    for (const p of due) {
+      // Claim first so a restart or a second instance can't send the same patient twice.
+      const claimed = await Patient.findOneAndUpdate(
+        { _id: p._id, $or: [{ lastAdSentAt: null }, { lastAdSentAt: { $exists: false } }, { lastAdSentAt: { $lte: cutoff } }] },
+        { lastAdSentAt: now }
+      );
+      if (!claimed) continue;
+      if (await sendAdTemplate(p.phone, p.name)) sent++;
+      await new Promise(r => setTimeout(r, 300)); // stay well under MSG91 rate limits
+    }
+    console.log(`📣 10-day product message: ${sent} sent of ${due.length} due`);
+  } catch (err) {
+    console.error('❌ Product message run error:', err.message);
+  }
+}
+
 cron.schedule('* * * * *', async () => {
   const now = new Date();
   const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
@@ -3279,6 +3384,7 @@ cron.schedule('* * * * *', async () => {
     processCompletedCourses.ranOnce = true;
     processCompletedCourses(); // not awaited — must never delay dose reminders
   }
+  processProductAds(now); // once a day after 11 AM; not awaited
 
   console.log(`⏰ [${currentTime}] Checking for pending doses...`);
 
@@ -3428,6 +3534,16 @@ app.post('/api/webhooks/msg91-whatsapp', async (req, res) => {
     const patient = await Patient.findOne({ phone: { $in: variants } });
     phone = (convo && convo.patientPhone) || (patient && patient.phone) || phone;
 
+    // STOP / START for the 10-day product message. Dose reminders are unaffected.
+    if (!buttonText && patient && (AD_STOP_RE.test(freeText) || AD_START_RE.test(freeText))) {
+      const optOut = AD_STOP_RE.test(freeText);
+      await Patient.updateOne({ _id: patient._id }, { adOptOut: optOut });
+      await sendWhatsAppFree(phone, optOut
+        ? '✅ Done — you won\'t get Biomexa product messages any more. Your medicine reminders carry on as normal.\n\nReply START to receive them again.'
+        : '✅ You\'ll get Biomexa product updates again (about once every 10 days). Reply STOP any time to opt out.');
+      return;
+    }
+
     // IVF Care replies (IVF medicine / trigger-shot "Taken" buttons) are handled by the IVF module.
     if (convo && typeof convo.state === 'string' && convo.state.startsWith('ivf_')) {
       if (await ivfCare.handleWhatsAppReply({ phone, convo, buttonText, freeText })) return;
@@ -3445,7 +3561,10 @@ app.post('/api/webhooks/msg91-whatsapp', async (req, res) => {
         const snoozeTime = new Date(Date.now() + 20 * 60 * 1000);
         const hh = String(snoozeTime.getHours()).padStart(2, '0');
         const mm = String(snoozeTime.getMinutes()).padStart(2, '0');
-        await Dose.findByIdAndUpdate(convo.doseId, { scheduledTime: `${hh}:${mm}`, sentReminder: false });
+        // The date moves with the time: a snooze at 11:50 PM is 12:10 AM *tomorrow*. Keeping
+        // today's date made "00:10" look already-due, so it re-sent at once (the doubled
+        // late-night reminders).
+        await Dose.findByIdAndUpdate(convo.doseId, { scheduledTime: `${hh}:${mm}`, scheduledDate: localDateStr(snoozeTime), sentReminder: false });
         await sendWhatsAppFree(phone, `⏰ No problem — we'll remind you again in about 20 minutes.`);
         await ConversationState.findOneAndUpdate({ patientPhone: phone }, { state: null, doseId: null, updatedAt: new Date() });
         return;
@@ -4596,7 +4715,8 @@ app.get('/api/whatsapp-status', (req, res) => {
     reportAnalysisTemplateConfigured: !!MSG91_REPORT_ANALYSIS_TEMPLATE_NAME,
     otpTemplateConfigured: !!MSG91_OTP_TEMPLATE_NAME,
     loginTemplateConfigured: !!MSG91_LOGIN_TEMPLATE_NAME,
-    courseTemplateConfigured: !!MSG91_COURSE_TEMPLATE_NAME
+    courseTemplateConfigured: !!MSG91_COURSE_TEMPLATE_NAME,
+    adTemplateConfigured: !!MSG91_AD_TEMPLATE_NAME
   });
 });
 
