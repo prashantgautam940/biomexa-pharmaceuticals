@@ -2891,8 +2891,10 @@ app.post('/api/medicines', auth, async (req, res) => {
 // Get Medicines
 app.get('/api/medicines', auth, async (req, res) => {
   try {
-    const patient = await Patient.findOne({ phone: req.user.phone });
-    res.json(patient?.medicines || []);
+    // Older accounts can exist twice ("+91XXXXXXXXXX" and "+91 XXXXXXXXXX"). Show medicines
+    // from both so a patient can see — and stop — every reminder that goes to their number.
+    const accounts = await Patient.find({ phone: { $in: phoneVariants(req.user.phone) } });
+    res.json(accounts.flatMap(a => a.medicines || []));
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -2905,7 +2907,7 @@ app.get('/api/doses/today', auth, async (req, res) => {
   try {
     const today = localDateStr(new Date());
     const doses = await Dose.find({
-      patientPhone: req.user.phone,
+      patientPhone: { $in: phoneVariants(req.user.phone) },
       scheduledDate: today
     }).sort({ scheduledTime: 1 });
     res.json(doses);
@@ -2924,30 +2926,42 @@ app.get('/api/doses/today', auth, async (req, res) => {
 app.delete('/api/patient/medicines/:name', auth, async (req, res) => {
   try {
     const name = String(req.params.name || '').trim().toLowerCase();
-    const patient = await Patient.findOne({ phone: req.user.phone });
-    if (!patient) return res.status(404).json({ message: 'Patient not found.' });
+    // Every saved format of this number — a duplicate "+91 XXXXXXXXXX" account kept sending
+    // reminders after the patient stopped the medicine on their main account.
+    const variants = phoneVariants(req.user.phone);
+    const accounts = await Patient.find({ phone: { $in: variants } });
+    if (!accounts.length) return res.status(404).json({ message: 'Patient not found.' });
     const now = new Date();
     const todayStr = localDateStr(now);
-    const matches = patient.medicines.filter(m => m.active && String(m.name).trim().toLowerCase() === name);
-    if (!matches.length) return res.status(404).json({ message: 'That medicine is not active any more.' });
-    for (const m of matches) {
-      m.active = false; m.endDate = now; m.completedAt = now; m.stoppedByPatient = true; m.followUpStage = 0;
+    let stoppedCount = 0, medName = null, removedCount = 0;
+    for (const patient of accounts) {
+      const matches = patient.medicines.filter(m => m.active && String(m.name).trim().toLowerCase() === name);
+      if (!matches.length) continue;
+      // One refill message only: from the account they're logged into (or the first one stopped).
+      const sendsRefill = patient.phone === req.user.phone || stoppedCount === 0;
+      for (const m of matches) {
+        m.active = false; m.endDate = now; m.completedAt = now; m.stoppedByPatient = true;
+        m.followUpStage = sendsRefill ? 0 : 3;
+      }
+      await patient.save();
+      stoppedCount += matches.length; medName = medName || matches[0].name;
+      const removed = await Dose.deleteMany({
+        patientPhone: patient.phone, medicineName: matches[0].name, status: 'pending', sentReminder: false, scheduledDate: { $gte: todayStr }
+      });
+      removedCount += removed.deletedCount;
     }
-    await patient.save();
-    const removed = await Dose.deleteMany({
-      patientPhone: patient.phone, medicineName: matches[0].name, status: 'pending', sentReminder: false, scheduledDate: { $gte: todayStr }
-    });
+    if (!stoppedCount) return res.status(404).json({ message: 'That medicine is not active any more.' });
     // Clear a pending "Taken / Not taken" only if it was for this medicine.
-    const convo = await ConversationState.findOne({ patientPhone: patient.phone, state: 'awaiting_dose_confirm' });
-    if (convo && convo.doseId) {
-      const d = await Dose.findById(convo.doseId).catch(() => null);
+    const convos = await ConversationState.find({ patientPhone: { $in: variants }, state: 'awaiting_dose_confirm' });
+    for (const convo of convos) {
+      const d = convo.doseId ? await Dose.findById(convo.doseId).catch(() => null) : null;
       if (!d || String(d.medicineName).trim().toLowerCase() === name) {
         await ConversationState.updateOne({ _id: convo._id }, { state: null, doseId: null });
       }
     }
-    console.log(`🛑 ${patient.phone} stopped ${matches[0].name} (${matches.length} reminder time${matches.length > 1 ? 's' : ''}, ${removed.deletedCount} upcoming dose(s) removed)`);
+    console.log(`🛑 ${req.user.phone} stopped ${medName} (${stoppedCount} reminder time${stoppedCount > 1 ? 's' : ''} across ${accounts.length} account record(s), ${removedCount} upcoming dose(s) removed)`);
     processCompletedCourses(); // refill message now if it's 9 AM–9 PM, otherwise in the morning
-    res.json({ message: `Reminders for ${matches[0].name} have stopped.`, stopped: matches.length });
+    res.json({ message: `Reminders for ${medName} have stopped.`, stopped: stoppedCount });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -2955,23 +2969,26 @@ app.delete('/api/patient/medicines/:name', auth, async (req, res) => {
 
 app.delete('/api/doses/:id', auth, async (req, res) => {
   try {
-    const dose = await Dose.findOneAndDelete({ _id: req.params.id, patientPhone: req.user.phone });
+    const variants = phoneVariants(req.user.phone);
+    const dose = await Dose.findOneAndDelete({ _id: req.params.id, patientPhone: { $in: variants } });
     if (!dose) return res.status(404).json({ message: 'Dose not found.' });
     // Deleting a dose also ends that medicine's reminder at that time — otherwise the medicine
     // stayed active and the next morning's run quietly recreated it. Other times of a
     // twice-daily medicine are left alone; the portal's "Stop" ends the whole medicine.
     const now = new Date();
-    const patient = await Patient.findOne({ phone: req.user.phone });
     let stopped = 0;
-    if (patient) {
+    for (const patient of await Patient.find({ phone: { $in: variants } })) {
+      let here = 0;
       for (const m of patient.medicines) {
         if (m.active && m.name === dose.medicineName && m.time === dose.scheduledTime) {
-          m.active = false; m.endDate = now; m.completedAt = now; m.stoppedByPatient = true; m.followUpStage = 0; stopped++;
+          m.active = false; m.endDate = now; m.completedAt = now; m.stoppedByPatient = true;
+          m.followUpStage = stopped ? 3 : 0; // one refill message, not one per duplicate account
+          here++; stopped++;
         }
       }
-      if (stopped) await patient.save();
+      if (here) await patient.save();
     }
-    await Dose.deleteMany({ patientPhone: req.user.phone, medicineName: dose.medicineName, scheduledTime: dose.scheduledTime, status: 'pending' });
+    await Dose.deleteMany({ patientPhone: { $in: variants }, medicineName: dose.medicineName, scheduledTime: dose.scheduledTime, status: 'pending' });
     if (stopped) console.log(`🛑 ${req.user.phone} deleted ${dose.medicineName} at ${dose.scheduledTime} — that reminder is stopped`);
     res.json({ message: stopped ? `Deleted. No more ${dose.scheduledTime} reminders for ${dose.medicineName}.` : 'Dose deleted.' });
   } catch (err) {
@@ -2983,7 +3000,7 @@ app.delete('/api/doses/:id', auth, async (req, res) => {
 app.post('/api/doses/:id/confirm', auth, async (req, res) => {
   try {
     const dose = await Dose.findOneAndUpdate(
-      { _id: req.params.id, patientPhone: req.user.phone },
+      { _id: req.params.id, patientPhone: { $in: phoneVariants(req.user.phone) } },
       { status: 'taken' },
       { new: true }
     );
