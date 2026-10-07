@@ -525,7 +525,7 @@ function renderPatients(list) {
     const nd = p.next_dose ? new Date(p.next_dose).toLocaleString('en-IN', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' }) : '-';
     const bpClass = p.bpStatus === 'high' ? 'bp-high' : p.bpStatus === 'low' ? 'bp-low' : 'bp-normal';
     const medCell = p.medicineInfo
-      ? `<a class="med-badge" href=".${p.medicineInfo.url}" target="_blank"><i class="fas fa-pills"></i> ${p.medicine}</a>`
+      ? `<a class="med-badge" href=".${p.medicineInfo.url}"><i class="fas fa-pills"></i> ${p.medicine}</a>`
       : `<span>${p.medicine}</span>`;
     return `<tr>
       <td><div class="patient-name">${p.name}</div><div class="patient-phone">${p.phone}</div></td>
