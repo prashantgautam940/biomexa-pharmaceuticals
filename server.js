@@ -4048,28 +4048,24 @@ const MEDICINE_CATALOG = {
 const CATALOG_NAMES = Object.keys(MEDICINE_CATALOG);
 
 app.get('/api/patients', staffAuth, async (req, res) => {
-  // Uses the trained AI risk model (Admin panel → AI Risk Engine) when one exists.
-  // Falls back to a deterministic adherence-based heuristic — never random — if no model has
-  // been trained yet. BP figures remain baseline/simulated until real vitals logging is wired up.
+  // Risk = computeRiskScore (adherence + recent misses + latest real vitals). BP is the latest
+  // real reading, else the sign-up baseline, else blank — never a made-up default.
   try {
-    const model = await TrainedModel.findOne().sort({ trainedAt: -1 });
     const patients = await Patient.find().limit(50);
     const data = [];
     for (let i = 0; i < patients.length; i++) {
       const p = patients[i];
-      const medName = p.medicines[0]?.name || CATALOG_NAMES[i % CATALOG_NAMES.length];
+      // Active medicine first; never a made-up product name for a patient with no medicines.
+      const med = (p.medicines || []).find(m => m.active) || (p.medicines || [])[0];
+      const medName = med?.name || 'None';
       const catalogEntry = MEDICINE_CATALOG[medName] || null;
 
-      const { features, adherence, missed, vitals, hasRealVitals } = await computePatientFeatures(p);
-      let riskProb;
-      if (model && model.weights.length === features.length) {
-        const norm = features.map((v, j) => (v - model.featureMeans[j]) / model.featureStds[j]);
-        const z = norm.reduce((s, v, j) => s + v * model.weights[j], 0) + model.bias;
-        riskProb = sigmoid(z);
-      } else {
-        riskProb = Math.max(0, Math.min(1, 1 - adherence));
-      }
-      const label = riskProb > 0.66 ? 'Critical' : riskProb > 0.33 ? 'High' : 'Low';
+      const r = await computeRiskScore(p);
+      const latest = await VitalsLog.findOne({ patientPhone: { $in: phoneVariants(p.phone) } }).sort({ recordedAt: -1 });
+      const lv = latest ? cleanVitals(latest).clean : {};
+      const bpSys = lv.bpSystolic || p.baselineVitals?.bpSystolic || null;
+      const bpDia = lv.bpDiastolic || p.baselineVitals?.bpDiastolic || null;
+      const adherence = r.adherence;
 
       data.push({
         id: i + 1,
@@ -4077,19 +4073,21 @@ app.get('/api/patients', staffAuth, async (req, res) => {
         phone: p.phone,
         medicine: medName,
         medicineInfo: catalogEntry,
-        adherence_score: Math.round(adherence * 100),
-        bpSystolic: vitals.bpSystolic,
-        bpDiastolic: vitals.bpDiastolic,
-        bpStatus: vitals.bpSystolic >= 140 || vitals.bpDiastolic >= 90 ? 'high' : vitals.bpSystolic < 100 ? 'low' : 'normal',
-        vitalsAreReal: hasRealVitals,
-        risk_score: riskProb,
-        ai_risk_label: label,
-        ai_prediction: riskProb,
-        missed_doses: missed,
-        next_dose: new Date(Date.now() + Math.random() * 86400000),
-        sentiment: adherence > 0.8 ? 'positive' : adherence < 0.5 ? 'negative' : 'neutral'
+        adherence_score: r.adherenceKnown ? Math.round(adherence * 100) : null,
+        bpSystolic: bpSys,
+        bpDiastolic: bpDia,
+        bpStatus: !bpSys ? 'unknown' : bpSys >= 140 || bpDia >= 90 ? 'high' : bpSys < 100 ? 'low' : 'normal',
+        vitalsAreReal: !!latest,
+        risk_score: r.score,
+        ai_risk_label: r.label,
+        risk_reasons: r.reasons,
+        ai_prediction: r.missChance,
+        missed_doses: r.missed,
+        next_dose: await nextPendingDose(p),
+        sentiment: !r.adherenceKnown ? 'neutral' : adherence > 0.8 ? 'positive' : adherence < 0.5 ? 'negative' : 'neutral'
       });
     }
+    data.sort((a, b) => b.risk_score - a.risk_score).forEach((d, i) => { d.id = i + 1; });
     res.json(data);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -4319,6 +4317,98 @@ async function computePatientFeatures(patient) {
     features, adherence, missed, total, hasRealVitals,
     vitals: { bpSystolic, bpDiastolic, temperature, heartRate, glucose }
   };
+}
+
+// ========== CALIBRATED RISK SCORE (admin table, doctor dashboard, stats, risk broadcast) ==========
+// Replaces the trained logistic model for scoring. That model never saw adherence or vitals —
+// only regimen size, missed count, days since sign-up and dose frequency — and it was fitted on
+// ~10 patients. "Days since sign-up" only grows, so every patient drifted outside the training
+// range and scored ~100% "Critical", including patients with 100% adherence and no misses.
+//
+// The score (0–1) is built from what actually drives risk, and every point is explainable:
+//   • Adherence: 60% overall non-adherence + 40% last-7-days miss rate, scaled by confidence
+//     (a patient with 2 logged doses can't be "Critical" on adherence alone; full weight at 7+).
+//   • Latest real vitals in the last 14 days: elevated → 0.45, dangerous → 0.9.
+//   • Combined: the higher of the two, plus a small bump when both are raised.
+// Labels: Critical ≥ 0.6, High ≥ 0.2 (≈ below 80% adherence, the usual cut-off), Low below;
+// "No data" when nothing is logged yet.
+const RISK_VITAL_RULES = [
+  // [test, severity, reason]
+  [v => v.bpSystolic >= 180 || v.bpDiastolic >= 120, 0.9, v => `BP ${v.bpSystolic}/${v.bpDiastolic} (crisis range)`],
+  [v => v.glucose >= 300 || (v.glucose && v.glucose < 54), 0.9, v => `Sugar ${v.glucose} mg/dL (dangerous)`],
+  [v => v.temperature >= 103, 0.9, v => `Fever ${v.temperature}°F`],
+  [v => v.heartRate > 130 || (v.heartRate && v.heartRate < 40), 0.9, v => `Pulse ${v.heartRate}`],
+  [v => v.bpSystolic >= 140 || v.bpDiastolic >= 90, 0.45, v => `BP ${v.bpSystolic}/${v.bpDiastolic} (high)`],
+  [v => v.glucose >= 180 || (v.glucose && v.glucose < 70), 0.45, v => `Sugar ${v.glucose} mg/dL`],
+  [v => v.temperature >= 100.4, 0.45, v => `Temp ${v.temperature}°F`],
+  [v => v.heartRate > 110 || (v.heartRate && v.heartRate < 50), 0.45, v => `Pulse ${v.heartRate}`]
+];
+
+async function computeRiskScore(patient) {
+  const phones = phoneVariants(patient.phone);
+  const doses = await Dose.find({ patientPhone: { $in: phones } });
+  const due = doses.filter(d => d.status !== 'pending');
+  const taken = due.filter(d => d.status === 'taken').length;
+  const missed = due.filter(d => d.status === 'missed').length;
+  const adherence = due.length ? taken / due.length : null;
+
+  const weekAgo = localDateStr(new Date(Date.now() - 7 * 86400000));
+  const recent = due.filter(d => d.scheduledDate >= weekAgo);
+  const recentMissed = recent.filter(d => d.status !== 'taken').length;
+  const recentMissRate = recent.length ? recentMissed / recent.length : (adherence !== null ? 1 - adherence : 0);
+
+  const reasons = [];
+  let adhScore = 0;
+  if (adherence !== null) {
+    const confidence = Math.min(1, due.length / 7);
+    adhScore = confidence * (0.6 * (1 - adherence) + 0.4 * recentMissRate);
+    if (adherence < 0.8) reasons.push(`Adherence ${Math.round(adherence * 100)}% (${missed} missed)`);
+    if (recent.length && recentMissed) reasons.push(`${recentMissed} of ${recent.length} doses missed this week`);
+    if (due.length < 7) reasons.push(`Only ${due.length} dose${due.length === 1 ? '' : 's'} logged so far`);
+  }
+
+  // Latest real (plausible) reading in the last 14 days — typos are ignored, same as reports.
+  const latestLog = await VitalsLog.findOne({ patientPhone: { $in: phones }, recordedAt: { $gte: new Date(Date.now() - 14 * 86400000) } }).sort({ recordedAt: -1 });
+  const vitals = latestLog ? cleanVitals(latestLog).clean : {};
+  let vitalScore = 0;
+  for (const [test, sev, why] of RISK_VITAL_RULES) {
+    if (test(vitals) && sev > vitalScore) { vitalScore = sev; reasons.unshift(why(vitals)); }
+  }
+
+  const hasData = adherence !== null || !!latestLog;
+  const score = Math.min(1, Math.max(adhScore, vitalScore) + 0.15 * Math.min(adhScore, vitalScore));
+  const label = !hasData ? 'No data' : score >= 0.6 ? 'Critical' : score >= 0.2 ? 'High' : 'Low';
+  // Chance the next dose is missed: last-7-days miss rate with a light prior (Laplace), so
+  // 0 misses out of 3 reads as ~20%, not a confident 0%.
+  const missChance = recent.length ? (recentMissed + 1) / (recent.length + 2) : (due.length ? (missed + 1) / (due.length + 2) : null);
+
+  return {
+    score: Math.round(score * 100) / 100, label, reasons, hasData,
+    adherence: adherence ?? 1, adherenceKnown: adherence !== null, missed, total: doses.length, due: due.length,
+    missChance, vitals, hasRealVitals: !!latestLog
+  };
+}
+
+async function nextPendingDose(patient) {
+  const now = new Date();
+  const today = localDateStr(now);
+  const hhmm = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  const d = await Dose.findOne({
+    patientPhone: { $in: phoneVariants(patient.phone) }, status: 'pending',
+    $or: [{ scheduledDate: { $gt: today } }, { scheduledDate: today, scheduledTime: { $gte: hhmm } }]
+  }).sort({ scheduledDate: 1, scheduledTime: 1 });
+  if (d) return new Date(`${d.scheduledDate}T${d.scheduledTime}:00+05:30`);
+  // Today's doses are created each midnight — fall back to the earliest active reminder time tomorrow.
+  const times = (patient.medicines || []).filter(m => m.active && m.time).map(m => m.time).sort();
+  if (!times.length) return null;
+  const later = times.find(t => t >= hhmm);
+  const date = later ? today : localDateStr(new Date(now.getTime() + 86400000));
+  return new Date(`${date}T${later || times[0]}:00+05:30`);
+}
+
+function activeMedicineNames(patient) {
+  const names = [...new Set((patient.medicines || []).filter(m => m.active).map(m => m.name))];
+  return names.length ? names.join(', ') : 'None active';
 }
 
 // Trains a logistic-regression risk model from whatever real patient + dose data exists right now.
@@ -4563,37 +4653,31 @@ app.post('/api/admin/doctors/:id/:action', adminAuth, async (req, res) => {
 
 app.get('/api/admin/patients', adminAuth, async (req, res) => {
   try {
-    const model = await TrainedModel.findOne().sort({ trainedAt: -1 });
     const patients = await Patient.find().limit(200);
     const data = [];
     for (let i = 0; i < patients.length; i++) {
       const p = patients[i];
-      const { features, adherence, missed, total, vitals, hasRealVitals } = await computePatientFeatures(p);
-      let riskProb;
-      if (model && model.weights.length === features.length) {
-        const norm = features.map((v, j) => (v - model.featureMeans[j]) / model.featureStds[j]);
-        const z = norm.reduce((s, v, j) => s + v * model.weights[j], 0) + model.bias;
-        riskProb = sigmoid(z);
-      } else {
-        riskProb = Math.max(0, Math.min(1, 1 - adherence));
-      }
-      const label = riskProb > 0.66 ? 'Critical' : riskProb > 0.33 ? 'High' : 'Low';
+      const r = await computeRiskScore(p);
       data.push({
         id: i + 1,
         name: p.name,
         phone: p.phone,
-        medicine: p.medicines[0]?.name || 'None',
-        adherence_score: Math.round(adherence * 100),
-        bpSystolic: vitals.bpSystolic,
-        bpDiastolic: vitals.bpDiastolic,
-        vitalsAreReal: hasRealVitals,
-        risk_score: riskProb,
-        ai_risk_label: label,
-        ai_prediction: riskProb,
-        missed_doses: missed,
-        sentiment: total === 0 ? 'neutral' : (adherence > 0.8 ? 'positive' : adherence < 0.5 ? 'negative' : 'neutral')
+        medicine: activeMedicineNames(p),
+        adherence_score: r.adherenceKnown ? Math.round(r.adherence * 100) : null,
+        bpSystolic: r.vitals.bpSystolic ?? null,
+        bpDiastolic: r.vitals.bpDiastolic ?? null,
+        vitalsAreReal: r.hasRealVitals,
+        risk_score: r.score,
+        ai_risk_label: r.label,
+        risk_reasons: r.reasons,
+        ai_prediction: r.missChance,
+        missed_doses: r.missed,
+        doses_logged: r.due,
+        sentiment: !r.adherenceKnown ? 'neutral' : (r.adherence > 0.8 ? 'positive' : r.adherence < 0.5 ? 'negative' : 'neutral')
       });
     }
+    // Highest risk first, so the patients who need attention are at the top.
+    data.sort((a, b) => b.risk_score - a.risk_score).forEach((d, i) => { d.id = i + 1; });
     res.json(data);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -4634,25 +4718,16 @@ app.delete('/api/admin/patients/:phone', adminAuth, async (req, res) => {
 // dangerous vitals reading) — this is a deliberate, admin-initiated check-in broadcast.
 app.post('/api/admin/send-risk-alerts', adminAuth, async (req, res) => {
   try {
-    const model = await TrainedModel.findOne().sort({ trainedAt: -1 });
     const patients = await Patient.find();
     const results = { sent: [], failed: [], skipped_low_risk: 0 };
 
     for (const p of patients) {
-      const { features, adherence } = await computePatientFeatures(p);
-      let riskProb;
-      if (model && model.weights.length === features.length) {
-        const norm = features.map((v, j) => (v - model.featureMeans[j]) / model.featureStds[j]);
-        const z = norm.reduce((s, v, j) => s + v * model.weights[j], 0) + model.bias;
-        riskProb = sigmoid(z);
-      } else {
-        riskProb = Math.max(0, Math.min(1, 1 - adherence));
-      }
+      const r = await computeRiskScore(p);
+      const riskProb = r.score;
+      if (r.label !== 'High' && r.label !== 'Critical') { results.skipped_low_risk++; continue; }
 
-      if (riskProb <= 0.33) { results.skipped_low_risk++; continue; }
-
-      const label = riskProb > 0.66 ? 'Critical' : 'High';
-      const reason = `adherence risk ${Math.round(riskProb * 100)}%`;
+      const label = r.label;
+      const reason = r.reasons.slice(0, 2).join('; ') || `risk ${Math.round(riskProb * 100)}%`;
 
       // Uses the risk alert template when configured — this is what actually reaches patients
       // regardless of whether they've messaged recently. Free text (the old behavior) was
@@ -4681,8 +4756,9 @@ app.get('/api/admin/stats', adminAuth, async (req, res) => {
     const total = patients.length;
     let sumAdh = 0, highRisk = 0, counted = 0;
     for (const p of patients) {
-      const { adherence, total: t } = await computePatientFeatures(p);
-      if (t > 0) { sumAdh += adherence; counted++; if (adherence < 0.6) highRisk++; }
+      const r = await computeRiskScore(p);
+      if (r.adherenceKnown) { sumAdh += r.adherence; counted++; }
+      if (r.label === 'High' || r.label === 'Critical') highRisk++;
     }
     const avgAdh = counted ? Math.round((sumAdh / counted) * 100) : 0;
     const doseCount = await Dose.countDocuments();

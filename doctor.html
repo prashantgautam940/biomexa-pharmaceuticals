@@ -509,9 +509,10 @@ function loadPatients() {
 
 function updateStats(patients) {
   document.getElementById('statTotal').textContent = patients.length;
-  document.getElementById('statHighRisk').textContent = patients.filter(p => p.risk_score > 0.5).length;
+  document.getElementById('statHighRisk').textContent = patients.filter(p => p.ai_risk_label === 'High' || p.ai_risk_label === 'Critical').length;
   document.getElementById('statCritical').textContent = patients.filter(p => p.ai_risk_label === 'Critical').length;
-  const avg = patients.length ? (patients.reduce((a,b) => a + b.adherence_score, 0) / patients.length).toFixed(1) : 0;
+  const known = patients.filter(p => p.adherence_score !== null && p.adherence_score !== undefined);
+  const avg = known.length ? (known.reduce((a,b) => a + b.adherence_score, 0) / known.length).toFixed(1) : 0;
   document.getElementById('statAdherence').textContent = avg + '%';
 }
 
@@ -521,7 +522,8 @@ function renderPatients(list) {
 
   tb.innerHTML = list.map(p => {
     const riskClass = p.ai_risk_label === 'Critical' ? 'risk-critical' : p.ai_risk_label === 'High' ? 'risk-high' : 'risk-low';
-    const adhClass = p.adherence_score >= 80 ? 'adh-good' : 'adh-bad';
+    const adhClass = p.adherence_score === null ? '' : p.adherence_score >= 80 ? 'adh-good' : 'adh-bad';
+    const why = (p.risk_reasons || []).join(' · ').replace(/"/g, '&quot;') || 'No risk factors';
     const nd = p.next_dose ? new Date(p.next_dose).toLocaleString('en-IN', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' }) : '-';
     const bpClass = p.bpStatus === 'high' ? 'bp-high' : p.bpStatus === 'low' ? 'bp-low' : 'bp-normal';
     const medCell = p.medicineInfo
@@ -530,11 +532,11 @@ function renderPatients(list) {
     return `<tr>
       <td><div class="patient-name">${p.name}</div><div class="patient-phone">${p.phone}</div></td>
       <td>${medCell}</td>
-      <td class="${adhClass}">${p.adherence_score}%</td>
-      <td><span class="bp-reading ${bpClass}">${p.bpSystolic}/${p.bpDiastolic}</span><span class="bp-sub">${p.bpStatus}${p.vitalsAreReal ? ' · logged' : ' · est.'}</span></td>
-      <td>${(p.risk_score * 100).toFixed(0)}%</td>
-      <td class="ai-pred">${(p.ai_prediction * 100).toFixed(0)}% miss chance</td>
-      <td><span class="risk-badge ${riskClass}">${p.ai_risk_label}</span></td>
+      <td class="${adhClass}">${p.adherence_score === null ? '—' : p.adherence_score + '%'}</td>
+      <td>${p.bpSystolic ? `<span class="bp-reading ${bpClass}">${p.bpSystolic}/${p.bpDiastolic}</span><span class="bp-sub">${p.bpStatus}${p.vitalsAreReal ? ' · logged' : ' · at sign-up'}</span>` : '<span class="bp-sub">Not logged</span>'}</td>
+      <td title="${why}">${(p.risk_score * 100).toFixed(0)}%</td>
+      <td class="ai-pred">${p.ai_prediction === null ? '—' : (p.ai_prediction * 100).toFixed(0) + '% miss chance'}</td>
+      <td><span class="risk-badge ${riskClass}" title="${why}">${p.ai_risk_label}</span></td>
       <td>${p.missed_doses}</td>
       <td>${nd}</td>
       <td><button class="trend-btn" onclick="openTrendsModal('${p.phone}', '${(p.name || '').replace(/'/g, '')}')"><i class="fas fa-chart-line"></i> View</button></td>
