@@ -338,3 +338,69 @@
   .eco-ring { width: 250px; height: 460px; }
   .aip-stage { height: 560px; }
 }
+
+/* ================= Phones: a much shorter home page =================
+   Long card lists become swipeable rows, grids go two-up, decorative
+   extras are hidden, and spacing is tightened. Nothing is removed on desktop. */
+@media (max-width: 600px) {
+  .section { padding-top: 3rem !important; padding-bottom: 3rem !important; }
+  .section-header { margin-bottom: 1.75rem !important; }
+  .section-title { font-size: 1.55rem !important; }
+  .section-subtitle { font-size: .95rem !important; }
+
+  /* swipe rows */
+  .problem-grid, .journey-steps, .dash-capabilities, .start-grid {
+    display: flex !important; flex-direction: row !important; flex-wrap: nowrap !important;
+    overflow-x: auto; scroll-snap-type: x mandatory; gap: .75rem !important;
+    padding: 4px 4px 12px !important; margin: 0 -1rem !important; padding-left: 1rem !important; padding-right: 1rem !important;
+    scrollbar-width: none; -webkit-overflow-scrolling: touch;
+  }
+  .problem-grid::-webkit-scrollbar, .journey-steps::-webkit-scrollbar, .dash-capabilities::-webkit-scrollbar { display: none; }
+  .problem-card, .journey-step, .dash-cap { flex: 0 0 72% !important; scroll-snap-align: center; min-width: 0 !important; }
+  .problem-arrow { display: none !important; }
+  .timeline-line { display: none !important; }
+  .disease-tabs { flex-wrap: nowrap !important; overflow-x: auto; justify-content: flex-start !important; scrollbar-width: none; margin-bottom: 1rem !important; }
+  .disease-tabs::-webkit-scrollbar { display: none; }
+  .disease-tab { flex: none; }
+  .journey-detail-cards { grid-template-columns: 1fr 1fr !important; gap: .6rem !important; }
+  .journey-detail-card { padding: .9rem !important; }
+  .journey-detail-card p { font-size: .82rem !important; }
+  .vulnerable-patients { padding: 1rem !important; margin-top: 1rem !important; }
+  .vulnerable-patients p { font-size: .88rem !important; }
+
+  /* hero */
+  .hero { min-height: auto !important; padding: 6.5rem 1rem 3rem !important; }
+  .scroll-indicator { display: none !important; }
+  .hero-stats { display: grid !important; grid-template-columns: repeat(3, 1fr); gap: .75rem !important; margin-top: 2rem !important; }
+  .hero .stat-number { font-size: 1.6rem !important; }
+  .hero .stat-suffix, .stat-prefix { font-size: 1.1rem !important; }
+  .hero .stat-label { font-size: .72rem !important; }
+
+  /* IVF promo: keep the message, drop the mock-up */
+  .ivf-promo-card { display: none !important; }
+  .ivf-promo { padding-top: 2.5rem !important; padding-bottom: 2.5rem !important; }
+  .ivf-promo-list li { font-size: .88rem; }
+
+  /* value cards two-up */
+  .value-grid { grid-template-columns: 1fr 1fr !important; gap: .6rem !important; }
+  .value-card { padding: 1rem !important; }
+  .value-card p { font-size: .8rem !important; line-height: 1.45 !important; }
+  .value-num { font-size: 1.6rem !important; }
+
+  /* portals: compact two-up tiles */
+  #portals { padding: 3rem 1rem !important; }
+  .portal-grid { grid-template-columns: 1fr 1fr !important; gap: .6rem !important; }
+  .portal-grid > a { padding: 1rem .75rem !important; }
+  .portal-grid > a > div:first-child, .portal-icon { font-size: 1.8rem !important; margin-bottom: .4rem !important; }
+  .portal-grid > a h3 { font-size: 1rem !important; margin-bottom: .3rem !important; }
+  .portal-grid > a p { display: none !important; }
+  .portal-grid > a span:last-child, .portal-btn { padding: .45rem .7rem !important; font-size: .78rem !important; }
+
+  /* doctors / products / contact / footer */
+  .connect-risk-banner { padding: 1rem !important; }
+  .cta-section { padding: 3rem 1rem !important; }
+  .footer { padding: 2.5rem 1rem 1.5rem !important; }
+  .footer-grid { grid-template-columns: 1fr 1fr !important; gap: 1.5rem 1rem !important; }
+  .footer-brand { grid-column: 1 / -1; }
+  .footer-col a { padding: .2rem 0 !important; font-size: .85rem !important; }
+}

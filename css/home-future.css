@@ -191,3 +191,129 @@
 .cube-face h3 { margin-bottom: .75rem; }
 .cube-face li { padding: .5rem .65rem; }
 @media (max-width: 600px) { .cube { height: 320px; } }
+
+/* =====================================================================
+   LIGHT THEME (Oct 2026) — the 3D sections now match the rest of the site:
+   soft daylight background, white glass panels, navy text, the same
+   green / cyan / violet accents in deeper tones for contrast.
+   ===================================================================== */
+#care, #ai-pharmacist, #ecosystem, #solution {
+  --space: #f4f7ff;
+  --panel: rgba(255, 255, 255, 0.78);
+  --edge: #d6e0f3;
+  --neon: #12a066;
+  --cyan: #0aa6c9;
+  --violet: #7c5cf0;
+  --ink: #13213d;
+  --ink-2: #55658a;
+  --sec-bg: #f4f7ff;
+  position: relative; color: var(--ink); overflow: hidden;
+  background:
+    radial-gradient(700px 420px at 12% 8%, rgba(124, 92, 240, 0.10), transparent 60%),
+    radial-gradient(700px 420px at 92% 92%, rgba(10, 166, 201, 0.10), transparent 60%),
+    linear-gradient(180deg, #f6f9ff 0%, #eef3fd 100%) !important;
+  box-shadow: 0 0 0 100vmax #f2f6fe !important;
+  clip-path: inset(0 -100vmax);
+  border-top: 1px solid #e1e8f5 !important; border-bottom: 1px solid #e1e8f5 !important;
+  padding-top: 5.5rem; padding-bottom: 5.5rem;
+}
+#care::before, #ai-pharmacist::before, #ecosystem::before, #solution::before {
+  content: ''; position: absolute; inset: -20% -50vmax; pointer-events: none; opacity: .7;
+  background:
+    linear-gradient(rgba(22, 51, 107, .045) 1px, transparent 1px) 0 0 / 56px 56px,
+    linear-gradient(90deg, rgba(22, 51, 107, .045) 1px, transparent 1px) 0 0 / 56px 56px;
+  mask-image: radial-gradient(ellipse at center, #000 30%, transparent 75%);
+  -webkit-mask-image: radial-gradient(ellipse at center, #000 30%, transparent 75%);
+}
+#solution > * { position: relative; z-index: 1; }
+#care .fx-title, #ai-pharmacist .fx-title, #ecosystem .fx-title, #solution .fx-title { color: #13213d; }
+.fx-kicker { text-shadow: none; }
+.fx-btn { color: #fff !important; background: linear-gradient(135deg, #16336b, #12a066); box-shadow: 0 10px 24px rgba(18, 160, 102, .25); }
+.fx-btn:hover { box-shadow: 0 14px 30px rgba(18, 160, 102, .35); }
+.fx-btn-ghost { background: #fff; color: #16336b !important; box-shadow: 0 0 0 1px #cfd9ee inset; }
+.fx-btn-ghost:hover { box-shadow: 0 0 0 1px #16336b inset; }
+
+/* Care orbit */
+.orbit-ring { border-color: rgba(10, 166, 201, .45); box-shadow: 0 0 18px rgba(10, 166, 201, .15); }
+.orbit-ring-b { border-color: rgba(124, 92, 240, .45); }
+.orbit-node { background: rgba(255, 255, 255, .9); border-color: #d6e0f3; box-shadow: 0 14px 30px rgba(19, 33, 61, .12); }
+.orbit-node b { color: #13213d; }
+.orbit-node i { background: #e8f6ee; box-shadow: none; }
+.orbit-node.front { border-color: #12a066; box-shadow: 0 0 0 1px rgba(18,160,102,.2) inset, 0 16px 34px rgba(18, 160, 102, .2); }
+.fx-plan { background: #fff; border-color: #d6e0f3; box-shadow: 0 6px 18px rgba(19, 33, 61, .06); }
+.fx-plan b { color: #13213d; }
+.fx-plan-best { border-color: #12a066; box-shadow: 0 10px 26px rgba(18, 160, 102, .18); }
+
+/* AI Pharmacist */
+.fx-list li { background: rgba(255, 255, 255, .85); border-color: #dbe4f4; }
+.fx-list b { color: #13213d; }
+.fx-list i { background: #e6f7fb; box-shadow: none; }
+.holo-beam { background: linear-gradient(0deg, rgba(10, 166, 201, .22), rgba(10, 166, 201, 0) 85%); }
+.holo-pedestal span { box-shadow: 0 0 16px currentColor; color: var(--cyan); }
+.holo-pedestal span:nth-child(2) { color: var(--violet); } .holo-pedestal span:nth-child(3) { color: var(--neon); }
+.holo-phone.aip-phone { background: linear-gradient(160deg, #1d2a44, #0f1a30); box-shadow: 0 0 0 1px rgba(255,255,255,.08) inset, 0 0 40px rgba(10, 166, 201, .25), 0 30px 60px rgba(19, 33, 61, .3); }
+.holo-phone .aip-notch { background: #0f1a30; }
+.holo-phone .aip-screen { background: linear-gradient(180deg, #f3f6fb 0%, #ffffff 45%); }
+.holo-phone .aip-head { background: linear-gradient(135deg, #16336b, #1f4494); border: 0; }
+.holo-phone .aip-head small { color: #c3d2f0; }
+.holo-phone .aip-user { background: #16336b; }
+.holo-phone .aip-bot { background: #fff; color: #13213d; border-color: #e2e8f2; box-shadow: 0 4px 10px rgba(19,33,61,.06); }
+.holo-phone .aip-bot b { color: #12804f; }
+.holo-scan { background: linear-gradient(180deg, rgba(10,166,201,0), rgba(10,166,201,.14), rgba(10,166,201,0)); }
+.holo-tag { color: #13213d; background: rgba(255, 255, 255, .92); border-color: #d6e0f3; box-shadow: 0 12px 26px rgba(19, 33, 61, .12); }
+.holo-tag-b { color: #c0262d; }
+
+/* Prisms (Ecosystem cube + How Biomexa works) */
+.cube-face { transform: rotateY(var(--a, calc(var(--i) * 90deg))) translateZ(var(--eco-r, 150px));
+  background: linear-gradient(160deg, rgba(255, 255, 255, .96), rgba(238, 244, 255, .94));
+  border: 1px solid rgba(10, 166, 201, .45);
+  box-shadow: 0 0 0 1px rgba(255,255,255,.6) inset, 0 20px 44px rgba(19, 33, 61, .14), 0 0 30px rgba(10, 166, 201, .12);
+  backdrop-filter: none; -webkit-backdrop-filter: none; }
+.cube-face h3 { color: #13213d; text-shadow: none; }
+.cube-face li { color: #13213d; background: #f3f6fc; border-color: #e1e8f5; }
+.cube-floor { background: radial-gradient(ellipse at center, rgba(10,166,201,.22), rgba(124,92,240,.1) 45%, transparent 70%); }
+.cube-steps button { color: #55658a; background: #fff; border-color: #d6e0f3; }
+.cube-steps button:hover { color: #16336b; border-color: #16336b; }
+.cube-steps button[aria-selected="true"] { color: #fff; background: linear-gradient(135deg, #16336b, #12a066); box-shadow: 0 8px 20px rgba(18,160,102,.25); }
+.prism { width: 300px; height: 300px; }
+.prism .cube-face { display: flex; flex-direction: column; justify-content: center; text-align: center; padding: 1.75rem 1.5rem; }
+.prism .cf-icon { font-size: 2.6rem; line-height: 1; margin-bottom: .8rem; }
+.prism .cube-face h3 { font-size: 1.45rem; margin: 0 0 .6rem; }
+.prism .cube-face p { color: #55658a; font-size: .98rem; line-height: 1.55; margin: 0; }
+.prism-scene { height: 420px; }
+#solution .cube-steps { max-width: 760px; margin-left: auto; margin-right: auto; }
+
+/* ================= Phones: keep the page short ================= */
+@media (max-width: 600px) {
+  #care, #ai-pharmacist, #ecosystem, #solution { padding: 3rem 1rem; }
+  .fx-title { font-size: 1.6rem; }
+  .fx-sub { font-size: .95rem; margin-bottom: 1.25rem; }
+  .orbit { height: 330px; }
+  .fx-plans { gap: .5rem; margin-bottom: 1rem; }
+  .fx-plan { padding: .7rem .9rem; }
+  .fx-plan b { font-size: 1.3rem; }
+  .holo { height: 440px; transform: scale(.82); margin: -30px 0 -40px; }
+  .holo-tag { display: none; }
+  .fx-list { gap: .45rem; margin-bottom: 1.25rem; }
+  .fx-list li { padding: .55rem .7rem; }
+  .fx-list i { width: 34px; height: 34px; font-size: 1.1rem; }
+  .fx-list span { font-size: .8rem; }
+  .prism { width: 240px; height: 270px; }
+  .prism-scene, .cube-scene { height: 360px; }
+  .prism .cf-icon { font-size: 2rem; }
+  .prism .cube-face h3 { font-size: 1.2rem; }
+  .prism .cube-face p { font-size: .88rem; }
+  .cube-steps { flex-wrap: nowrap; overflow-x: auto; justify-content: flex-start; padding: 2px 2px 6px; scrollbar-width: none; }
+  .cube-steps::-webkit-scrollbar { display: none; }
+  .cube-steps button { flex: none; }
+}
+/* prism sizing */
+.prism-scene { perspective: 2200px; height: 440px; }
+.prism { width: 270px; height: 290px; }
+#solution .cube-steps { max-width: 980px; gap: .4rem; }
+#solution .cube-steps button { padding: .55rem .95rem; font-size: .85rem; }
+@media (max-width: 600px) {
+  .prism-scene { height: 380px; perspective: 1800px; }
+  .prism { width: 210px; height: 260px; }
+  .prism .cube-face { padding: 1.2rem 1rem; }
+}
