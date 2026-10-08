@@ -8,7 +8,7 @@
     <meta name="keywords" content="medicine adherence, connected medicine, AI healthcare, drug interaction, patient engagement, real-world evidence, pharmaceutical technology">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Sora:wght@500;600;700;800&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/style.css">
     <link rel="icon" type="image/svg+xml" href="logo.svg">
 <style>
@@ -90,6 +90,7 @@
 </style>
 <link rel="stylesheet" href="css/biomexa-ui.css">
 <link rel="stylesheet" href="css/home-polish.css">
+<link rel="stylesheet" href="css/home-future.css">
 <script src="js/biomexa-ui.js" defer></script>
 </head>
 <body>
@@ -332,26 +333,29 @@
         </div>
     </section>
 
-    <!-- Biomexa Care subscription -->
-    <section class="section care-section" id="care">
-        <div class="section-header fade-in">
-            <span class="section-tag">Biomexa Care</span>
-            <h2 class="section-title">Your complete treatment companion</h2>
-            <p class="section-subtitle">Everything unlocked free for your first 25 days. After that, keep it from ₹99/month — no automatic charges.</p>
-        </div>
-        <div class="care-wrap fade-in">
-            <div class="care-benefits">
-                <div class="care-benefit"><span>👨‍⚕️</span><div><b>Talk to a doctor</b><p>Verified Biomexa doctors on WhatsApp — straight away when your readings or missed doses show risk.</p></div></div>
-                <div class="care-benefit"><span>📊</span><div><b>AI treatment reports</b><p>Doses taken, BP &amp; sugar trends and treatment effectiveness — sent to WhatsApp to show your doctor.</p></div></div>
-                <div class="care-benefit"><span>📄</span><div><b>Prescription &amp; lab report analysis</b><p>Upload a photo and get every medicine and result explained in simple language.</p></div></div>
-                <div class="care-benefit"><span>💊</span><div><b>Reminders for every medicine</b><p>Unlimited medicines and dose times (free plan: 2 medicines).</p></div></div>
+    <!-- Biomexa Care — benefits orbiting a glowing core -->
+    <section class="section fx-section" id="care">
+        <div class="fx-grid">
+            <div class="orbit" id="careOrbit" role="list" aria-label="What Biomexa Care includes">
+                <div class="orbit-ring orbit-ring-a" aria-hidden="true"></div>
+                <div class="orbit-ring orbit-ring-b" aria-hidden="true"></div>
+                <div class="orbit-core" aria-hidden="true"><b>Biomexa<br>Care</b><span>25 days free</span></div>
+                <div class="orbit-node" role="listitem"><i>👨‍⚕️</i><b>Talk to a doctor</b><small>Verified doctors on WhatsApp</small></div>
+                <div class="orbit-node" role="listitem"><i>📊</i><b>AI treatment reports</b><small>BP, sugar and dose trends</small></div>
+                <div class="orbit-node" role="listitem"><i>📄</i><b>Report analysis</b><small>Prescriptions and lab results explained</small></div>
+                <div class="orbit-node" role="listitem"><i>💊</i><b>Unlimited reminders</b><small>Every medicine, every dose</small></div>
             </div>
-            <div class="care-plans">
-                <div class="care-plan"><b>Monthly</b><div class="care-price">₹99<small>/month</small></div></div>
-                <div class="care-plan care-plan-best"><span class="care-ribbon">Best value</span><b>Yearly</b><div class="care-price">₹899<small>/year</small></div><em>Just ₹75 a month</em></div>
-                <div class="care-plan"><b>6 Months</b><div class="care-price">₹499<small>/6 mo</small></div><em>Save 16%</em></div>
-                <a href="subscribe.html" class="cta-btn primary care-cta">Start 25 days free →</a>
-                <p class="care-note">🔒 Secure payment by Razorpay · UPI, cards, netbanking · No auto-renewal</p>
+            <div class="fx-copy">
+                <p class="fx-kicker">Biomexa Care</p>
+                <h2 class="fx-title">Your complete treatment companion</h2>
+                <p class="fx-sub">A doctor on WhatsApp, reports you can share and answers about your own prescriptions. Everything is free for your first 25 days.</p>
+                <div class="fx-plans">
+                    <div class="fx-plan"><span>Monthly</span><b>₹99</b></div>
+                    <div class="fx-plan fx-plan-best"><span>Yearly <em>best value</em></span><b>₹899</b></div>
+                    <div class="fx-plan"><span>6 months</span><b>₹499</b></div>
+                </div>
+                <a href="subscribe.html" class="fx-btn">Start 25 days free</a>
+                <p class="fx-note">Secure payment by Razorpay with UPI, cards or netbanking. Nothing renews automatically.</p>
             </div>
         </div>
     </section>
@@ -486,91 +490,69 @@
         </div>
     </section>
 
-    <!-- AI Pharmacist — what patients see after scanning a Biomexa pack (3D phone) -->
-    <section class="section aip-section" id="ai-pharmacist">
-        <div class="aip-wrap">
-            <div class="aip-copy fade-in">
-                <span class="section-tag">AI Pharmacist</span>
-                <h2 class="section-title">Scan the pack. Your pharmacist answers.</h2>
-                <p class="section-subtitle">Every Telmexa AM and Diabmexa M 500 pack carries a QR code. One scan opens Biomexa's AI Pharmacist — a personal guide to that exact medicine, on the patient's own phone, in simple language.</p>
-                <ul class="aip-list">
-                    <li><span>💬</span><div><b>Ask anything, any time</b><p>"Can I take it at night?", "I missed a dose — what now?", "Is dizziness normal?" — clear answers in seconds.</p></div></li>
-                    <li><span>🍽️</span><div><b>Food, drink &amp; timing guidance</b><p>What to eat, what to avoid, alcohol, and the best time of day for each dose.</p></div></li>
-                    <li><span>🔊</span><div><b>Listens and speaks</b><p>Answers are read aloud — easy for elderly patients and anyone who struggles with small print.</p></div></li>
-                    <li><span>⏰</span><div><b>Reminders, readings &amp; refills</b><p>Set WhatsApp dose reminders, log BP or sugar, upload a prescription or order a refill — from the same page.</p></div></li>
+    <!-- AI Pharmacist — hologram phone on a neon pedestal -->
+    <section class="section fx-section" id="ai-pharmacist">
+        <div class="fx-grid fx-grid-flip">
+            <div class="fx-copy">
+                <p class="fx-kicker">AI Pharmacist</p>
+                <h2 class="fx-title">Scan the pack. Your pharmacist answers.</h2>
+                <p class="fx-sub">The QR code on every Telmexa AM and Diabmexa M 500 pack opens a personal guide to that exact medicine.</p>
+                <ul class="fx-list">
+                    <li><i>💬</i><div><b>Ask anything</b><span>Missed dose, side effects, alcohol, answered in seconds.</span></div></li>
+                    <li><i>🍽️</i><div><b>Food and timing</b><span>What to eat, what to avoid and when to take it.</span></div></li>
+                    <li><i>🔊</i><div><b>Reads answers aloud</b><span>Easy for elderly patients and small print.</span></div></li>
+                    <li><i>⏰</i><div><b>Reminders and refills</b><span>WhatsApp reminders, BP and sugar logs, reorders.</span></div></li>
                 </ul>
-                <div class="aip-cta">
-                    <a href="products/ai/telmexa-am-ai.html" class="cta-btn primary">Try it: Telmexa AM →</a>
-                    <a href="products/ai/diabmexa-m-500-ai.html" class="cta-btn secondary">Diabmexa M 500</a>
+                <div class="fx-actions">
+                    <a href="products/ai/telmexa-am-ai.html" class="fx-btn">Try it with Telmexa AM</a>
+                    <a href="products/ai/diabmexa-m-500-ai.html" class="fx-btn fx-btn-ghost">Diabmexa M 500</a>
                 </div>
             </div>
-            <div class="aip-stage fade-in" aria-hidden="true">
-                <div class="aip-glow"></div>
-                <div class="aip-qr">
-                    <div class="aip-qr-code"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
-                    <span>Scan pack</span>
-                </div>
-                <div class="aip-phone" id="aipPhone">
+            <div class="holo" aria-hidden="true">
+                <div class="holo-pedestal"><span></span><span></span><span></span></div>
+                <div class="holo-beam"></div>
+                <div class="aip-phone holo-phone" id="aipPhone">
                     <div class="aip-notch"></div>
                     <div class="aip-screen">
                         <div class="aip-head">
                             <div class="aip-avatar">💊</div>
-                            <div><b>AI Pharmacist</b><small>Telmexa AM · 40mg / 5mg</small></div>
+                            <div><b>AI Pharmacist</b><small>Telmexa AM 40/5 mg</small></div>
                             <span class="aip-live">● Live</span>
                         </div>
                         <div class="aip-msg aip-user">Can I take it at night?</div>
-                        <div class="aip-msg aip-bot">Yes — take Telmexa AM at the <b>same time every day</b>, morning or night. If it makes you dizzy, night-time is often easier. 🌙</div>
-                        <div class="aip-msg aip-user">Can I eat bananas?</div>
-                        <div class="aip-msg aip-bot">In normal amounts, yes. Avoid potassium salt substitutes, and check with your doctor if you have kidney problems.</div>
-                        <div class="aip-voice"><span></span><span></span><span></span><span></span><span></span> Reading aloud…</div>
-                        <div class="aip-chips"><em>Missed a dose?</em><em>Side effects</em><em>Alcohol?</em></div>
+                        <div class="aip-msg aip-bot">Yes. Take it at the <b>same time every day</b>. If it makes you dizzy, night is often easier.</div>
+                        <div class="aip-msg aip-user">I missed this morning's dose.</div>
+                        <div class="aip-msg aip-bot">Take it when you remember, unless it's nearly time for the next one. Never take two together.</div>
+                        <div class="aip-voice"><span></span><span></span><span></span><span></span><span></span> Reading aloud</div>
                     </div>
+                    <div class="holo-scan"></div>
                 </div>
-                <div class="aip-float aip-f1">⏰ Reminder set · 9:00 PM</div>
-                <div class="aip-float aip-f2">❤️ BP 128/82 logged</div>
+                <div class="holo-tag holo-tag-a">Reminder set for 9:00 PM</div>
+                <div class="holo-tag holo-tag-b">BP 128/82 logged</div>
             </div>
         </div>
     </section>
 
-    <section class="section ecosystem-section" id="ecosystem">
-        <div class="section-header fade-in">
-            <span class="section-tag">The Complete Picture</span>
-            <h2 class="section-title">The Biomexa Ecosystem</h2>
-            <p class="section-subtitle">One connected system — from manufacturing to measurable patient outcomes.</p>
+    <section class="section fx-section" id="ecosystem">
+        <div class="fx-head">
+            <p class="fx-kicker">The Biomexa ecosystem</p>
+            <h2 class="fx-title">One connected loop, from the pack to the proof</h2>
         </div>
-        <div class="eco-3d fade-in" id="eco3d">
-            <div class="eco-ring" id="ecoRing">
-            <div class="eco-stage">
-                <div class="eco-stage-head"><span class="eco-stage-num">01</span><span class="eco-stage-name">Make</span></div>
-                <div class="eco-node"><span class="eco-node-icon" aria-hidden="true">🏭</span><div><div class="eco-node-title">Medicine manufacturing</div><div class="eco-node-desc">Quality-assured Biomexa medicines</div></div></div>
-                <div class="eco-node"><span class="eco-node-icon" aria-hidden="true">📦</span><div><div class="eco-node-title">QR packaging</div><div class="eco-node-desc">Every pack carries its own smart QR code</div></div></div>
-            </div>
-            <div class="eco-stage">
-                <div class="eco-stage-head"><span class="eco-stage-num">02</span><span class="eco-stage-name">Engage</span></div>
-                <div class="eco-node"><span class="eco-node-icon" aria-hidden="true">📱</span><div><div class="eco-node-title">Patient scan</div><div class="eco-node-desc">Medicine info and audio guidance in the patient's language</div></div></div>
-                <div class="eco-node"><span class="eco-node-icon" aria-hidden="true">🤖</span><div><div class="eco-node-title">AI guidance</div><div class="eco-node-desc">Answers questions about dose, timing and precautions</div></div></div>
-                <div class="eco-node"><span class="eco-node-icon" aria-hidden="true">🍽️</span><div><div class="eco-node-title">Biological clock & food alerts</div><div class="eco-node-desc">Doses timed to the body clock and meals</div></div></div>
-                <div class="eco-node"><span class="eco-node-icon" aria-hidden="true">⏰</span><div><div class="eco-node-title">Reminder system</div><div class="eco-node-desc">WhatsApp reminders with one-tap confirmation</div></div></div>
-            </div>
-            <div class="eco-stage">
-                <div class="eco-stage-head"><span class="eco-stage-num">03</span><span class="eco-stage-name">Measure</span></div>
-                <div class="eco-node"><span class="eco-node-icon" aria-hidden="true">📊</span><div><div class="eco-node-title">Adherence data</div><div class="eco-node-desc">Every confirmed or missed dose, in real time</div></div></div>
-                <div class="eco-node"><span class="eco-node-icon" aria-hidden="true">🧬</span><div><div class="eco-node-title">Therapeutic effect</div><div class="eco-node-desc">Vitals and labs show whether treatment is working</div></div></div>
-                <div class="eco-node"><span class="eco-node-icon" aria-hidden="true">👨‍⚕️</span><div><div class="eco-node-title">Doctor dashboard</div><div class="eco-node-desc">Risk alerts and trends for timely decisions</div></div></div>
-            </div>
-            <div class="eco-stage">
-                <div class="eco-stage-head"><span class="eco-stage-num">04</span><span class="eco-stage-name">Prove</span></div>
-                <div class="eco-node"><span class="eco-node-icon" aria-hidden="true">📈</span><div><div class="eco-node-title">Real-world evidence</div><div class="eco-node-desc">Anonymised outcomes data across patients</div></div></div>
-                <div class="eco-node"><span class="eco-node-icon" aria-hidden="true">🎯</span><div><div class="eco-node-title">Commercial outcomes</div><div class="eco-node-desc">Evidence that supports pharma and payer partnerships</div></div></div>
-            </div>
+        <div class="cube-scene" id="eco3d">
+            <div class="cube-floor" aria-hidden="true"></div>
+            <div class="cube" id="ecoRing">
+                <div class="eco-stage cube-face"><span class="cf-step">Step 1</span><h3>Make</h3><ul><li>🏭 Quality-assured medicines</li><li>📦 A smart QR code on every pack</li></ul></div>
+                <div class="eco-stage cube-face"><span class="cf-step">Step 2</span><h3>Engage</h3><ul><li>📱 Scan for guidance in your language</li><li>🤖 AI answers dose questions</li><li>⏰ WhatsApp reminders</li></ul></div>
+                <div class="eco-stage cube-face"><span class="cf-step">Step 3</span><h3>Measure</h3><ul><li>📊 Every dose, taken or missed</li><li>🧬 Vitals show if treatment works</li><li>👨‍⚕️ Risk alerts for doctors</li></ul></div>
+                <div class="eco-stage cube-face"><span class="cf-step">Step 4</span><h3>Prove</h3><ul><li>📈 Anonymised real-world evidence</li><li>🎯 Outcomes partners can trust</li></ul></div>
             </div>
         </div>
-        <div class="eco-controls fade-in">
-            <button type="button" class="eco-btn" id="ecoPrev" aria-label="Previous stage">‹</button>
-            <span>Hover to pause · drag or use the arrows to turn</span>
-            <button type="button" class="eco-btn" id="ecoNext" aria-label="Next stage">›</button>
+        <div class="cube-steps" id="ecoSteps" role="tablist" aria-label="Ecosystem stages">
+            <button type="button" role="tab" data-i="0">Make</button>
+            <button type="button" role="tab" data-i="1">Engage</button>
+            <button type="button" role="tab" data-i="2">Measure</button>
+            <button type="button" role="tab" data-i="3">Prove</button>
         </div>
-        <p class="eco-caption fade-in">All connected through the Biomexa platform — one record from the medicine pack to measurable patient outcomes.</p>
     </section>
 
     <section class="section dashboard-section" id="dashboard">

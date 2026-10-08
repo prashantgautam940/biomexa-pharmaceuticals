@@ -1,79 +1,101 @@
-// Home page 3D: rotating ecosystem ring + tilting AI Pharmacist phone.
+// Home page 3D: Biomexa Care orbit, rotating ecosystem cube, tilting AI Pharmacist phone.
 (function () {
   const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-  // ---------- Ecosystem ring ----------
-  const scene = document.getElementById('eco3d');
-  const ring = document.getElementById('ecoRing');
-  if (scene && ring) {
-    const cards = Array.from(ring.querySelectorAll('.eco-stage'));
-    const n = cards.length;
-    const step = 360 / n;
-    cards.forEach((c, i) => c.style.setProperty('--i', i));
-
-    function layout() {
-      const w = ring.offsetWidth;
-      // Distance from the centre so neighbouring cards just clear each other, plus breathing room.
-      const r = Math.round((w / 2) / Math.tan(Math.PI / n) + (window.innerWidth < 600 ? 40 : 90));
-      ring.style.setProperty('--eco-r', r + 'px');
-    }
-    layout();
-    window.addEventListener('resize', layout);
-
-    let rot = 0, target = null, paused = false, dragging = false, lastX = 0, last = performance.now();
-    const speed = reduceMotion ? 0 : 9; // degrees per second
-
-    function paint() {
-      ring.style.setProperty('--eco-rot', rot + 'deg');
-      // Cards turning away fade out, so only the front stage is fully readable.
-      cards.forEach((c, i) => {
-        const a = ((i * step + rot) % 360 + 360) % 360;
-        const facing = Math.cos(a * Math.PI / 180);
-        c.style.opacity = Math.max(0.15, facing).toFixed(2);
-        c.setAttribute('aria-hidden', facing < 0.5 ? 'true' : 'false');
+  // ---------- Biomexa Care: benefits orbit the core on a tilted ellipse ----------
+  const orbit = document.getElementById('careOrbit');
+  if (orbit) {
+    const nodes = Array.from(orbit.querySelectorAll('.orbit-node'));
+    const ring = orbit.querySelector('.orbit-ring-a');
+    const tilt = Math.cos(72 * Math.PI / 180); // matches the ring's rotateX(72deg)
+    let base = 90, paused = false, last = performance.now();
+    function place() {
+      const rx = ring.offsetWidth / 2, ry = Math.max(rx * tilt, 70) + 40;
+      nodes.forEach((n, i) => {
+        const a = (base + i * (360 / nodes.length)) * Math.PI / 180;
+        const x = Math.cos(a) * rx, y = Math.sin(a) * ry;
+        const depth = (Math.sin(a) + 1) / 2;            // 0 = behind the core, 1 = closest
+        const scale = 0.72 + depth * 0.32;
+        n.style.transform = `translate(-50%, -50%) translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) scale(${scale.toFixed(3)})`;
+        n.style.opacity = (0.45 + depth * 0.55).toFixed(2);
+        n.style.zIndex = depth > 0.5 ? 10 : 1;          // behind the core when at the back
+        n.classList.toggle('front', depth > 0.92);
       });
     }
     function tick(now) {
       const dt = Math.min(0.05, (now - last) / 1000); last = now;
+      if (!paused && !reduceMotion && !document.hidden) base += 12 * dt;
+      place();
+      requestAnimationFrame(tick);
+    }
+    orbit.addEventListener('mouseenter', () => { paused = true; });
+    orbit.addEventListener('mouseleave', () => { paused = false; });
+    window.addEventListener('resize', place);
+    requestAnimationFrame(tick);
+  }
+
+  // ---------- Ecosystem: rotating glass cube with a step bar ----------
+  const scene = document.getElementById('eco3d');
+  const cube = document.getElementById('ecoRing');
+  if (scene && cube) {
+    const faces = Array.from(cube.querySelectorAll('.eco-stage'));
+    const n = faces.length, step = 360 / n;
+    const tabs = Array.from(document.querySelectorAll('#ecoSteps button'));
+    faces.forEach((f, i) => f.style.setProperty('--i', i));
+    const layout = () => cube.style.setProperty('--eco-r', (cube.offsetWidth / 2) + 'px');
+    layout();
+    window.addEventListener('resize', layout);
+
+    let rot = 0, target = null, paused = false, dragging = false, lastX = 0, last = performance.now(), hold = 0;
+    const speed = reduceMotion ? 0 : 14;
+
+    function paint() {
+      cube.style.setProperty('--eco-rot', rot + 'deg');
+      let front = 0, best = -2;
+      faces.forEach((f, i) => {
+        const facing = Math.cos(((i * step + rot) % 360) * Math.PI / 180);
+        f.style.opacity = (facing > 0 ? Math.max(0.15, facing) : 0.04).toFixed(2); // back faces: faint glass edge only, no mirrored text
+        f.setAttribute('aria-hidden', facing < 0.6 ? 'true' : 'false');
+        if (facing > best) { best = facing; front = i; }
+      });
+      tabs.forEach((t, i) => t.setAttribute('aria-selected', i === front ? 'true' : 'false'));
+    }
+    function tick(now) {
+      const dt = Math.min(0.05, (now - last) / 1000); last = now;
       if (target !== null) {
-        const d = target - rot;
-        rot += d * Math.min(1, dt * 7);
-        if (Math.abs(d) < 0.2) { rot = target; target = null; }
-      } else if (!paused && !dragging && !document.hidden) {
+        const d = target - rot; rot += d * Math.min(1, dt * 7);
+        if (Math.abs(d) < 0.2) { rot = target; target = null; hold = 2.5; }
+      } else if (hold > 0) {
+        hold -= dt; // pause on each face for a moment after it settles
+      } else if (!paused && !dragging && !document.hidden && speed) {
         rot -= speed * dt;
+        // settle on the next face every quarter turn so each stage is readable
+        const nextStop = Math.floor(rot / step) * step;
+        if (rot - nextStop < 0.6) { rot = nextStop; hold = 2.5; }
       }
       paint();
       requestAnimationFrame(tick);
     }
     requestAnimationFrame(tick);
 
-    const snap = dir => {
-      const base = target !== null ? target : rot;
-      target = Math.round(base / step) * step + dir * step;
-    };
-    const prev = document.getElementById('ecoPrev'), next = document.getElementById('ecoNext');
-    if (prev) prev.addEventListener('click', () => snap(1));
-    if (next) next.addEventListener('click', () => snap(-1));
-
+    tabs.forEach((t, i) => t.addEventListener('click', () => {
+      // shortest turn to face i
+      const want = -i * step;
+      const k = Math.round((rot - want) / 360);
+      target = want + k * 360;
+    }));
     scene.addEventListener('mouseenter', () => { paused = true; });
     scene.addEventListener('mouseleave', () => { paused = false; });
-    scene.addEventListener('focusin', () => { paused = true; });
-    scene.addEventListener('focusout', () => { paused = false; });
     scene.addEventListener('pointerdown', e => { dragging = true; target = null; lastX = e.clientX; scene.classList.add('dragging'); scene.setPointerCapture(e.pointerId); });
-    scene.addEventListener('pointermove', e => { if (!dragging) return; rot += (e.clientX - lastX) * 0.4; lastX = e.clientX; });
+    scene.addEventListener('pointermove', e => { if (!dragging) return; rot += (e.clientX - lastX) * 0.45; lastX = e.clientX; });
     const end = () => { if (!dragging) return; dragging = false; scene.classList.remove('dragging'); target = Math.round(rot / step) * step; };
     scene.addEventListener('pointerup', end);
     scene.addEventListener('pointercancel', end);
-    document.addEventListener('keydown', e => {
-      if (!scene.matches(':hover') && !scene.contains(document.activeElement)) return;
-      if (e.key === 'ArrowLeft') snap(1);
-      if (e.key === 'ArrowRight') snap(-1);
-    });
   }
 
   // ---------- AI Pharmacist phone: follows the pointer ----------
   const phone = document.getElementById('aipPhone');
-  const stage = phone && phone.closest('.aip-stage');
+  const stage = phone && phone.closest('.holo, .aip-stage');
   if (phone && stage && !reduceMotion && window.matchMedia('(hover: hover)').matches) {
     stage.addEventListener('mousemove', e => {
       const r = stage.getBoundingClientRect();
