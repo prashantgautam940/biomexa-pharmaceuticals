@@ -276,7 +276,7 @@
     // arbitrary URL, so ?next= can't be abused as an open redirect.
     function postLoginTarget() {
       const next = new URLSearchParams(location.search).get('next') || '';
-      return /^(patient|ivf)\.html(#[A-Za-z0-9_-]+)?$/.test(next) ? next : 'patient.html';
+      return /^(patient|ivf|subscribe)\.html(#[A-Za-z0-9_-]+)?(\?plan=[a-z]+)?$/.test(next) ? next : 'patient.html';
     }
     const API_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
       ? 'http://localhost:3000'

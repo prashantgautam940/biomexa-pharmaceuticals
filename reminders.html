@@ -278,6 +278,10 @@
           <a class="btn btn-primary" href="login.html?next=patient.html%23add-medicine">Log in</a>
           <a class="btn btn-ghost" href="forgot-password.html">Forgot / set password</a></div>
           <div style="margin-top:8px;font-size:0.8rem">Your ${esc(med.name)} reminder will be ready to confirm after you log in.</div>`);
+      } else if (err.code === 'subscription_required') {
+        fail(`${esc(err.message)}<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+          <a class="btn btn-primary" href="subscribe.html#plans">👑 See Biomexa Care plans</a>
+          <a class="btn btn-ghost" href="patient.html#doses">Manage my medicines</a></div>`);
       } else if (err.code === 'duplicate') {
         fail(`${esc(err.message)} <a href="patient.html#doses">Open my medicines</a>`);
       } else if (err.status === 401) {

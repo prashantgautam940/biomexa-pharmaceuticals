@@ -15,7 +15,7 @@ app.set('trust proxy', 1); // Render sits behind a reverse proxy — without thi
                             // the proxy's address for every request, not the real client IP,
                             // which would make the rate limiter below treat all users as one.
 app.use(cors());
-app.use(express.json({ limit: '22mb' })); // default is 100kb — up to 3 files (~5MB each, base64 adds ~33%) per upload needs real headroom
+app.use(express.json({ limit: '22mb', verify: (req, res, buf) => { if (req.originalUrl.startsWith('/api/razorpay/webhook')) req.rawBody = buf; } })); // default is 100kb — up to 3 files (~5MB each, base64 adds ~33%) per upload needs real headroom
 
 // ========== RATE LIMITING ==========
 // Simple in-memory limiter — appropriate for a single-instance deployment (no Redis needed).
@@ -1509,6 +1509,14 @@ const patientSchema = new mongoose.Schema({
   // Product message every AD_INTERVAL_DAYS (see processProductAds). Patients can reply STOP.
   lastAdSentAt: Date,
   lastReminderInviteAt: Date, // admin Reminder Center "invite to add a reminder" (max once a day)
+  // Biomexa Care subscription (see SUBSCRIPTION section). One-time payments; each payment adds
+  // its period on top of any time still left.
+  subscription: {
+    plan: String,        // monthly | halfyearly | yearly
+    startedAt: Date,
+    expiresAt: Date
+  },
+  lastSubNoticeKey: String, // which trial/expiry WhatsApp notice was sent last (sent once each)
   adOptOut: { type: Boolean, default: false },
   createdAt: { type: Date, default: Date.now }
 });
@@ -1695,6 +1703,22 @@ const VitalsLog = mongoose.model('VitalsLog', vitalsLogSchema);
 const UploadedDocument = mongoose.model('UploadedDocument', uploadedDocumentSchema);
 const ClinicalReference = mongoose.model('ClinicalReference', clinicalReferenceSchema);
 const Order = mongoose.model('Order', orderSchema);
+// Razorpay payments for the Biomexa Care subscription — one row per checkout attempt.
+const paymentSchema = new mongoose.Schema({
+  patientPhone: String,
+  patientName: String,
+  plan: String,
+  amount: Number,          // in paise
+  currency: { type: String, default: 'INR' },
+  orderId: { type: String, unique: true },
+  paymentId: String,
+  status: { type: String, default: 'created' }, // created | paid | failed
+  periodStart: Date,
+  periodEnd: Date,
+  paidAt: Date,
+  createdAt: { type: Date, default: Date.now }
+});
+const Payment = mongoose.model('Payment', paymentSchema);
 const ConversationState = mongoose.model('ConversationState', conversationStateSchema);
 const RiskAlert = mongoose.model('RiskAlert', riskAlertSchema);
 const Admin = mongoose.model('Admin', adminSchema);
@@ -1782,6 +1806,97 @@ const auth = (req, res, next) => {
   }
 };
 
+// ========== BIOMEXA CARE SUBSCRIPTION (Razorpay, one-time payment per period) ==========
+// Every patient gets everything free for TRIAL_DAYS. After that, these need an active plan:
+//   • Talk to a Doctor (connect + the doctor's WhatsApp number)
+//   • Treatment reports (and "Send to WhatsApp")
+//   • AI document analysis (prescriptions, lab reports, imaging)
+//   • More than FREE_MEDICINE_LIMIT medicines on reminders (basic reminders for up to 2 stay free)
+// Accounts that existed before subscriptions launched get their 25 days from launch day, not from
+// sign-up — otherwise every existing patient would be locked out on day one.
+const SUBSCRIPTION_PLANS = {
+  monthly:    { id: 'monthly',    name: 'Monthly',  price: 99,  days: 30,  label: '₹99 / month' },
+  halfyearly: { id: 'halfyearly', name: '6 Months', price: 499, days: 182, label: '₹499 / 6 months', note: 'Save 16%' },
+  yearly:     { id: 'yearly',     name: 'Yearly',   price: 899, days: 365, label: '₹899 / year', note: 'Best value — save 24%' }
+};
+const TRIAL_DAYS = 25;
+const FREE_MEDICINE_LIMIT = 2;
+const SUBSCRIPTION_LAUNCH = new Date('2026-10-08T00:00:00+05:30');
+const RAZORPAY_KEY_ID = process.env.RAZORPAY_KEY_ID || '';
+const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET || '';
+const RAZORPAY_WEBHOOK_SECRET = process.env.RAZORPAY_WEBHOOK_SECRET || '';
+const PAYMENTS_CONFIGURED = !!(RAZORPAY_KEY_ID && RAZORPAY_KEY_SECRET);
+
+function trialEndsAt(patient) {
+  const created = patient?.createdAt ? new Date(patient.createdAt) : new Date();
+  const start = created > SUBSCRIPTION_LAUNCH ? created : SUBSCRIPTION_LAUNCH;
+  return new Date(start.getTime() + TRIAL_DAYS * 86400000);
+}
+
+// Access across every saved record of the number (duplicate "+91 X" accounts share one plan).
+function accessFor(records) {
+  const now = new Date();
+  const list = (Array.isArray(records) ? records : [records]).filter(Boolean);
+  let expiresAt = null, plan = null, trialEnd = null;
+  for (const p of list) {
+    const e = p.subscription?.expiresAt ? new Date(p.subscription.expiresAt) : null;
+    if (e && (!expiresAt || e > expiresAt)) { expiresAt = e; plan = p.subscription.plan; }
+    const t = trialEndsAt(p);
+    if (!trialEnd || t > trialEnd) trialEnd = t;
+  }
+  const subscribed = !!(expiresAt && expiresAt > now);
+  const inTrial = !subscribed && trialEnd > now;
+  const tier = subscribed ? 'subscribed' : inTrial ? 'trial' : 'free';
+  const until = subscribed ? expiresAt : inTrial ? trialEnd : null;
+  return {
+    tier, premium: tier !== 'free', plan: subscribed ? plan : null,
+    planName: subscribed && SUBSCRIPTION_PLANS[plan] ? SUBSCRIPTION_PLANS[plan].name : null,
+    expiresAt: subscribed ? expiresAt : null, trialEndsAt: trialEnd,
+    daysLeft: until ? Math.max(0, Math.ceil((until - now) / 86400000)) : 0,
+    lastExpiredAt: !subscribed && expiresAt ? expiresAt : null,
+    freeMedicineLimit: FREE_MEDICINE_LIMIT
+  };
+}
+async function accessForPhone(phone) {
+  return accessFor(await Patient.find({ phone: { $in: phoneVariants(phone) } }));
+}
+
+const PREMIUM_FEATURE_NAMES = {
+  doctor: 'Talk to a Doctor',
+  report: 'Treatment reports',
+  analysis: 'AI document analysis',
+  medicines: 'Reminders for more than 2 medicines'
+};
+function subscriptionRequired(res, feature, access) {
+  return res.status(402).json({
+    code: 'subscription_required', feature,
+    message: `${PREMIUM_FEATURE_NAMES[feature] || 'This feature'} is part of Biomexa Care. Your ${TRIAL_DAYS}-day free trial has ended — subscribe from ₹99/month to continue.`,
+    subscribeUrl: `${SITE_URL}/subscribe.html`,
+    access
+  });
+}
+// Use after `auth` on patient routes.
+function requirePremium(feature) {
+  return async (req, res, next) => {
+    try {
+      const access = await accessForPhone(req.user.phone);
+      if (access.premium) { req.access = access; return next(); }
+      return subscriptionRequired(res, feature, access);
+    } catch (err) {
+      res.status(500).json({ message: err.message });
+    }
+  };
+}
+// Free plan: reminders for up to FREE_MEDICINE_LIMIT different medicines. Returns null if OK.
+async function medicineLimitBlock(phone, newName) {
+  const records = await Patient.find({ phone: { $in: phoneVariants(phone) } });
+  const access = accessFor(records);
+  if (access.premium) return null;
+  const names = new Set(records.flatMap(r => (r.medicines || []).filter(m => m.active).map(m => String(m.name).trim().toLowerCase())));
+  if (names.has(String(newName || '').trim().toLowerCase()) || names.size < FREE_MEDICINE_LIMIT) return null;
+  return access;
+}
+
 // ========== UTILITY FUNCTIONS ==========
 function generateOTP() {
   return Math.floor(100000 + Math.random() * 900000).toString();
@@ -1850,6 +1965,10 @@ app.post('/api/quick-reminder', signupLimiter, async (req, res) => {
 
     let patient = await findAccountByPhone('patient', phone);
     let isNewAccount = false;
+    if (patient) {
+      const limited = await medicineLimitBlock(patient.phone, medicineName);
+      if (limited) return subscriptionRequired(res, 'medicines', limited);
+    }
 
     if (!patient) {
       isNewAccount = true;
@@ -2300,7 +2419,13 @@ app.get('/api/patient/profile', auth, async (req, res) => {
     // client even when hashed.
     const patient = await Patient.findOne({ phone: req.user.phone }).select('-password');
     if (!patient) return res.status(404).json({ message: 'Patient not found' });
-    res.json(patient);
+    const r = await computeRiskScore(patient);
+    res.json({
+      ...patient.toObject(),
+      access: await accessForPhone(req.user.phone),
+      // Same calibrated score the doctor and admin dashboards show.
+      risk: { label: r.label, score: r.score, adherence: r.adherenceKnown ? Math.round(r.adherence * 100) : null, dosesLogged: r.due, reasons: r.reasons }
+    });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -2387,7 +2512,7 @@ const MAX_FILES_PER_UPLOAD = 3;
 // needed — the frontend reads each file via FileReader before sending.
 // Analysis runs synchronously in the same request when Gemini or Claude is configured; the
 // request can take up to ~30s for that reason, which the frontend's loading state accounts for.
-app.post('/api/patient/upload-report', auth, async (req, res) => {
+app.post('/api/patient/upload-report', auth, requirePremium('analysis'), async (req, res) => {
   try {
     const rawFiles = Array.isArray(req.body.files) ? req.body.files
       : (req.body.fileName ? [{ fileName: req.body.fileName, fileType: req.body.fileType, fileData: req.body.fileData }] : []);
@@ -2477,7 +2602,7 @@ app.delete('/api/patient/uploaded-reports/:id', auth, async (req, res) => {
 // Sends a previously-completed document analysis over WhatsApp — the prompt already formats
 // the analysis with WhatsApp-style *bold* headers, so this sends the exact same text shown on
 // the dashboard rather than reformatting or condensing it again.
-app.post('/api/patient/uploaded-reports/:id/send-whatsapp', auth, async (req, res) => {
+app.post('/api/patient/uploaded-reports/:id/send-whatsapp', auth, requirePremium('analysis'), async (req, res) => {
   try {
     const doc = await UploadedDocument.findOne({ _id: req.params.id, patientPhone: req.user.phone });
     if (!doc) return res.status(404).json({ message: 'Report not found.' });
@@ -2671,7 +2796,7 @@ async function buildPatientTreatmentReport(phone) {
   return { data: { ...report, usedRealVitals, patientName: patient.name, dailyBreakdown } };
 }
 
-app.get('/api/patient/treatment-report', auth, async (req, res) => {
+app.get('/api/patient/treatment-report', auth, requirePremium('report'), async (req, res) => {
   try {
     const result = await buildPatientTreatmentReport(req.user.phone);
     if (result.error) {
@@ -2690,7 +2815,7 @@ app.get('/api/patient/treatment-report', auth, async (req, res) => {
 // Sends a condensed, readable version of the same report over WhatsApp — the full report with
 // every data point stays on the portal, WhatsApp gets the score, adherence, and the top
 // insight/recommendation so it's genuinely readable as a chat message, not a wall of JSON.
-app.post('/api/patient/treatment-report/send-whatsapp', auth, async (req, res) => {
+app.post('/api/patient/treatment-report/send-whatsapp', auth, requirePremium('report'), async (req, res) => {
   try {
     const result = await buildPatientTreatmentReport(req.user.phone);
     if (result.error) return res.status(result.status).json({ message: result.error });
@@ -2834,6 +2959,8 @@ app.post('/api/medicines', auth, async (req, res) => {
 
     // Same medicine already running -> don't double every reminder.
     if (!name || !String(name).trim()) return res.status(400).json({ message: 'Please enter the medicine name.' });
+    const limited = await medicineLimitBlock(req.user.phone, name);
+    if (limited) return subscriptionRequired(res, 'medicines', limited);
     const current = await Patient.findOne({ phone: req.user.phone }).select('medicines');
     const dup = current && current.medicines.find(m => m.active && String(m.name).trim().toLowerCase() === String(name).trim().toLowerCase());
     if (dup) return res.status(409).json({ code: 'duplicate', message: `${dup.name} reminders are already active on your account. Stop the old one in "My medicines" first if you want to change the times.` });
@@ -3403,6 +3530,7 @@ cron.schedule('* * * * *', async () => {
     processCompletedCourses(); // not awaited — must never delay dose reminders
   }
   processProductAds(now); // once a day after 11 AM; not awaited
+  processSubscriptionNotices(now); // once a day after 10 AM; not awaited
 
   console.log(`⏰ [${currentTime}] Checking for pending doses...`);
 
@@ -4007,7 +4135,7 @@ app.post('/api/doctors/test-whatsapp', doctorAuth, async (req, res) => {
 // Public list of doctors — powers the "Doctors Available" section on the home page & patient portal
 app.get('/api/doctors', async (req, res) => {
   try {
-    const doctors = await Doctor.find({ status: 'verified' }).select('-password -email -licenseNumber -reviewNote -reviewedBy -reviewedAt').sort({ available: -1, createdAt: -1 }).limit(50);
+    const doctors = await Doctor.find({ status: 'verified' }).select('-password -email -phone -licenseNumber -reviewNote -reviewedBy -reviewedAt').sort({ available: -1, createdAt: -1 }).limit(50);
     res.json(doctors);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -4016,9 +4144,14 @@ app.get('/api/doctors', async (req, res) => {
 
 // "Connect me now" — fired from the home page or patient portal when a patient wants a doctor urgently.
 // Notifies the doctor over WhatsApp with the patient's details and urgency level.
-app.post('/api/doctors/:id/connect', async (req, res) => {
+app.post('/api/doctors/:id/connect', auth, requirePremium('doctor'), async (req, res) => {
   try {
-    const { patientName, patientPhone, urgency, message } = req.body;
+    // Talk to a Doctor is part of Biomexa Care: the patient must be logged in, and the name and
+    // number sent to the doctor come from their account (not from whatever the page sends).
+    const me = await Patient.findOne({ phone: req.user.phone });
+    const patientName = me?.name || req.body.patientName;
+    const patientPhone = me?.phone || req.user.phone;
+    const { urgency, message } = req.body;
     const doctor = await Doctor.findOne({ _id: req.params.id, status: 'verified' });
     if (!doctor) return res.status(404).json({ message: 'Doctor not found' });
 
@@ -4685,6 +4818,205 @@ app.get('/api/admin/patients', adminAuth, async (req, res) => {
   }
 });
 
+// ========== SUBSCRIPTION ROUTES (subscribe.html) ==========
+app.get('/api/subscription/plans', (req, res) => {
+  res.json({
+    plans: Object.values(SUBSCRIPTION_PLANS), trialDays: TRIAL_DAYS, freeMedicineLimit: FREE_MEDICINE_LIMIT,
+    paymentsEnabled: PAYMENTS_CONFIGURED
+  });
+});
+
+app.get('/api/patient/subscription', auth, async (req, res) => {
+  try {
+    const records = await Patient.find({ phone: { $in: phoneVariants(req.user.phone) } });
+    if (!records.length) return res.status(404).json({ message: 'Patient not found.' });
+    const payments = await Payment.find({ patientPhone: { $in: phoneVariants(req.user.phone) }, status: 'paid' })
+      .sort({ paidAt: -1 }).limit(10).select('plan amount paidAt periodStart periodEnd paymentId');
+    res.json({ ...accessFor(records), paymentsEnabled: PAYMENTS_CONFIGURED, payments });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+function razorpayAuthHeader() {
+  return 'Basic ' + Buffer.from(`${RAZORPAY_KEY_ID}:${RAZORPAY_KEY_SECRET}`).toString('base64');
+}
+function safeEqualHex(a, b) {
+  const x = Buffer.from(String(a || ''), 'utf8'), y = Buffer.from(String(b || ''), 'utf8');
+  return x.length === y.length && crypto.timingSafeEqual(x, y);
+}
+
+// Step 1 — create a Razorpay order for the chosen plan; the page opens Razorpay Checkout with it.
+app.post('/api/patient/subscription/order', auth, async (req, res) => {
+  try {
+    if (!PAYMENTS_CONFIGURED) return res.status(503).json({ message: 'Online payment is not switched on yet — please try again soon.' });
+    const plan = SUBSCRIPTION_PLANS[req.body?.plan];
+    if (!plan) return res.status(400).json({ message: 'Please choose a plan.' });
+    const patient = (await Patient.findOne({ phone: req.user.phone })) || (await findAccountByPhone('patient', req.user.phone));
+    if (!patient) return res.status(404).json({ message: 'Patient not found.' });
+
+    const receipt = `bx_${Date.now()}_${last10(patient.phone)}`.slice(0, 40);
+    const r = await fetch('https://api.razorpay.com/v1/orders', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: razorpayAuthHeader() },
+      body: JSON.stringify({ amount: plan.price * 100, currency: 'INR', receipt, notes: { plan: plan.id, phone: patient.phone, product: 'Biomexa Care' } }),
+      signal: AbortSignal.timeout(15000)
+    });
+    const order = await r.json();
+    if (!r.ok || !order.id) {
+      console.log('⚠️ Razorpay order failed:', JSON.stringify(order).slice(0, 300));
+      return res.status(502).json({ message: 'Could not start the payment. Please try again in a minute.' });
+    }
+    await Payment.create({ patientPhone: patient.phone, patientName: patient.name, plan: plan.id, amount: order.amount, currency: order.currency, orderId: order.id });
+    res.json({
+      keyId: RAZORPAY_KEY_ID, orderId: order.id, amount: order.amount, currency: order.currency,
+      plan, prefill: { name: patient.name || '', contact: patient.phone.replace(/\D/g, '').slice(-10), email: patient.email || '' }
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Marks a payment paid and extends the plan. Idempotent — the browser callback and the Razorpay
+// webhook can both arrive for the same payment; only the first one extends the subscription.
+async function activateSubscription(orderId, paymentId) {
+  const pay = await Payment.findOneAndUpdate(
+    { orderId, status: { $ne: 'paid' } },
+    { status: 'paid', paymentId, paidAt: new Date() },
+    { new: true }
+  );
+  if (!pay) return { already: true, payment: await Payment.findOne({ orderId }) };
+  const plan = SUBSCRIPTION_PLANS[pay.plan];
+  const records = await Patient.find({ phone: { $in: phoneVariants(pay.patientPhone) } });
+  const access = accessFor(records);
+  const now = new Date();
+  // Time still left on a current plan is kept; the new period is added after it.
+  const start = access.expiresAt && access.expiresAt > now ? access.expiresAt : now;
+  const end = new Date(start.getTime() + plan.days * 86400000);
+  await Patient.updateMany({ _id: { $in: records.map(r => r._id) } }, {
+    $set: { 'subscription.plan': plan.id, 'subscription.expiresAt': end, 'subscription.startedAt': access.tier === 'subscribed' ? (records[0].subscription?.startedAt || now) : now }
+  });
+  pay.periodStart = start; pay.periodEnd = end; await pay.save();
+  const first = String(pay.patientName || '').trim().split(/\s+/)[0] || 'there';
+  const endTxt = end.toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' });
+  sendWhatsAppFree(pay.patientPhone,
+    `✅ *Payment received — welcome to Biomexa Care!*\n\nHi ${first}, your ${plan.name} plan (₹${plan.price}) is active until *${endTxt}*.\n\nUnlocked for you:\n• Talk to a Doctor\n• Treatment reports on WhatsApp\n• AI prescription & lab report analysis\n• Reminders for all your medicines\n\nPayment ID: ${paymentId}\n\n- Biomexa Team`).catch(() => {});
+  console.log(`💳 Subscription paid: ${pay.patientPhone} — ${plan.id} ₹${plan.price}, until ${end.toISOString().slice(0, 10)} (${paymentId})`);
+  return { payment: pay, expiresAt: end, plan };
+}
+
+// Step 2 — the page sends Razorpay's response; the signature proves it really came from Razorpay.
+app.post('/api/patient/subscription/verify', auth, async (req, res) => {
+  try {
+    if (!PAYMENTS_CONFIGURED) return res.status(503).json({ message: 'Payments are not configured.' });
+    const { razorpay_order_id: orderId, razorpay_payment_id: paymentId, razorpay_signature: signature } = req.body || {};
+    if (!orderId || !paymentId || !signature) return res.status(400).json({ message: 'Payment details missing.' });
+    const expected = crypto.createHmac('sha256', RAZORPAY_KEY_SECRET).update(`${orderId}|${paymentId}`).digest('hex');
+    if (!safeEqualHex(expected, signature)) {
+      await Payment.updateOne({ orderId, status: 'created' }, { status: 'failed', paymentId });
+      console.log(`⚠️ Razorpay signature mismatch for ${orderId}`);
+      return res.status(400).json({ message: 'Payment could not be verified. If money was deducted, it will be refunded by Razorpay — or contact Biomexa.' });
+    }
+    const own = await Payment.findOne({ orderId, patientPhone: { $in: phoneVariants(req.user.phone) } });
+    if (!own) return res.status(404).json({ message: 'Order not found for this account.' });
+    const result = await activateSubscription(orderId, paymentId);
+    const access = await accessForPhone(req.user.phone);
+    res.json({ message: `Payment successful — Biomexa Care is active until ${new Date(access.expiresAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}.`, access, already: !!result.already });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Backup path: Razorpay → server webhook (payment.captured / order.paid), so a patient whose
+// browser closed mid-payment still gets their plan. Set the webhook in Razorpay Dashboard →
+// Settings → Webhooks to <API>/api/razorpay/webhook with RAZORPAY_WEBHOOK_SECRET.
+app.post('/api/razorpay/webhook', async (req, res) => {
+  try {
+    if (!RAZORPAY_WEBHOOK_SECRET || !req.rawBody) return res.status(400).json({ message: 'Webhook not configured' });
+    const expected = crypto.createHmac('sha256', RAZORPAY_WEBHOOK_SECRET).update(req.rawBody).digest('hex');
+    if (!safeEqualHex(expected, req.headers['x-razorpay-signature'])) return res.status(400).json({ message: 'Bad signature' });
+    const ev = req.body?.event;
+    const payEnt = req.body?.payload?.payment?.entity;
+    if ((ev === 'payment.captured' || ev === 'order.paid') && payEnt?.order_id) {
+      const known = await Payment.findOne({ orderId: payEnt.order_id });
+      if (known) await activateSubscription(payEnt.order_id, payEnt.id);
+    } else if (ev === 'payment.failed' && payEnt?.order_id) {
+      await Payment.updateOne({ orderId: payEnt.order_id, status: 'created' }, { status: 'failed', paymentId: payEnt.id });
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('❌ Razorpay webhook error:', err.message);
+    res.status(500).json({ message: err.message });
+  }
+});
+
+app.get('/api/admin/subscriptions', adminAuth, async (req, res) => {
+  try {
+    const patients = await Patient.find().select('name phone createdAt subscription').lean();
+    const people = new Map();
+    for (const p of patients) {
+      const k = last10(p.phone) || String(p._id);
+      (people.get(k) || people.set(k, []).get(k)).push(p);
+    }
+    const rows = [...people.values()].map(list => {
+      const a = accessFor(list);
+      const main = list.find(x => !/\s/.test(x.phone)) || list[0];
+      return { name: main.name, phone: main.phone, tier: a.tier, planName: a.planName, expiresAt: a.expiresAt, trialEndsAt: a.trialEndsAt, daysLeft: a.daysLeft };
+    });
+    const payments = await Payment.find({ status: 'paid' }).sort({ paidAt: -1 }).limit(100).lean();
+    const revenue = payments.reduce((s, p) => s + (p.amount || 0), 0) / 100;
+    const counts = { subscribed: 0, trial: 0, free: 0 };
+    rows.forEach(r => counts[r.tier]++);
+    res.json({ counts, revenue, paymentsEnabled: PAYMENTS_CONFIGURED, patients: rows, payments });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Daily WhatsApp notices (10 AM): trial ends in 3 days / today, plan ends in 3 days / today, and
+// the day after it ended. Each notice is sent once (lastSubNoticeKey).
+let lastSubNoticeRun = null;
+async function processSubscriptionNotices(now = new Date()) {
+  const today = localDateStr(now);
+  if (lastSubNoticeRun === today || now.getHours() < 10 || now.getHours() >= 20) return;
+  lastSubNoticeRun = today;
+  try {
+    const patients = await Patient.find().select('name phone createdAt subscription lastSubNoticeKey');
+    const seen = new Set();
+    let sent = 0;
+    for (const p of patients) {
+      const k = last10(p.phone);
+      if (!k || seen.has(k)) continue;
+      seen.add(k);
+      const twins = patients.filter(x => last10(x.phone) === k);
+      const a = accessFor(twins);
+      const end = a.tier === 'subscribed' ? a.expiresAt : a.tier === 'trial' ? a.trialEndsAt : (a.lastExpiredAt || a.trialEndsAt);
+      const daysTo = Math.round((new Date(localDateStr(end)) - new Date(today)) / 86400000);
+      const kind = a.tier === 'subscribed' ? 'plan' : a.tier === 'trial' ? 'trial' : (a.lastExpiredAt ? 'plan' : 'trial');
+      let stage = null;
+      if (a.premium && daysTo === 3) stage = '3d';
+      else if (a.premium && daysTo === 0) stage = '0d';
+      else if (!a.premium && daysTo === -1) stage = 'ended';
+      if (!stage) continue;
+      const key = `${kind}-${stage}-${localDateStr(end)}`;
+      if (twins.some(x => x.lastSubNoticeKey === key)) continue;
+      const first = String(p.name || '').trim().split(/\s+/)[0] || 'there';
+      const link = `${SITE_URL}/subscribe.html`;
+      const what = kind === 'trial' ? `your ${TRIAL_DAYS}-day free trial of Biomexa Care` : 'your Biomexa Care plan';
+      const msg = stage === 'ended'
+        ? `Hi ${first}, ${what} has ended.\n\nYour basic WhatsApp reminders continue for up to ${FREE_MEDICINE_LIMIT} medicines. To keep Talk to a Doctor, treatment reports, AI report analysis and unlimited reminders, subscribe from ₹99/month:\n${link}\n\n- Biomexa Team`
+        : `⏳ Hi ${first}, ${what} ends ${stage === '0d' ? '*today*' : 'in *3 days*'}.\n\nKeep Talk to a Doctor, treatment reports, AI report analysis and unlimited reminders — plans from ₹99/month (₹899/year):\n${link}\n\n- Biomexa Team`;
+      const target = twins.find(x => !/\s/.test(x.phone)) || p;
+      const r = await sendWhatsAppFree(target.phone, msg);
+      if (r?.success) { sent++; await Patient.updateMany({ _id: { $in: twins.map(x => x._id) } }, { lastSubNoticeKey: key }); }
+      await new Promise(r2 => setTimeout(r2, 250));
+    }
+    if (sent) console.log(`💳 Subscription notices sent: ${sent}`);
+  } catch (err) {
+    console.error('❌ Subscription notice error:', err.message);
+  }
+}
+
 // ========== ADMIN REMINDER CENTER (admin-reminders.html) ==========
 // Who is getting reminders right now, whose course has finished or was stopped, and who never set
 // one — plus a one-click WhatsApp invite to add a reminder for another medicine/dose, and a way
@@ -4985,7 +5317,8 @@ app.get('/api/whatsapp-status', (req, res) => {
     otpTemplateConfigured: !!MSG91_OTP_TEMPLATE_NAME,
     loginTemplateConfigured: !!MSG91_LOGIN_TEMPLATE_NAME,
     courseTemplateConfigured: !!MSG91_COURSE_TEMPLATE_NAME,
-    adTemplateConfigured: !!MSG91_AD_TEMPLATE_NAME
+    adTemplateConfigured: !!MSG91_AD_TEMPLATE_NAME,
+    paymentsConfigured: PAYMENTS_CONFIGURED
   });
 });
 

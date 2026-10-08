@@ -449,13 +449,6 @@ function initDoctorConnect() {
         ? 'http://localhost:3000'
         : 'https://biomexa-api-f9f6.onrender.com';
 
-    // Shown instantly and used as a fallback if the live API isn't reachable yet
-    const demoDoctors = [
-        { _id: 'demo1', name: 'Dr. Aditi Sharma', specialty: 'Cardiologist', experienceYears: 12, bio: 'Focused on hypertension and post-cardiac-event medication adherence.', available: true, phone: '911234567890' },
-        { _id: 'demo2', name: 'Dr. Rohan Mehta', specialty: 'Diabetologist', experienceYears: 9, bio: 'Manages Type 2 diabetes with circadian dosing and glucose tracking.', available: true, phone: '911234567891' },
-        { _id: 'demo3', name: 'Dr. Neha Kapoor', specialty: 'General Physician', experienceYears: 15, bio: 'Primary care for chronic conditions and multi-drug regimens.', available: false, phone: '911234567892' }
-    ];
-
     function initials(name) {
         return (name || 'Dr').split(' ').filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase();
     }
@@ -478,7 +471,7 @@ function initDoctorConnect() {
                 <div class="doctor-meta">${d.experienceYears ? d.experienceYears + '+ years experience' : 'Biomexa Connect doctor'}</div>
                 <p class="doctor-bio">${d.bio || 'Available to discuss your medication plan and adherence concerns.'}</p>
                 ${d.available
-                    ? `<button class="doctor-connect-btn" onclick="connectWithDoctor('${d._id}', '${(d.name || '').replace(/'/g, "")}', '${d.phone || ''}')">💬 Connect on WhatsApp</button>`
+                    ? `<button class="doctor-connect-btn" onclick="connectWithDoctor()">💬 Talk to this doctor</button>`
                     : `<button class="doctor-connect-btn disabled">Currently Offline</button>`
                 }
             </div>
@@ -486,38 +479,18 @@ function initDoctorConnect() {
         applyTilt();
     }
 
-    // Show demo doctors immediately so the section never looks empty, then swap in live data
-    renderDoctors(demoDoctors);
+    // Real, admin-approved doctors only (no placeholder profiles). The API may be waking up on
+    // Render's free tier, so keep a friendly message until it answers.
+    grid.innerHTML = '<div class="loading-doctors">Loading doctors…</div>';
     fetch(`${API_URL}/api/doctors`)
         .then(r => r.ok ? r.json() : Promise.reject())
-        .then(list => { if (Array.isArray(list) && list.length) renderDoctors(list); })
-        .catch(() => { /* keep demo doctors — API may be asleep on a free tier */ });
+        .then(list => renderDoctors(Array.isArray(list) ? list : []))
+        .catch(() => { grid.innerHTML = '<div class="loading-doctors">Doctors will appear here shortly — please refresh in a minute.</div>'; });
 
-    window.connectWithDoctor = function (doctorId, doctorName, doctorPhone) {
-        const riskFlag = document.body.dataset.riskLevel === 'high';
-        const patientName = window.prompt('Your name (so the doctor knows who is reaching out):', '') || 'A Biomexa patient';
-
-        // 1) Log the request + notify the doctor via the backend (works for real, registered doctors)
-        if (!doctorId.startsWith('demo')) {
-            fetch(`${API_URL}/api/doctors/${doctorId}/connect`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    patientName,
-                    patientPhone: '',
-                    urgency: riskFlag ? 'high' : 'normal',
-                    message: 'Connect request from the Biomexa website'
-                })
-            }).catch(() => {});
-        }
-
-        // 2) Open WhatsApp directly for the patient too, so the conversation starts immediately
-        if (doctorPhone) {
-            const text = encodeURIComponent(`Hello Dr., this is ${patientName} reaching out via Biomexa${riskFlag ? ' — my current risk indicator is HIGH and I would like to speak with you as soon as possible.' : '.'}`);
-            window.open(`https://wa.me/${doctorPhone}?text=${text}`, '_blank');
-        } else {
-            alert('Connect request sent — the doctor will reach out to you shortly.');
-        }
+    // Talk to a Doctor is part of Biomexa Care (free for the first 25 days): logged-in patients go
+    // to their portal, where the connect happens with their account; everyone else sees the plans.
+    window.connectWithDoctor = function () {
+        window.location.href = localStorage.getItem('token') ? 'patient.html#doctor' : 'subscribe.html';
     };
 
     // Subtle mouse-driven 3D tilt for the doctor cards — futuristic feel

@@ -97,6 +97,25 @@ body {
 .dose-info p { color: #5b6b86; font-size: 12px; }
 .dose-time { color: #13804a; font-weight: 600; font-size: 14px; }
 
+/* Biomexa Care plan banner + upgrade prompts */
+.plan-banner { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 14px 0 4px; padding: 12px 16px; border-radius: 14px; text-decoration: none; background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.28); color: #fff; font-size: 0.9rem; }
+.plan-banner b { font-weight: 800; }
+.plan-banner .go { background: #1c9a55; color: #fff; padding: 7px 14px; border-radius: 10px; font-weight: 700; font-size: 0.82rem; white-space: nowrap; }
+.plan-banner.free .go { background: #fff; color: #16336b; }
+.care-lock { text-align: center; padding: 18px 10px 8px; }
+.care-lock .ic { font-size: 30px; }
+.care-lock h4 { margin: 8px 0 6px; font-size: 1rem; color: #13213d; }
+.care-lock p { color: #5b6b86; font-size: 0.88rem; line-height: 1.5; margin-bottom: 14px; }
+.care-lock ul { list-style: none; text-align: left; display: inline-grid; gap: 6px; margin: 0 auto 16px; font-size: 0.86rem; color: #34425e; }
+.care-btn { display: inline-flex; align-items: center; gap: 8px; background: #1c9a55; color: #fff !important; padding: 11px 20px; border-radius: 12px; font-weight: 700; text-decoration: none; font-size: 0.92rem; border: 0; cursor: pointer; }
+.care-btn.ghost { background: #fff; color: #16336b !important; border: 1px solid #e2e8f2; }
+.care-modal-bg { position: fixed; inset: 0; background: rgba(19,33,61,0.5); display: none; align-items: center; justify-content: center; padding: 16px; z-index: 1000; }
+.care-modal-bg.open { display: flex; }
+.care-modal { background: #fff; border-radius: 20px; padding: 24px; max-width: 420px; width: 100%; text-align: center; box-shadow: 0 20px 60px rgba(19,33,61,0.3); }
+.care-modal h3 { margin: 8px 0; color: #13213d; }
+.care-modal p { color: #5b6b86; font-size: 0.92rem; line-height: 1.55; }
+.care-modal .row { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 18px; }
+
 /* Doctor Connect */
 #doctorConnectCard { transition: box-shadow 0.3s, border-color 0.3s; }
 #doctorConnectCard.high-risk {
@@ -279,6 +298,7 @@ html { scroll-padding-top: 80px; }
         </div>
         <div class="whatsapp-status" style="display:none">💬 WhatsApp Active</div>
       </div>
+      <a id="planBanner" class="plan-banner" href="subscribe.html" style="display:none"></a>
       <nav class="pc-quick" aria-label="Quick actions">
         <a href="#doses"><span>💊</span>Today's doses</a>
         <a href="#treatment-report"><span>📊</span>Treatment report</a>
@@ -308,7 +328,7 @@ html { scroll-padding-top: 80px; }
     </div>
 
     <!-- Connect with a Doctor -->
-    <div class="card pc-doctor" id="doctorConnectCard"><span id="connect-doctor" style="position:relative;top:-80px;"></span>
+    <div class="card pc-doctor" id="doctorConnectCard"><span id="connect-doctor" style="position:relative;top:-80px;"></span><span id="doctor" style="position:relative;top:-80px;"></span>
       <div class="card-header">
         <span class="card-title">🩺 Talk to a Doctor</span>
         <span id="doctorConnectHint" style="color:#64748b;font-size:12px;">Live WhatsApp connect</span>
@@ -557,6 +577,37 @@ html { scroll-padding-top: 80px; }
     const token = localStorage.getItem('token');
     const user = JSON.parse(localStorage.getItem('user') || '{}');
 
+    // ========== BIOMEXA CARE (subscription) ==========
+    // Any API call that needs a plan answers 402 { code: 'subscription_required' } — show one
+    // friendly upgrade prompt for all of them instead of a raw error.
+    let careAccess = null;
+    const _fetch = window.fetch.bind(window);
+    window.fetch = async (...args) => {
+      const res = await _fetch(...args);
+      if (res.status === 402) {
+        res.clone().json().then(d => { if (d && d.code === 'subscription_required') showCarePrompt(d.message); }).catch(() => {});
+      }
+      return res;
+    };
+    function showCarePrompt(message) {
+      document.getElementById('careModalText').textContent = message || 'This is part of Biomexa Care. Subscribe from ₹99/month to continue.';
+      document.getElementById('careModal').classList.add('open');
+    }
+    function renderPlanBanner(a) {
+      careAccess = a;
+      const el = document.getElementById('planBanner');
+      if (!a) return;
+      const fmt = d => new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+      el.className = 'plan-banner' + (a.premium ? '' : ' free');
+      el.innerHTML = a.tier === 'subscribed'
+        ? `<span>👑 <b>Biomexa Care · ${a.planName}</b> — active until ${fmt(a.expiresAt)}</span><span class="go">Manage plan</span>`
+        : a.tier === 'trial'
+          ? `<span>🎁 <b>Free trial: ${a.daysLeft} day${a.daysLeft === 1 ? '' : 's'} left</b> — doctor connect, reports and AI analysis are unlocked</span><span class="go">See plans</span>`
+          : `<span>🔒 <b>Free plan</b> — reminders for ${a.freeMedicineLimit} medicines. Subscribe to talk to a doctor, get reports and AI analysis.</span><span class="go">Subscribe from ₹99</span>`;
+      el.style.display = 'flex';
+      renderDoctorArea();
+    }
+
     // WhatsApp links deep-link to a section (e.g. #treatment-report) — carried through login.
     const loginRedirect = 'login.html' + (location.hash ? '?next=' + encodeURIComponent('patient.html' + location.hash) : '');
     if (!token) {
@@ -771,34 +822,21 @@ html { scroll-padding-top: 80px; }
           return;
         }
         const profile = await res.json();
+        renderPlanBanner(profile.access);
         const activeMeds = (profile.medicines || []).filter(m => m.active);
         document.getElementById('activeMedicines').textContent = new Set(activeMeds.map(m => m.name.trim().toLowerCase())).size;
         renderMyMedicines(activeMeds);
 
-        // Calculate adherence from doses
-        const today = new Date().toISOString().split('T')[0];
-        const dosesRes = await fetch(`${API_URL}/api/doses/today`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-        const doses = await dosesRes.json();
-        const total = doses.length;
-        const taken = doses.filter(d => d.status === 'taken').length;
-        const rate = total > 0 ? Math.round((taken / total) * 100) : 0;
-        document.getElementById('adherenceRate').textContent = rate + '%';
-
-        if (rate >= 80) {
-          document.getElementById('riskBadge').textContent = 'All Good';
-          document.getElementById('riskBadge').className = 'status-badge ok';
-          setDoctorConnectUrgency(false);
-        } else if (rate >= 50) {
-          document.getElementById('riskBadge').textContent = 'Moderate';
-          document.getElementById('riskBadge').className = 'status-badge';
-          setDoctorConnectUrgency(false);
-        } else {
-          document.getElementById('riskBadge').textContent = 'At Risk';
-          document.getElementById('riskBadge').className = 'status-badge';
-          setDoctorConnectUrgency(true); // low adherence -> treated as high risk, surface the doctor connect card
-        }
+        // Same calibrated risk the doctor and admin dashboards use: overall adherence, misses this
+        // week and the latest real vitals. No doses logged yet is "Getting started", not "At Risk".
+        const risk = profile.risk || {};
+        document.getElementById('adherenceRate').textContent = risk.adherence === null || risk.adherence === undefined ? '—' : risk.adherence + '%';
+        const badge = document.getElementById('riskBadge');
+        const labels = { 'No data': ['Getting started', 'status-badge ok'], Low: ['All Good', 'status-badge ok'], High: ['Needs attention', 'status-badge'], Critical: ['At Risk', 'status-badge'] };
+        const [txt, cls] = labels[risk.label] || labels['No data'];
+        badge.textContent = txt; badge.className = cls;
+        badge.title = (risk.reasons || []).join(' · ');
+        setDoctorConnectUrgency(risk.label === 'Critical' || risk.label === 'High');
       } catch (e) {}
     }
 
@@ -821,13 +859,14 @@ html { scroll-padding-top: 80px; }
       hint.textContent = vitalsAlertActive
         ? '⚠ ' + vitalsAlertReason
         : (isHighRisk ? 'Your risk is high — connect now' : 'Live WhatsApp connect');
+      renderDoctorArea();
     }
 
     function checkVitalsAlert() {
       fetch(`${API_URL}/api/patient/latest-alert`, { headers: { 'Authorization': `Bearer ${token}` } })
         .then(r => r.ok ? r.json() : null)
         .then(alert => {
-          vitalsAlertActive = !!alert;
+          vitalsAlertActive = !!(alert && alert._id);
           vitalsAlertReason = alert ? alert.reason : '';
           refreshDoctorConnectUrgency();
         })
@@ -836,10 +875,25 @@ html { scroll-padding-top: 80px; }
 
     function initials(name) { return (name || 'Dr').split(' ').filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase(); }
 
+    let doctorsCache = null;
+    function renderDoctorArea() {
+      const el = document.getElementById('doctorConnectList');
+      if (!careAccess || doctorsCache === null) return;
+      if (!careAccess.premium) {
+        el.innerHTML = `<div class="care-lock"><div class="ic">👨‍⚕️</div>
+          <h4>Talk to a doctor with Biomexa Care</h4>
+          <p>${isHighRisk ? '<b style="color:#c0262d">Your recent readings or missed doses need attention.</b> ' : ''}Connect on WhatsApp with a verified Biomexa doctor, plus treatment reports and AI analysis of your prescriptions.</p>
+          <ul><li>✅ Verified doctors on WhatsApp</li><li>✅ Reports you can share with your doctor</li><li>✅ Reminders for all your medicines</li></ul><br>
+          <a class="care-btn" href="subscribe.html#plans">👑 Subscribe — from ₹99/month</a></div>`;
+        return;
+      }
+      renderDoctorList(doctorsCache);
+    }
+
     function renderDoctorList(doctors) {
       const el = document.getElementById('doctorConnectList');
-      if (!doctors.length) { el.innerHTML = '<div class="empty-state">No doctors listed yet.</div>'; return; }
-      el.innerHTML = `<div class="risk-alert-line">🚨 Your adherence indicates elevated risk — an available doctor can help right away.</div>` +
+      if (!doctors.length) { el.innerHTML = '<div class="empty-state">No doctors are available right now — please check back soon.</div>'; return; }
+      el.innerHTML = (isHighRisk ? `<div class="risk-alert-line">🚨 Your recent readings or missed doses suggest you should speak to a doctor — an available doctor can help right away.</div>` : '') +
         doctors.map(d => `
           <div class="doctor-row">
             <div class="doctor-row-avatar">${initials(d.name)}</div>
@@ -849,41 +903,40 @@ html { scroll-padding-top: 80px; }
             </div>
             <span class="doctor-row-status ${d.available ? 'on' : 'off'}">${d.available ? 'Available' : 'Offline'}</span>
             ${d.available
-              ? `<button class="doctor-connect-mini" onclick="connectPatientToDoctor('${d._id}', '${(d.name || '').replace(/'/g, '')}', '${d.phone || ''}')">Connect</button>`
+              ? `<button class="doctor-connect-mini" onclick="connectPatientToDoctor('${d._id}', '${(d.name || '').replace(/'/g, '')}', this)">Connect</button>`
               : `<button class="doctor-connect-mini disabled">Offline</button>`}
           </div>`).join('');
     }
 
-    const demoDoctors = [
-      { _id: 'demo1', name: 'Dr. Aditi Sharma', specialty: 'Cardiologist', experienceYears: 12, available: true, phone: '911234567890' },
-      { _id: 'demo2', name: 'Dr. Rohan Mehta', specialty: 'Diabetologist', experienceYears: 9, available: true, phone: '911234567891' }
-    ];
-
     function loadDoctors() {
-      renderDoctorList(demoDoctors);
       fetch(`${API_URL}/api/doctors`).then(r => r.ok ? r.json() : Promise.reject()).then(list => {
-        if (Array.isArray(list) && list.length) renderDoctorList(list);
-      }).catch(() => {});
+        doctorsCache = Array.isArray(list) ? list : [];
+        renderDoctorArea();
+      }).catch(() => { doctorsCache = []; renderDoctorArea(); });
     }
 
-    function connectPatientToDoctor(doctorId, doctorName, doctorPhone) {
-      if (!doctorId.startsWith('demo')) {
-        fetch(`${API_URL}/api/doctors/${doctorId}/connect`, {
+    async function connectPatientToDoctor(doctorId, doctorName, btn) {
+      if (careAccess && !careAccess.premium) { showCarePrompt(); return; }
+      if (btn) { btn.disabled = true; btn.textContent = 'Connecting…'; }
+      try {
+        const r = await fetch(`${API_URL}/api/doctors/${doctorId}/connect`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-          body: JSON.stringify({
-            patientName: user.name || 'Biomexa patient',
-            patientPhone: user.phone || '',
-            urgency: isHighRisk ? 'high' : 'normal',
-            message: 'Connect request from the Patient Portal'
-          })
-        }).catch(() => {});
-      }
-      if (doctorPhone) {
-        const text = encodeURIComponent(`Hello Dr. ${String(doctorName || '').replace(/^dr\.?\s+/i, '')}, this is ${user.name || 'a Biomexa patient'}.${isHighRisk ? ' My current adherence risk is HIGH — I would like to speak with you as soon as possible.' : ''}`);
-        window.open(`https://wa.me/${doctorPhone}?text=${text}`, '_blank');
-      } else {
-        alert('Connect request sent — the doctor will reach out to you shortly.');
+          body: JSON.stringify({ urgency: isHighRisk ? 'high' : 'normal', message: 'Connect request from the Patient Portal' })
+        });
+        const d = await r.json();
+        if (r.status === 402) return; // upgrade prompt already shown
+        if (!r.ok) throw new Error(d.message || 'Could not reach the doctor');
+        if (d.doctorPhone) {
+          const text = encodeURIComponent(`Hello Dr. ${String(doctorName || '').replace(/^dr\.?\s+/i, '')}, this is ${user.name || 'a Biomexa patient'}.${isHighRisk ? ' My recent readings / missed doses were flagged as high risk — I would like to speak with you as soon as possible.' : ''}`);
+          window.open(`https://wa.me/${String(d.doctorPhone).replace(/\D/g, '')}?text=${text}`, '_blank');
+        } else {
+          alert('Connect request sent — the doctor will reach out to you shortly.');
+        }
+      } catch (e) {
+        alert(e.message);
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = 'Connect'; }
       }
     }
 
@@ -1521,5 +1574,16 @@ html { scroll-padding-top: 80px; }
     loadVitalsHistory();
     setInterval(() => { loadDoses(); loadStats(); loadVitalsHistory(); loadMissedDoses(); }, 30000);
   </script>
+<div class="care-modal-bg" id="careModal" onclick="if(event.target===this)this.classList.remove('open')">
+  <div class="care-modal" role="dialog" aria-modal="true" aria-labelledby="careModalTitle">
+    <div style="font-size:34px">👑</div>
+    <h3 id="careModalTitle">Part of Biomexa Care</h3>
+    <p id="careModalText">Your free trial has ended. Subscribe from ₹99/month to keep using this.</p>
+    <div class="row">
+      <button class="care-btn ghost" onclick="document.getElementById('careModal').classList.remove('open')">Not now</button>
+      <a class="care-btn" href="subscribe.html#plans">See plans</a>
+    </div>
+  </div>
+</div>
 </body>
 </html>
