@@ -527,9 +527,12 @@ function loadCare() {
     document.getElementById('careTrial').textContent = d.counts.trial;
     document.getElementById('careFree').textContent = d.counts.free;
     document.getElementById('careRevenue').textContent = '₹' + Math.round(d.revenue).toLocaleString('en-IN');
-    document.getElementById('careStatusLine').innerHTML = d.paymentsEnabled
+    const lockLine = d.enforced
+      ? ' Feature locks are <b style="color:var(--success)">on</b>.'
+      : ' <b style="color:#b45309">Test run:</b> nothing is locked yet; patients get the "subscribe" WhatsApp reminder from day 26 of their trial, then every ' + (d.reminderEveryDays || 3) + ' days. Set SUBSCRIPTION_ENFORCED=true on Render to start locking.';
+    document.getElementById('careStatusLine').innerHTML = (d.paymentsEnabled
       ? 'Razorpay payments are <b style="color:var(--success)">on</b>. Plans: ₹99/month · ₹499/6 months · ₹899/year · 25-day free trial.'
-      : 'Razorpay is <b style="color:var(--danger)">not set up</b> — add RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET on Render. Patients keep the free trial meanwhile.';
+      : 'Razorpay is <b style="color:var(--danger)">not set up</b> — add RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET on Render.') + lockLine;
     const esc = t => String(t ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
     const rows = (d.payments || []).slice(0, 15).map(p => '<tr><td>' + new Date(p.paidAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) + '</td><td>' + esc(p.patientName) + '<div style="color:var(--text-muted);font-size:.78rem">' + esc(p.patientPhone) + '</div></td><td>' + esc(p.plan) + '</td><td>₹' + (p.amount / 100) + '</td><td style="font-size:.78rem;color:var(--text-muted)">' + esc(p.paymentId) + '</td></tr>').join('');
     document.getElementById('carePayments').innerHTML = rows

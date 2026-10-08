@@ -598,12 +598,14 @@ html { scroll-padding-top: 80px; }
       const el = document.getElementById('planBanner');
       if (!a) return;
       const fmt = d => new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
-      el.className = 'plan-banner' + (a.premium ? '' : ' free');
+      el.className = 'plan-banner' + (a.tier === 'free' ? ' free' : '');
       el.innerHTML = a.tier === 'subscribed'
         ? `<span>👑 <b>Biomexa Care · ${a.planName}</b> — active until ${fmt(a.expiresAt)}</span><span class="go">Manage plan</span>`
         : a.tier === 'trial'
           ? `<span>🎁 <b>Free trial: ${a.daysLeft} day${a.daysLeft === 1 ? '' : 's'} left</b> — doctor connect, reports and AI analysis are unlocked</span><span class="go">See plans</span>`
-          : `<span>🔒 <b>Free plan</b> — reminders for ${a.freeMedicineLimit} medicines. Subscribe to talk to a doctor, get reports and AI analysis.</span><span class="go">Subscribe from ₹99</span>`;
+          : a.premium
+            ? `<span>⏳ <b>Your 25-day free trial has ended</b> — subscribe to keep doctor connect, reports, AI analysis and reminders for all your medicines.</span><span class="go">Subscribe from ₹99</span>`
+            : `<span>🔒 <b>Free plan</b> — reminders for ${a.freeMedicineLimit} medicines. Subscribe to talk to a doctor, get reports and AI analysis.</span><span class="go">Subscribe from ₹99</span>`;
       el.style.display = 'flex';
       renderDoctorArea();
     }

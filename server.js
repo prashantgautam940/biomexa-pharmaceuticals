@@ -1826,6 +1826,13 @@ const RAZORPAY_KEY_ID = process.env.RAZORPAY_KEY_ID || '';
 const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET || '';
 const RAZORPAY_WEBHOOK_SECRET = process.env.RAZORPAY_WEBHOOK_SECRET || '';
 const PAYMENTS_CONFIGURED = !!(RAZORPAY_KEY_ID && RAZORPAY_KEY_SECRET);
+// Test-run switch. While false (the default), nothing is locked — every patient keeps every
+// feature even after their trial — but trial tracking and the day-26 "subscribe" WhatsApp
+// reminders still run. Set SUBSCRIPTION_ENFORCED=true on Render to start locking features.
+const SUBSCRIPTION_ENFORCED = process.env.SUBSCRIPTION_ENFORCED === 'true';
+// After the trial (or a plan) ends: a reminder on day 26, then every N days, at most M times.
+const SUB_REMINDER_EVERY_DAYS = Math.max(1, parseInt(process.env.SUB_REMINDER_EVERY_DAYS, 10) || 3);
+const SUB_REMINDER_MAX = Math.max(1, parseInt(process.env.SUB_REMINDER_MAX, 10) || 10);
 
 function trialEndsAt(patient) {
   const created = patient?.createdAt ? new Date(patient.createdAt) : new Date();
@@ -1849,7 +1856,7 @@ function accessFor(records) {
   const tier = subscribed ? 'subscribed' : inTrial ? 'trial' : 'free';
   const until = subscribed ? expiresAt : inTrial ? trialEnd : null;
   return {
-    tier, premium: tier !== 'free', plan: subscribed ? plan : null,
+    tier, premium: tier !== 'free' || !SUBSCRIPTION_ENFORCED, enforced: SUBSCRIPTION_ENFORCED, plan: subscribed ? plan : null,
     planName: subscribed && SUBSCRIPTION_PLANS[plan] ? SUBSCRIPTION_PLANS[plan].name : null,
     expiresAt: subscribed ? expiresAt : null, trialEndsAt: trialEnd,
     daysLeft: until ? Math.max(0, Math.ceil((until - now) / 86400000)) : 0,
@@ -4821,7 +4828,7 @@ app.get('/api/admin/patients', adminAuth, async (req, res) => {
 // ========== SUBSCRIPTION ROUTES (subscribe.html) ==========
 app.get('/api/subscription/plans', (req, res) => {
   res.json({
-    plans: Object.values(SUBSCRIPTION_PLANS), trialDays: TRIAL_DAYS, freeMedicineLimit: FREE_MEDICINE_LIMIT,
+    plans: Object.values(SUBSCRIPTION_PLANS), trialDays: TRIAL_DAYS, freeMedicineLimit: FREE_MEDICINE_LIMIT, enforced: SUBSCRIPTION_ENFORCED,
     paymentsEnabled: PAYMENTS_CONFIGURED
   });
 });
@@ -4967,15 +4974,24 @@ app.get('/api/admin/subscriptions', adminAuth, async (req, res) => {
     const revenue = payments.reduce((s, p) => s + (p.amount || 0), 0) / 100;
     const counts = { subscribed: 0, trial: 0, free: 0 };
     rows.forEach(r => counts[r.tier]++);
-    res.json({ counts, revenue, paymentsEnabled: PAYMENTS_CONFIGURED, patients: rows, payments });
+    res.json({ counts, revenue, paymentsEnabled: PAYMENTS_CONFIGURED, enforced: SUBSCRIPTION_ENFORCED, reminderEveryDays: SUB_REMINDER_EVERY_DAYS, patients: rows, payments });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
 
-// Daily WhatsApp notices (10 AM): trial ends in 3 days / today, plan ends in 3 days / today, and
-// the day after it ended. Each notice is sent once (lastSubNoticeKey).
+// Daily WhatsApp notices (10 AM–8 PM, once a day):
+//   • Trial: nothing during the 25 free days. From day 26 (the day after day 25, counted from
+//     the patient's own sign-up), if they haven't subscribed: "your free trial has ended —
+//     subscribe or these services will stop", then again every SUB_REMINDER_EVERY_DAYS days,
+//     at most SUB_REMINDER_MAX times. Stops as soon as they subscribe.
+//   • Paid plan: 3 days before it ends and on the last day; after it lapses, the same day-after
+//     reminders as the trial.
+// Each notice is sent once (lastSubNoticeKey).
 let lastSubNoticeRun = null;
+function dayDiff(fromDateStr, toDateStr) {
+  return Math.round((new Date(toDateStr + 'T00:00:00Z') - new Date(fromDateStr + 'T00:00:00Z')) / 86400000);
+}
 async function processSubscriptionNotices(now = new Date()) {
   const today = localDateStr(now);
   if (lastSubNoticeRun === today || now.getHours() < 10 || now.getHours() >= 20) return;
@@ -4990,28 +5006,40 @@ async function processSubscriptionNotices(now = new Date()) {
       seen.add(k);
       const twins = patients.filter(x => last10(x.phone) === k);
       const a = accessFor(twins);
-      const end = a.tier === 'subscribed' ? a.expiresAt : a.tier === 'trial' ? a.trialEndsAt : (a.lastExpiredAt || a.trialEndsAt);
-      const daysTo = Math.round((new Date(localDateStr(end)) - new Date(today)) / 86400000);
-      const kind = a.tier === 'subscribed' ? 'plan' : a.tier === 'trial' ? 'trial' : (a.lastExpiredAt ? 'plan' : 'trial');
-      let stage = null;
-      if (a.premium && daysTo === 3) stage = '3d';
-      else if (a.premium && daysTo === 0) stage = '0d';
-      else if (!a.premium && daysTo === -1) stage = 'ended';
-      if (!stage) continue;
-      const key = `${kind}-${stage}-${localDateStr(end)}`;
-      if (twins.some(x => x.lastSubNoticeKey === key)) continue;
+      let key = null, msg = null;
       const first = String(p.name || '').trim().split(/\s+/)[0] || 'there';
       const link = `${SITE_URL}/subscribe.html`;
-      const what = kind === 'trial' ? `your ${TRIAL_DAYS}-day free trial of Biomexa Care` : 'your Biomexa Care plan';
-      const msg = stage === 'ended'
-        ? `Hi ${first}, ${what} has ended.\n\nYour basic WhatsApp reminders continue for up to ${FREE_MEDICINE_LIMIT} medicines. To keep Talk to a Doctor, treatment reports, AI report analysis and unlimited reminders, subscribe from ₹99/month:\n${link}\n\n- Biomexa Team`
-        : `⏳ Hi ${first}, ${what} ends ${stage === '0d' ? '*today*' : 'in *3 days*'}.\n\nKeep Talk to a Doctor, treatment reports, AI report analysis and unlimited reminders — plans from ₹99/month (₹899/year):\n${link}\n\n- Biomexa Team`;
+
+      if (a.tier === 'subscribed') {
+        const left = dayDiff(today, localDateStr(a.expiresAt));
+        if (left === 3 || left === 0) {
+          key = `plan-${left}d-${localDateStr(a.expiresAt)}`;
+          msg = `⏳ Hi ${first}, your Biomexa Care plan ends ${left === 0 ? '*today*' : 'in *3 days*'}.\n\nRenew to keep Talk to a Doctor, treatment reports, AI report analysis and reminders for all your medicines — from ₹99/month (₹899/year):\n${link}\n\n- Biomexa Team`;
+        }
+      } else {
+        // Trial (or a lapsed plan) is over: day 26 onwards.
+        const endedOn = localDateStr(a.lastExpiredAt || a.trialEndsAt);   // = day 26 for a trial
+        const after = dayDiff(endedOn, today);                             // 0 on day 26
+        const n = Math.floor(after / SUB_REMINDER_EVERY_DAYS);
+        if (after >= 0 && after % SUB_REMINDER_EVERY_DAYS === 0 && n < SUB_REMINDER_MAX) {
+          const kind = a.lastExpiredAt ? 'plan' : 'trial';
+          key = `${kind}-ended-${endedOn}-${n}`;
+          msg = kind === 'trial'
+            ? `Hi ${first}, your *25-day free trial* of Biomexa Care has ended.\n\nTo keep using Talk to a Doctor, treatment reports, AI prescription & lab report analysis and reminders for all your medicines, please subscribe — otherwise these services will stop.\n\nPlans from ₹99/month (₹899/year):\n${link}\n\n- Biomexa Team`
+            : `Hi ${first}, your *Biomexa Care plan* has ended.\n\nRenew to keep Talk to a Doctor, treatment reports, AI report analysis and reminders for all your medicines — otherwise these services will stop.\n\nPlans from ₹99/month (₹899/year):\n${link}\n\n- Biomexa Team`;
+        }
+      }
+      if (!key || twins.some(x => x.lastSubNoticeKey === key)) continue;
       const target = twins.find(x => !/\s/.test(x.phone)) || p;
       const r = await sendWhatsAppFree(target.phone, msg);
-      if (r?.success) { sent++; await Patient.updateMany({ _id: { $in: twins.map(x => x._id) } }, { lastSubNoticeKey: key }); }
+      if (r?.success) {
+        sent++;
+        await Patient.updateMany({ _id: { $in: twins.map(x => x._id) } }, { lastSubNoticeKey: key });
+        console.log(`💳 Subscription reminder (${key}) → ${target.phone}`);
+      }
       await new Promise(r2 => setTimeout(r2, 250));
     }
-    if (sent) console.log(`💳 Subscription notices sent: ${sent}`);
+    if (sent) console.log(`💳 Subscription reminders sent: ${sent}${SUBSCRIPTION_ENFORCED ? '' : ' (test run — features are not locked)'}`);
   } catch (err) {
     console.error('❌ Subscription notice error:', err.message);
   }
