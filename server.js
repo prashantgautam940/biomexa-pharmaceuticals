@@ -1508,6 +1508,7 @@ const patientSchema = new mongoose.Schema({
   }],
   // Product message every AD_INTERVAL_DAYS (see processProductAds). Patients can reply STOP.
   lastAdSentAt: Date,
+  lastReminderInviteAt: Date, // admin Reminder Center "invite to add a reminder" (max once a day)
   adOptOut: { type: Boolean, default: false },
   createdAt: { type: Date, default: Date.now }
 });
@@ -4679,6 +4680,181 @@ app.get('/api/admin/patients', adminAuth, async (req, res) => {
     // Highest risk first, so the patients who need attention are at the top.
     data.sort((a, b) => b.risk_score - a.risk_score).forEach((d, i) => { d.id = i + 1; });
     res.json(data);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// ========== ADMIN REMINDER CENTER (admin-reminders.html) ==========
+// Who is getting reminders right now, whose course has finished or was stopped, and who never set
+// one — plus a one-click WhatsApp invite to add a reminder for another medicine/dose, and a way
+// for the admin to add a reminder for a patient directly.
+function last10(phone) { return String(phone || '').replace(/\D/g, '').slice(-10); }
+
+app.get('/api/admin/reminder-center', adminAuth, async (req, res) => {
+  try {
+    const now = new Date();
+    const patients = await Patient.find().select('name phone medicines createdAt lastReminderInviteAt').lean();
+    // Duplicate records of one number ("+91X" / "+91 X") are shown as one person.
+    const people = new Map();
+    for (const p of patients) {
+      const key = last10(p.phone) || String(p._id);
+      const cur = people.get(key);
+      if (!cur) people.set(key, { ...p, phones: [p.phone], medicines: [...(p.medicines || [])] });
+      else {
+        cur.phones.push(p.phone);
+        cur.medicines.push(...(p.medicines || []));
+        if (!cur.name || /test/i.test(cur.name)) cur.name = p.name || cur.name;
+        if (p.lastReminderInviteAt && (!cur.lastReminderInviteAt || p.lastReminderInviteAt > cur.lastReminderInviteAt)) cur.lastReminderInviteAt = p.lastReminderInviteAt;
+        if (!/\s/.test(p.phone)) cur.phone = p.phone; // prefer the "+91XXXXXXXXXX" record
+      }
+    }
+    const allPhones = patients.map(p => p.phone);
+    const doseStats = await Dose.aggregate([
+      { $match: { patientPhone: { $in: allPhones } } },
+      { $group: {
+        _id: '$patientPhone',
+        taken: { $sum: { $cond: [{ $eq: ['$status', 'taken'] }, 1, 0] } },
+        due: { $sum: { $cond: [{ $ne: ['$status', 'pending'] }, 1, 0] } },
+        lastSent: { $max: { $cond: ['$sentReminder', { $concat: ['$scheduledDate', 'T', '$scheduledTime'] }, null] } }
+      } }
+    ]);
+    const statsByPhone = Object.fromEntries(doseStats.map(d => [d._id, d]));
+
+    const groupMeds = (meds) => {
+      const by = {};
+      for (const m of meds) {
+        const k = `${String(m.name).trim().toLowerCase()}|${m.active ? 1 : 0}`;
+        const g = by[k] || (by[k] = { name: m.name, dosage: m.dosage || '', times: [], active: !!m.active, startDate: m.startDate, endDate: m.endDate, completedAt: m.completedAt, stoppedByPatient: !!m.stoppedByPatient, durationDays: m.durationDays || null, adherence: m.courseSummary?.adherence ?? null });
+        if (m.time && !g.times.includes(m.time)) g.times.push(m.time);
+        if (m.completedAt && (!g.completedAt || m.completedAt > g.completedAt)) g.completedAt = m.completedAt;
+      }
+      return Object.values(by).map(g => ({
+        ...g, times: g.times.sort(),
+        daysLeft: g.active && g.endDate ? Math.max(0, Math.ceil((new Date(g.endDate) - now) / 86400000)) : null
+      }));
+    };
+
+    const rows = [...people.values()].map(p => {
+      const meds = groupMeds(p.medicines);
+      const active = meds.filter(m => m.active);
+      // A medicine both active and finished (re-added later) only shows as active.
+      const activeNames = new Set(active.map(m => m.name.trim().toLowerCase()));
+      const finished = meds.filter(m => !m.active && !activeNames.has(m.name.trim().toLowerCase()))
+        .sort((a, b) => new Date(b.completedAt || 0) - new Date(a.completedAt || 0));
+      let taken = 0, due = 0, lastSent = null;
+      for (const ph of p.phones) {
+        const st = statsByPhone[ph];
+        if (!st) continue;
+        taken += st.taken; due += st.due;
+        if (st.lastSent && (!lastSent || st.lastSent > lastSent)) lastSent = st.lastSent;
+      }
+      return {
+        name: p.name, phone: p.phone, otherPhones: p.phones.filter(x => x !== p.phone),
+        status: active.length ? 'active' : finished.length ? 'completed' : 'none',
+        active, finished,
+        adherence: due ? Math.round((taken / due) * 100) : null, dosesLogged: due,
+        lastReminder: lastSent, joinedAt: p.createdAt, lastInviteAt: p.lastReminderInviteAt || null
+      };
+    });
+    rows.sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
+    const counts = { active: 0, completed: 0, none: 0 };
+    rows.forEach(r => counts[r.status]++);
+    res.json({ counts, total: rows.length, patients: rows });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// One button: WhatsApp every patient in the chosen group an invite to add a reminder for another
+// medicine or dose. Each person gets it at most once a day, however many times it's pressed.
+app.post('/api/admin/reminder-center/invite', adminAuth, async (req, res) => {
+  try {
+    const audience = ['all', 'active', 'completed', 'none'].includes(req.body?.audience) ? req.body.audience : 'all';
+    const now = new Date();
+    const dayAgo = new Date(now.getTime() - 20 * 3600000);
+    const patients = await Patient.find().select('name phone medicines lastReminderInviteAt');
+    const seen = new Set();
+    const results = { sent: 0, failed: [], skippedRecent: 0, skippedAudience: 0 };
+    for (const p of patients) {
+      const key = last10(p.phone);
+      if (!key || seen.has(key)) continue;
+      // Status across every record of this number.
+      const twins = patients.filter(x => last10(x.phone) === key);
+      const meds = twins.flatMap(x => x.medicines || []);
+      const status = meds.some(m => m.active) ? 'active' : meds.length ? 'completed' : 'none';
+      if (audience !== 'all' && status !== audience) { results.skippedAudience++; seen.add(key); continue; }
+      if (twins.some(x => x.lastReminderInviteAt && x.lastReminderInviteAt > dayAgo)) { results.skippedRecent++; seen.add(key); continue; }
+      seen.add(key);
+      const target = twins.find(x => !/\s/.test(x.phone)) || p;
+      const first = String(target.name || 'there').trim().split(/\s+/)[0];
+      const link = `${SITE_URL}/reminders.html`;
+      const msg = status === 'active'
+        ? `💊 Hi ${first}! Taking any other medicine — or a second dose of one you already take?\n\nAdd it here and Biomexa will remind you on WhatsApp at the right time, free:\n${link}\n\nUse this same WhatsApp number.\n\n- Biomexa Team`
+        : status === 'completed'
+          ? `💊 Hi ${first}! Your Biomexa reminders have finished.\n\nStarted a new medicine, or still taking one? Set up a free WhatsApp reminder in 30 seconds:\n${link}\n\nUse this same WhatsApp number.\n\n- Biomexa Team`
+          : `💊 Hi ${first}! You haven't set up any medicine reminders yet.\n\nAdd your medicine and time, and Biomexa will remind you on WhatsApp every day, free:\n${link}\n\nUse this same WhatsApp number.\n\n- Biomexa Team`;
+      const r = await sendWhatsAppFree(target.phone, msg);
+      if (r && r.success) {
+        results.sent++;
+        await Patient.updateMany({ _id: { $in: twins.map(x => x._id) } }, { lastReminderInviteAt: now });
+      } else {
+        results.failed.push({ name: target.name, phone: target.phone });
+      }
+      await new Promise(r2 => setTimeout(r2, 250)); // stay under MSG91 rate limits
+    }
+    console.log(`📨 Reminder invite (${audience}) by ${req.admin?.username || 'admin'}: ${results.sent} sent, ${results.failed.length} failed, ${results.skippedRecent} already invited today`);
+    res.json({
+      message: `Invite sent to ${results.sent} patient${results.sent === 1 ? '' : 's'}.` +
+        (results.skippedRecent ? ` ${results.skippedRecent} already got one in the last day.` : '') +
+        (results.failed.length ? ` ${results.failed.length} could not be sent.` : ''),
+      ...results
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Admin adds a reminder for a patient (e.g. a new medicine or an extra dose time they asked for).
+app.post('/api/admin/patients/:phone/reminders', adminAuth, async (req, res) => {
+  try {
+    const wanted = decodeURIComponent(req.params.phone);
+    const patient = (await Patient.findOne({ phone: wanted })) || (await findAccountByPhone('patient', wanted));
+    if (!patient) return res.status(404).json({ message: 'Patient not found.' });
+    const name = String(req.body?.name || '').trim();
+    const dosage = String(req.body?.dosage || '').trim();
+    const foodNote = String(req.body?.foodNote || '').trim();
+    const times = [...new Set((Array.isArray(req.body?.times) ? req.body.times : [req.body?.time]).filter(Boolean).map(String))];
+    if (!name) return res.status(400).json({ message: 'Please enter the medicine name.' });
+    if (!times.length || times.length > 4) return res.status(400).json({ message: 'Add 1 to 4 reminder times.' });
+    if (times.some(t => !/^([01]\d|2[0-3]):([0-5]\d)$/.test(t))) return res.status(400).json({ message: 'Times must be HH:MM (24-hour), e.g. 08:00 or 21:30.' });
+    const days = req.body?.durationDays ? parseInt(req.body.durationDays, 10) : null;
+    if (days !== null && (isNaN(days) || days < 1 || days > 365)) return res.status(400).json({ message: 'Duration must be 1–365 days, or blank for ongoing.' });
+
+    // An extra time for a medicine they already take is fine; the exact same time twice is not.
+    const clash = (patient.medicines || []).filter(m => m.active && m.name.trim().toLowerCase() === name.toLowerCase() && times.includes(m.time)).map(m => m.time);
+    if (clash.length) return res.status(409).json({ message: `${name} already has a reminder at ${clash.join(', ')}.` });
+
+    const startDate = new Date();
+    const endDate = days ? new Date(startDate.getTime() + days * 86400000) : null;
+    patient.medicines.push(...times.map(t => ({ name, dosage, time: t, frequency: 'daily', foodNote, active: true, durationDays: days, startDate, endDate })));
+    await patient.save();
+
+    const now = new Date();
+    const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const today = localDateStr(now);
+    const todayTimes = [], tomorrowTimes = [];
+    for (const t of times) {
+      if (startsTomorrow(t, currentTime)) { tomorrowTimes.push(t); continue; }
+      const exists = await Dose.findOne({ patientPhone: patient.phone, medicineName: name, scheduledTime: t, scheduledDate: today });
+      if (!exists) await Dose.create({ patientPhone: patient.phone, medicineName: name, dosage, scheduledTime: t, scheduledDate: today, foodNote, status: 'pending' });
+      todayTimes.push(t);
+    }
+    const when = tomorrowTimes.length && !todayTimes.length ? ' starting tomorrow' : '';
+    const wa = await sendWhatsAppFree(patient.phone,
+      `💊 *New reminder added*\n\nHi ${String(patient.name || '').split(' ')[0] || 'there'}, Biomexa has set a reminder for *${name}*${dosage ? ` (${dosage})` : ''} at ${times.join(' & ')} daily${when}.${days ? `\n📅 For ${days} day${days > 1 ? 's' : ''}.` : ''}\n\nYou'll get a WhatsApp message at each time — tap *Taken* once you've had it.\n\n- Biomexa Team`);
+    console.log(`🗓️ Reminder set by admin: ${patient.phone} — ${name} at ${times.join(', ')}${logDuration(days)}`);
+    res.json({ message: `Reminder added for ${patient.name}: ${name} at ${times.join(', ')}${when}.`, whatsappSent: !!wa?.success });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

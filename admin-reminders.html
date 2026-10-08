@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Reminder Center | Biomexa Admin</title>
+<link rel="icon" type="image/svg+xml" href="logo.svg">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<style>
+:root { --navy: #16336b; --green: #1c9a55; --green-soft: #e8f6ee; --amber: #b45309; --amber-soft: #fff6e6; --danger: #c0262d; --bg: #f3f6fb; --card: #fff; --inner: #f6f8fc; --text: #13213d; --muted: #5b6b86; --line: #e2e8f2; --shadow: 0 1px 2px rgba(19,33,61,.05), 0 8px 24px rgba(19,33,61,.07); }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+header { background: rgba(255,255,255,.95); border-bottom: 1px solid var(--line); padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 50; gap: 1rem; flex-wrap: wrap; }
+header nav { display: flex; gap: 1.25rem; align-items: center; flex-wrap: wrap; }
+header nav a { color: var(--muted); text-decoration: none; font-weight: 500; font-size: .9rem; }
+header nav a:hover, header nav a.active { color: var(--navy); }
+.container { max-width: 1200px; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+h1 { font-size: 1.7rem; letter-spacing: -.02em; display: flex; align-items: center; gap: .6rem; }
+h1 i { color: var(--green); }
+.sub { color: var(--muted); margin-top: .35rem; font-size: .93rem; max-width: 760px; }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin: 1.5rem 0; }
+.stat { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 1.1rem 1.2rem; box-shadow: var(--shadow); cursor: pointer; transition: transform .15s, border-color .15s; text-align: left; font: inherit; color: inherit; }
+.stat:hover { transform: translateY(-2px); }
+.stat.on { border-color: var(--navy); box-shadow: 0 0 0 2px rgba(22,51,107,.15), var(--shadow); }
+.stat .lbl { font-size: .8rem; color: var(--muted); font-weight: 600; display: flex; align-items: center; gap: .45rem; }
+.stat .num { font-size: 2rem; font-weight: 800; margin-top: .35rem; }
+.stat.active .num { color: var(--green); } .stat.completed .num { color: var(--amber); } .stat.none .num { color: var(--muted); }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 18px; box-shadow: var(--shadow); padding: 1.4rem; margin-bottom: 1.5rem; }
+.invite { display: grid; grid-template-columns: 1fr auto; gap: 1.25rem; align-items: center; border-color: rgba(28,154,85,.35); background: linear-gradient(135deg, #fff 0%, #f1faf5 100%); }
+.invite h2 { font-size: 1.1rem; display: flex; gap: .5rem; align-items: center; }
+.invite h2 i { color: #25d366; }
+.invite p { color: var(--muted); font-size: .88rem; margin-top: .35rem; max-width: 640px; }
+.invite-controls { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+select, input { padding: 10px 12px; border: 1px solid #cfd8e6; border-radius: 10px; font: inherit; font-size: .9rem; background: #fff; color: var(--text); }
+select:focus, input:focus { outline: none; border-color: var(--navy); box-shadow: 0 0 0 3px rgba(31,68,148,.15); }
+.btn { display: inline-flex; align-items: center; gap: .5rem; padding: 10px 18px; border-radius: 10px; border: 0; font: inherit; font-weight: 700; font-size: .9rem; cursor: pointer; background: var(--navy); color: #fff; white-space: nowrap; }
+.btn.wa { background: #1fa855; } .btn.wa:hover { background: #188a46; }
+.btn.ghost { background: #fff; color: var(--navy); border: 1px solid var(--line); }
+.btn.sm { padding: 7px 12px; font-size: .8rem; }
+.btn:disabled { opacity: .55; cursor: not-allowed; }
+.result { margin-top: .9rem; font-size: .88rem; padding: .7rem .9rem; border-radius: 10px; display: none; }
+.result.ok { display: block; background: var(--green-soft); color: #11663a; }
+.result.err { display: block; background: #fdecec; color: var(--danger); }
+.toolbar { display: flex; gap: .75rem; align-items: center; justify-content: space-between; flex-wrap: wrap; margin-bottom: 1rem; }
+.tabs { display: flex; gap: .4rem; flex-wrap: wrap; }
+.tab { padding: 8px 14px; border-radius: 999px; border: 1px solid var(--line); background: #fff; font: inherit; font-size: .85rem; font-weight: 600; color: var(--muted); cursor: pointer; }
+.tab.on { background: var(--navy); color: #fff; border-color: var(--navy); }
+.search { position: relative; }
+.search input { padding-left: 34px; width: 260px; max-width: 100%; }
+.search i { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--muted); font-size: .85rem; }
+.list { display: grid; gap: .75rem; }
+.row { border: 1px solid var(--line); border-radius: 14px; padding: 1rem 1.1rem; display: grid; grid-template-columns: minmax(180px, 1.1fr) 2fr auto; gap: 1rem; align-items: start; background: #fff; }
+.who strong { display: block; font-size: .98rem; }
+.who .ph { color: var(--muted); font-size: .82rem; margin-top: 2px; }
+.who .meta { color: var(--muted); font-size: .76rem; margin-top: 6px; line-height: 1.5; }
+.pill { display: inline-flex; align-items: center; gap: 5px; font-size: .72rem; font-weight: 700; padding: 3px 9px; border-radius: 999px; margin-top: 8px; }
+.pill.active { background: var(--green-soft); color: #11663a; } .pill.completed { background: var(--amber-soft); color: var(--amber); } .pill.none { background: var(--inner); color: var(--muted); }
+.meds { display: grid; gap: .45rem; }
+.med { display: flex; flex-wrap: wrap; gap: .35rem .75rem; align-items: baseline; font-size: .88rem; padding: .5rem .7rem; border-radius: 10px; background: var(--inner); }
+.med.done { opacity: .85; }
+.med b { font-weight: 700; }
+.med .t { color: var(--navy); font-weight: 600; font-size: .82rem; }
+.med .d { color: var(--muted); font-size: .8rem; }
+.med .left { margin-left: auto; font-size: .76rem; font-weight: 700; color: var(--green); }
+.med .left.soon { color: var(--amber); }
+.med .left.over { color: var(--muted); font-weight: 600; }
+.none-txt { color: var(--muted); font-size: .85rem; padding: .5rem 0; }
+.empty, .loading { text-align: center; color: var(--muted); padding: 2.5rem 1rem; }
+.modal-bg { position: fixed; inset: 0; background: rgba(19,33,61,.45); display: none; align-items: center; justify-content: center; padding: 16px; z-index: 100; }
+.modal-bg.open { display: flex; }
+.modal { background: #fff; border-radius: 18px; padding: 1.5rem; width: 100%; max-width: 460px; box-shadow: 0 20px 60px rgba(19,33,61,.25); }
+.modal h3 { font-size: 1.1rem; }
+.modal .for { color: var(--muted); font-size: .85rem; margin: .25rem 0 1rem; }
+.field { margin-bottom: .85rem; }
+.field label { display: block; font-size: .8rem; font-weight: 600; color: #34425e; margin-bottom: .35rem; }
+.field input { width: 100%; }
+.times { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; }
+.times input { width: 120px; }
+.modal-actions { display: flex; gap: .6rem; justify-content: flex-end; margin-top: 1.1rem; }
+.hint { font-size: .76rem; color: var(--muted); margin-top: .3rem; }
+@media (max-width: 860px) {
+  .invite { grid-template-columns: 1fr; }
+  .invite-controls { justify-content: flex-start; }
+  .row { grid-template-columns: 1fr; }
+  .search input { width: 100%; }
+  .search { width: 100%; }
+}
+@media (max-width: 560px) { header { padding: .8rem 16px; } .container { padding: 1.25rem 16px 3rem; } }
+</style>
+<link rel="stylesheet" href="css/biomexa-ui.css">
+</head>
+<body>
+<header>
+  <a href="index.html"><img src="images/logo-full.png" alt="Biomexa Pharmaceuticals" style="height:30px;width:auto;"></a>
+  <nav>
+    <a href="admin.html"><i class="fas fa-arrow-left"></i> Admin Panel</a>
+    <a href="admin-reminders.html" class="active">Reminder Center</a>
+    <a href="doctor.html">Doctor</a>
+    <a href="#" onclick="logout();return false;">Logout</a>
+  </nav>
+</header>
+
+<div class="container">
+  <h1><i class="fas fa-bell"></i> Reminder Center</h1>
+  <p class="sub">Every patient on Biomexa reminders: who is getting reminders now, whose course has finished or was stopped, and who never set one up. Invite them all to add a reminder in one click, or add one for a patient yourself.</p>
+
+  <div class="stats">
+    <button class="stat active" data-f="active" onclick="setFilter('active')"><div class="lbl"><i class="fas fa-bell"></i> Getting reminders</div><div class="num" id="cActive">–</div></button>
+    <button class="stat completed" data-f="completed" onclick="setFilter('completed')"><div class="lbl"><i class="fas fa-flag-checkered"></i> Course completed / stopped</div><div class="num" id="cCompleted">–</div></button>
+    <button class="stat none" data-f="none" onclick="setFilter('none')"><div class="lbl"><i class="fas fa-user-clock"></i> No reminder set</div><div class="num" id="cNone">–</div></button>
+    <button class="stat" data-f="all" onclick="setFilter('all')"><div class="lbl"><i class="fas fa-users"></i> All patients</div><div class="num" id="cAll">–</div></button>
+  </div>
+
+  <div class="card invite">
+    <div>
+      <h2><i class="fab fa-whatsapp"></i> Invite patients to add a reminder</h2>
+      <p>Sends a WhatsApp message with a link to set up a free reminder for another medicine or dose. The wording matches each patient (still on reminders / course finished / never set one). Nobody gets it more than once a day, even if you press it again.</p>
+      <div id="inviteResult" class="result"></div>
+    </div>
+    <div class="invite-controls">
+      <select id="audience" aria-label="Who to invite">
+        <option value="all">All patients</option>
+        <option value="active">Getting reminders</option>
+        <option value="completed">Course completed / stopped</option>
+        <option value="none">No reminder set</option>
+      </select>
+      <button class="btn wa" id="inviteBtn" onclick="sendInvite()"><i class="fab fa-whatsapp"></i> Send reminder invite</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="toolbar">
+      <div class="tabs">
+        <button class="tab" data-f="active" onclick="setFilter('active')">Getting reminders</button>
+        <button class="tab" data-f="completed" onclick="setFilter('completed')">Completed / stopped</button>
+        <button class="tab" data-f="none" onclick="setFilter('none')">No reminder</button>
+        <button class="tab" data-f="all" onclick="setFilter('all')">All</button>
+      </div>
+      <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;">
+        <div class="search"><i class="fas fa-search"></i><input id="q" placeholder="Search name, number or medicine" oninput="render()"></div>
+        <button class="btn ghost sm" onclick="load()"><i class="fas fa-rotate"></i> Refresh</button>
+      </div>
+    </div>
+    <div class="list" id="list"><div class="loading"><i class="fas fa-spinner fa-spin"></i> Loading patients…</div></div>
+  </div>
+</div>
+
+<div class="modal-bg" id="modal" onclick="if(event.target===this)closeModal()">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="mTitle">
+    <h3 id="mTitle"><i class="fas fa-plus-circle" style="color:var(--green)"></i> Add a reminder</h3>
+    <div class="for" id="mFor"></div>
+    <div class="field"><label for="mName">Medicine</label><input id="mName" placeholder="e.g. Telmexa AM" list="medList"></div>
+    <datalist id="medList"><option value="Telmexa AM"><option value="Diabmexa M 500"></datalist>
+    <div class="field"><label for="mDose">Dosage (optional)</label><input id="mDose" placeholder="e.g. 1 tablet / 40mg"></div>
+    <div class="field">
+      <label>Reminder time(s)</label>
+      <div class="times" id="mTimes"><input type="time" value="09:00"></div>
+      <button type="button" class="btn ghost sm" style="margin-top:.5rem" onclick="addTime()"><i class="fas fa-plus"></i> Another time</button>
+      <div class="hint">Indian time. Add a second time for a twice-daily medicine (max 4).</div>
+    </div>
+    <div class="field"><label for="mDays">Number of days (blank = ongoing)</label><input id="mDays" type="number" min="1" max="365" placeholder="e.g. 30"></div>
+    <div class="field"><label for="mFood">Food note (optional)</label><input id="mFood" placeholder="e.g. After breakfast"></div>
+    <div id="mResult" class="result"></div>
+    <div class="modal-actions">
+      <button class="btn ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn" id="mSave" onclick="saveReminder()"><i class="fas fa-check"></i> Add reminder</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const API_BASE = (location.hostname === 'localhost' || location.hostname === '127.0.0.1') ? 'http://localhost:3000' : 'https://biomexa-api-f9f6.onrender.com';
+const authHeader = sessionStorage.getItem('adminAuthHeader') || '';
+if (!authHeader) location.href = 'admin.html';
+
+let data = { patients: [], counts: {} };
+let filter = 'active';
+let modalPhone = null;
+
+function authFetch(path, opts = {}) {
+  opts.headers = Object.assign({ Authorization: authHeader }, opts.headers || {});
+  return fetch(API_BASE + path, opts).then(r => {
+    if (r.status === 401) { logout(); throw new Error('Session expired'); }
+    return r;
+  });
+}
+function logout() { sessionStorage.removeItem('adminAuthHeader'); location.href = 'admin.html'; }
+const esc = t => String(t ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const fmtDate = d => d ? new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : '';
+function fmtTime(t) { const [h, m] = t.split(':').map(Number); return `${(h % 12) || 12}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`; }
+
+function load() {
+  document.getElementById('list').innerHTML = '<div class="loading"><i class="fas fa-spinner fa-spin"></i> Loading patients…</div>';
+  authFetch('/api/admin/reminder-center').then(r => r.json()).then(d => {
+    if (!d.patients) throw new Error(d.message || 'Could not load');
+    data = d;
+    document.getElementById('cActive').textContent = d.counts.active;
+    document.getElementById('cCompleted').textContent = d.counts.completed;
+    document.getElementById('cNone').textContent = d.counts.none;
+    document.getElementById('cAll').textContent = d.total;
+    render();
+  }).catch(e => { document.getElementById('list').innerHTML = `<div class="empty">Couldn't load patients — ${esc(e.message)}</div>`; });
+}
+
+function setFilter(f) { filter = f; render(); }
+
+function medLine(m) {
+  const times = m.times.map(fmtTime).join(', ');
+  let right = '';
+  if (m.active) {
+    right = m.daysLeft === null ? '<span class="left">Ongoing</span>'
+      : `<span class="left${m.daysLeft <= 2 ? ' soon' : ''}">${m.daysLeft === 0 ? 'Ends today' : m.daysLeft + ' day' + (m.daysLeft > 1 ? 's' : '') + ' left'}</span>`;
+  } else {
+    const how = m.stoppedByPatient ? 'Stopped' : 'Completed';
+    right = `<span class="left over">${how}${m.completedAt ? ' ' + fmtDate(m.completedAt) : ''}${m.adherence != null ? ' · ' + m.adherence + '% taken' : ''}</span>`;
+  }
+  return `<div class="med${m.active ? '' : ' done'}"><b>${esc(m.name)}</b>${m.dosage ? `<span class="d">${esc(m.dosage)}</span>` : ''}${times ? `<span class="t"><i class="far fa-clock"></i> ${times}</span>` : ''}${right}</div>`;
+}
+
+function render() {
+  document.querySelectorAll('.stat, .tab').forEach(b => b.classList.toggle('on', b.dataset.f === filter));
+  const q = document.getElementById('q').value.trim().toLowerCase();
+  const rows = data.patients.filter(p => (filter === 'all' || p.status === filter) &&
+    (!q || [p.name, p.phone, ...p.active.map(m => m.name), ...p.finished.map(m => m.name)].join(' ').toLowerCase().includes(q)));
+  const el = document.getElementById('list');
+  if (!rows.length) { el.innerHTML = '<div class="empty">No patients here.</div>'; return; }
+  const label = { active: 'Getting reminders', completed: 'Course completed / stopped', none: 'No reminder set' };
+  el.innerHTML = rows.map(p => {
+    const meta = [
+      p.adherence != null ? `Adherence ${p.adherence}% (${p.dosesLogged} doses)` : 'No doses logged yet',
+      p.lastReminder ? `Last reminder ${fmtDate(p.lastReminder.slice(0, 10))} ${fmtTime(p.lastReminder.slice(11, 16))}` : '',
+      p.lastInviteAt ? `Invited ${fmtDate(p.lastInviteAt)}` : '',
+      p.otherPhones.length ? `Also saved as ${esc(p.otherPhones.join(', '))}` : ''
+    ].filter(Boolean).join('<br>');
+    const meds = [...p.active, ...p.finished];
+    return `<div class="row">
+      <div class="who"><strong>${esc(p.name)}</strong><div class="ph">${esc(p.phone)}</div>
+        <span class="pill ${p.status}">${label[p.status]}</span><div class="meta">${meta}</div></div>
+      <div class="meds">${meds.length ? meds.map(medLine).join('') : '<div class="none-txt">No medicines added yet.</div>'}</div>
+      <div><button class="btn sm" onclick="openModal('${encodeURIComponent(p.phone)}')"><i class="fas fa-plus"></i> Add reminder</button></div>
+    </div>`;
+  }).join('');
+}
+
+function sendInvite() {
+  const audience = document.getElementById('audience').value;
+  const n = audience === 'all' ? data.total : data.counts[audience];
+  const names = { all: 'all patients', active: 'patients getting reminders', completed: 'patients whose course has finished', none: 'patients with no reminder' };
+  if (!n) { showResult('inviteResult', false, 'There are no patients in that group.'); return; }
+  if (!confirm(`Send a WhatsApp reminder invite to ${names[audience]} (${n})?\n\nAnyone already invited in the last day is skipped.`)) return;
+  const btn = document.getElementById('inviteBtn');
+  btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending…';
+  authFetch('/api/admin/reminder-center/invite', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ audience }) })
+    .then(r => r.json().then(d => ({ ok: r.ok, d })))
+    .then(({ ok, d }) => { showResult('inviteResult', ok, d.message + (ok ? ' Patients who haven\'t messaged Biomexa in the last 24 hours may not receive it (WhatsApp rule).' : '')); if (ok) load(); })
+    .catch(e => showResult('inviteResult', false, e.message))
+    .finally(() => { btn.disabled = false; btn.innerHTML = '<i class="fab fa-whatsapp"></i> Send reminder invite'; });
+}
+
+function showResult(id, ok, msg) { const el = document.getElementById(id); el.className = 'result ' + (ok ? 'ok' : 'err'); el.textContent = msg; }
+
+function openModal(encPhone) {
+  modalPhone = decodeURIComponent(encPhone);
+  const p = data.patients.find(x => x.phone === modalPhone);
+  document.getElementById('mFor').textContent = `For ${p ? p.name : ''} · ${modalPhone} — they'll get a WhatsApp confirmation.`;
+  ['mName', 'mDose', 'mDays', 'mFood'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('mTimes').innerHTML = '<input type="time" value="09:00">';
+  document.getElementById('mResult').className = 'result';
+  document.getElementById('modal').classList.add('open');
+  setTimeout(() => document.getElementById('mName').focus(), 50);
+}
+function closeModal() { document.getElementById('modal').classList.remove('open'); }
+function addTime() { const w = document.getElementById('mTimes'); if (w.children.length < 4) w.insertAdjacentHTML('beforeend', '<input type="time" value="21:00">'); }
+
+function saveReminder() {
+  const body = {
+    name: document.getElementById('mName').value.trim(),
+    dosage: document.getElementById('mDose').value.trim(),
+    times: [...document.querySelectorAll('#mTimes input')].map(i => i.value).filter(Boolean),
+    durationDays: document.getElementById('mDays').value,
+    foodNote: document.getElementById('mFood').value.trim()
+  };
+  if (!body.name) { showResult('mResult', false, 'Please enter the medicine name.'); return; }
+  const btn = document.getElementById('mSave');
+  btn.disabled = true;
+  authFetch(`/api/admin/patients/${encodeURIComponent(modalPhone)}/reminders`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    .then(r => r.json().then(d => ({ ok: r.ok, d })))
+    .then(({ ok, d }) => {
+      showResult('mResult', ok, d.message + (ok && !d.whatsappSent ? ' (WhatsApp confirmation could not be delivered — reminders will still go out.)' : ''));
+      if (ok) { load(); setTimeout(closeModal, 1400); }
+    })
+    .catch(e => showResult('mResult', false, e.message))
+    .finally(() => { btn.disabled = false; });
+}
+
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+load();
+</script>
+</body>
+</html>
