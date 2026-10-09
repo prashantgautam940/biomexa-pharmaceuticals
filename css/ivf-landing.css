@@ -1,0 +1,145 @@
+/* =====================================================================
+   Biomexa IVF Care — public landing (ivf.html, shown before sign-in).
+   Reuses the home page's light 3D system (css/home-future.css + js/home-3d.js):
+   orbit for the hero, rotating glass prism for the treatment journey.
+   IVF keeps its rose accent alongside the Biomexa navy / green.
+   ===================================================================== */
+.ivl {
+  --space: #f4f7ff;
+  --panel: rgba(255, 255, 255, .82);
+  --edge: #d6e0f3;
+  --neon: #12a066;
+  --cyan: #0aa6c9;
+  --violet: #7c5cf0;
+  --rose: #b83a6e;
+  --rose-soft: #fbeef4;
+  --ink: #13213d;
+  --ink-2: #55658a;
+  position: relative; color: var(--ink); overflow: hidden;
+  padding: 5rem 1.5rem;
+  background:
+    radial-gradient(700px 420px at 10% 6%, rgba(184, 58, 110, .09), transparent 60%),
+    radial-gradient(700px 420px at 92% 94%, rgba(10, 166, 201, .10), transparent 60%),
+    linear-gradient(180deg, #f8f6fc 0%, #eef3fd 100%);
+  border-bottom: 1px solid #e3e6f2;
+}
+.ivl::before {
+  content: ''; position: absolute; inset: 0; pointer-events: none; opacity: .7;
+  background:
+    linear-gradient(rgba(22, 51, 107, .045) 1px, transparent 1px) 0 0 / 56px 56px,
+    linear-gradient(90deg, rgba(22, 51, 107, .045) 1px, transparent 1px) 0 0 / 56px 56px;
+  mask-image: radial-gradient(ellipse at center, #000 30%, transparent 75%);
+  -webkit-mask-image: radial-gradient(ellipse at center, #000 30%, transparent 75%);
+}
+.ivl > * { position: relative; z-index: 1; }
+.ivl .fx-kicker { color: var(--rose); }
+.ivl .fx-title { color: var(--ink); font-family: 'Sora', 'Inter', sans-serif; }
+.ivl .fx-sub { color: var(--ink-2); }
+.ivl-alt { background: #fff; }
+
+/* ---------- Hero ---------- */
+.ivl-hero { padding-top: 4rem; }
+.ivl-hero .fx-title { font-size: clamp(2.1rem, 4.4vw, 3.3rem); }
+.ivl-trust { display: flex; flex-wrap: wrap; gap: .5rem; margin: 1.4rem 0 0; padding: 0; list-style: none; }
+.ivl-trust li { font-size: .82rem; font-weight: 600; color: var(--ink-2); background: #fff; border: 1px solid var(--edge); padding: .4rem .8rem; border-radius: 999px; }
+.ivl-trust li b { color: var(--neon); }
+.ivl .orbit-core { background: radial-gradient(circle at 35% 30%, #f28ab5 0%, #b83a6e 42%, #5b1f45 80%);
+  box-shadow: 0 0 0 1px rgba(255,255,255,.3) inset, 0 0 50px rgba(184, 58, 110, .35), 0 0 120px rgba(124, 92, 240, .25); animation: ivlCore 4s ease-in-out infinite; }
+.ivl .orbit-core span { color: #fff; opacity: .9; }
+@keyframes ivlCore { 50% { box-shadow: 0 0 0 1px rgba(255,255,255,.4) inset, 0 0 70px rgba(184, 58, 110, .5), 0 0 160px rgba(124, 92, 240, .35); } }
+.ivl .orbit-node i { background: var(--rose-soft); }
+.ivl .orbit-node.front { border-color: var(--rose); box-shadow: 0 0 0 1px rgba(184,58,110,.18) inset, 0 16px 34px rgba(184, 58, 110, .18); }
+
+/* ---------- Patient + doctor: two panels opening like a book ---------- */
+.ivl-book { max-width: 1120px; margin: 2.5rem auto 0; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 1.25rem; perspective: 1600px; }
+.ivl-panel { padding: 1.6rem; border-radius: 22px; background: var(--panel); border: 1px solid var(--edge);
+  box-shadow: 0 24px 50px rgba(19, 33, 61, .12); transition: transform .5s cubic-bezier(.2,.7,.2,1), box-shadow .5s; }
+.ivl-panel-patient { transform: rotateY(9deg); transform-origin: right center; }
+.ivl-panel-doctor { transform: rotateY(-9deg); transform-origin: left center; }
+.ivl-panel:hover { transform: rotateY(0) translateY(-4px); box-shadow: 0 30px 60px rgba(19, 33, 61, .16); }
+.ivl-panel-head { display: flex; align-items: center; gap: .8rem; margin-bottom: 1.1rem; }
+.ivl-panel-head i { font-style: normal; font-size: 1.6rem; width: 52px; height: 52px; display: grid; place-items: center; border-radius: 16px; background: var(--rose-soft); }
+.ivl-panel-doctor .ivl-panel-head i { background: #e6f7fb; }
+.ivl-panel-head h3 { font-family: 'Sora', sans-serif; font-size: 1.3rem; color: var(--ink); }
+.ivl-panel-head p { font-size: .88rem; color: var(--ink-2); }
+.ivl-panel .fx-list { margin: 0; }
+.ivl-panel .fx-list li { align-items: flex-start; }
+.ivl-panel-patient .fx-list i { background: var(--rose-soft); }
+.ivl-sync { display: grid; justify-items: center; gap: .5rem; color: var(--ink-2); font-size: .78rem; font-weight: 600; text-align: center; }
+.ivl-sync span { width: 64px; height: 64px; border-radius: 50%; display: grid; place-items: center; font-size: 1.5rem; background: #fff; border: 1px solid var(--edge);
+  box-shadow: 0 0 0 6px rgba(10, 166, 201, .08), 0 12px 26px rgba(19, 33, 61, .12); animation: ivlSync 3s ease-in-out infinite; }
+@keyframes ivlSync { 50% { box-shadow: 0 0 0 12px rgba(10, 166, 201, .04), 0 12px 26px rgba(19, 33, 61, .12); } }
+
+/* ---------- Journey prism (9 stages) ---------- */
+.ivl .prism-scene { height: 470px; perspective: 2600px; }
+.ivl .prism { width: 290px; height: 340px; }
+.ivl .prism .cube-face { justify-content: flex-start; padding: 1.4rem 1.25rem; text-align: left; }
+.ivl .cf-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: .6rem; }
+.ivl .cf-top .cf-icon { font-size: 2rem; margin: 0; }
+.ivl .cf-badge { font-size: .72rem; font-weight: 700; color: var(--ink-2); background: #eef2fa; padding: .25rem .6rem; border-radius: 999px; }
+.ivl .cf-badge.key { color: #fff; background: var(--rose); }
+.ivl .prism .cube-face h3 { font-size: 1.25rem; margin: 0 0 .7rem; }
+.ivl .cf-row { font-size: .86rem; line-height: 1.45; color: var(--ink); padding: .55rem .65rem; border-radius: 10px; background: #f3f6fc; border: 1px solid #e1e8f5; margin-top: .45rem; }
+.ivl .cf-row b { display: block; font-size: .72rem; letter-spacing: .04em; text-transform: uppercase; margin-bottom: .1rem; }
+.ivl .cf-you b { color: var(--rose); }
+.ivl .cf-doc b { color: #0b7d96; }
+.ivl .cube-steps { max-width: 1000px; margin: .5rem auto 0; gap: .4rem; }
+.ivl .cube-steps button { padding: .5rem .9rem; font-size: .84rem; }
+.ivl .cube-steps button[aria-selected="true"] { background: linear-gradient(135deg, #16336b, var(--rose)); box-shadow: 0 8px 20px rgba(184, 58, 110, .25); }
+.ivl-legend { display: flex; justify-content: center; gap: 1.25rem; flex-wrap: wrap; margin-top: 1rem; font-size: .82rem; color: var(--ink-2); }
+.ivl-legend span::before { content: ''; display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: .4rem; vertical-align: -1px; background: #eef2fa; border: 1px solid #d6e0f3; }
+.ivl-legend span.key::before { background: var(--rose); border-color: var(--rose); }
+
+/* ---------- Get started: three tilted steps ---------- */
+.ivl-steps { max-width: 1040px; margin: 2.5rem auto 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1.25rem; list-style: none; padding: 0; perspective: 1200px; }
+.ivl-step { padding: 1.5rem; border-radius: 20px; background: #fff; border: 1px solid var(--edge); box-shadow: 0 16px 34px rgba(19, 33, 61, .08);
+  transform: rotateX(8deg); transform-origin: bottom center; transition: transform .4s, box-shadow .4s; }
+.ivl-step:hover { transform: rotateX(0) translateY(-6px); box-shadow: 0 24px 44px rgba(19, 33, 61, .13); }
+.ivl-step em { font-style: normal; display: inline-grid; place-items: center; width: 36px; height: 36px; border-radius: 12px; font-weight: 800; color: #fff; background: linear-gradient(135deg, #16336b, var(--rose)); margin-bottom: .9rem; }
+.ivl-step h3 { font-size: 1.05rem; margin-bottom: .35rem; color: var(--ink); }
+.ivl-step p { font-size: .9rem; color: var(--ink-2); line-height: 1.55; }
+.ivl-cta { display: flex; justify-content: center; gap: .75rem; flex-wrap: wrap; margin-top: 2.25rem; }
+.ivl-doctor-note { text-align: center; margin-top: 1.2rem; font-size: .92rem; color: var(--ink-2); }
+.ivl-doctor-note a { color: #0b7d96; font-weight: 600; }
+.ivl-foot { text-align: center; font-size: .82rem; color: #8a97ad; padding: 1.5rem 1rem 2.5rem; background: #fff; }
+
+/* ---------- Responsive ---------- */
+@media (max-width: 960px) {
+  .ivl-book { grid-template-columns: 1fr; max-width: 560px; }
+  .ivl-panel-patient, .ivl-panel-doctor { transform: none; }
+  .ivl-sync { grid-auto-flow: column; align-items: center; }
+  .ivl-sync span { width: 48px; height: 48px; font-size: 1.2rem; }
+  .ivl-steps { grid-template-columns: 1fr; max-width: 520px; }
+  .ivl-step { transform: none; }
+  .ivl-trust { justify-content: center; }
+}
+@media (max-width: 600px) {
+  .ivl { padding: 3.25rem 1rem; }
+  .ivl-hero { padding-top: 2.5rem; }
+  .ivl .prism-scene { height: 420px; perspective: 2000px; }
+  .ivl .prism { width: 236px; height: 330px; }
+  .ivl .prism .cube-face { padding: 1.1rem .95rem; }
+  .ivl .prism .cube-face h3 { font-size: 1.08rem; }
+  .ivl .cf-row { font-size: .8rem; padding: .45rem .55rem; }
+  .ivl-panel { padding: 1.2rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ivl .orbit-core, .ivl-sync span { animation: none !important; }
+  .ivl-panel, .ivl-step { transition: none; }
+}
+
+/* Logged-out nav */
+.ivf-nav .btn-rose { background: var(--rose, #b83a6e); color: #fff !important; padding: 7px 14px; border-radius: 10px; font-weight: 600; }
+.ivf-nav .btn-rose:hover { background: #962a57; }
+
+/* fit-and-finish: keep the prism clear of the stage buttons, tidy phones */
+.ivl .prism-scene { height: 540px; }
+.ivl .cube-steps { position: relative; z-index: 2; margin-top: 1.25rem; }
+@media (max-width: 960px) { .ivl-sync { justify-content: center; } }
+@media (max-width: 600px) {
+  .ivl .prism-scene { height: 480px; }
+  .ivl .prism { width: 250px; height: 360px; }
+  .ivl .cf-row { font-size: .78rem; line-height: 1.4; }
+  .ivf-nav .ivf-nav-links#navOut a:not(.btn-rose) { display: none; }
+}
+@media (max-width: 600px) { .ivf-nav #navOut a.btn-rose { display: inline-block; } }

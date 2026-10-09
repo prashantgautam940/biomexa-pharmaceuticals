@@ -211,12 +211,12 @@
     </nav>
   </header>
   <div class="main-content">
-  <aside class="bx-auth-side" aria-hidden="true"><span class="bx-pill">Biomexa Pharmaceuticals</span><h2>Welcome back</h2><p>Sign in to see your doses, adherence score, treatment reports and doctor connections.</p><ul><li><span>💬</span>Dose reminders on WhatsApp — tap Taken or Not taken</li><li><span>📊</span>Adherence score and treatment reports</li><li><span>🩺</span>Connect with a doctor when you need one</li><li><span>🔒</span>Your health data stays private</li></ul></aside>
+  <aside class="bx-auth-side" id="authSide" aria-hidden="true"><span class="bx-pill">Biomexa Pharmaceuticals</span><h2>Welcome back</h2><p>Sign in to see your doses, adherence score, treatment reports and doctor connections.</p><ul><li><span>💬</span>Dose reminders on WhatsApp — tap Taken or Not taken</li><li><span>📊</span>Adherence score and treatment reports</li><li><span>🩺</span>Connect with a doctor when you need one</li><li><span>🔒</span>Your health data stays private</li></ul></aside>
   <div class="container">
     <div class="logo">
       <h1><img src="images/logo-full.png" alt="Biomexa Pharmaceuticals" style="height:38px;width:auto;"></h1>
     </div>
-    <p class="subtitle">Sign in to manage your dose reminders</p>
+    <p class="subtitle" id="authSubtitle">Sign in to manage your dose reminders</p>
 
     <div class="whatsapp-badge">💬 Free WhatsApp reminders enabled</div>
 
@@ -277,6 +277,12 @@
     function postLoginTarget() {
       const next = new URLSearchParams(location.search).get('next') || '';
       return /^(patient|ivf|subscribe)\.html(#[A-Za-z0-9_-]+)?(\?plan=[a-z]+)?$/.test(next) ? next : 'patient.html';
+    }
+    // Coming from IVF Care: show IVF-specific copy so the patient knows where they're signing in to.
+    if (/^ivf\.html/.test(postLoginTarget())) {
+      document.getElementById('authSide').innerHTML = '<span class="bx-pill">Biomexa IVF Care</span><h2>Welcome to IVF Care</h2><p>Sign in to connect with your IVF centre and get support every day of your treatment.</p><ul><li><span>💉</span>Reminders for every injection, including the trigger shot</li><li><span>🌡️</span>A one-minute daily symptom and vitals check-in</li><li><span>📄</span>Upload reports for your IVF doctor to review</li><li><span>🎥</span>Virtual follow-ups with your centre</li></ul>';
+      document.getElementById('authSubtitle').textContent = 'Sign in to start IVF Care';
+      document.title = 'Sign in | Biomexa IVF Care';
     }
     const API_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
       ? 'http://localhost:3000'

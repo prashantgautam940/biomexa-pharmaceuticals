@@ -7,20 +7,148 @@
 <meta name="description" content="Biomexa IVF Care — daily symptom and vitals monitoring, IVF medicine and trigger-shot reminders, report review and virtual follow-ups with your IVF centre.">
 <link rel="icon" type="image/svg+xml" href="logo.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Sora:wght@600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/ivf.css">
+<link rel="stylesheet" href="css/home-future.css">
+<link rel="stylesheet" href="css/ivf-landing.css">
 </head>
 <body>
 <nav class="ivf-nav">
   <a class="ivf-brand" href="index.html"><img src="images/logo-full.png" alt="Biomexa Pharmaceuticals"><span class="tag">IVF Care</span></a>
-  <div class="ivf-nav-links">
+  <div class="ivf-nav-links" id="navIn">
     <a href="index.html">Home</a>
     <a href="patient.html">Main patient portal</a>
     <button class="btn btn-ghost btn-sm" onclick="logout()">Logout</button>
   </div>
+  <div class="ivf-nav-links hidden" id="navOut">
+    <a href="#ivlJourney">How it works</a>
+    <a href="ivf-doctor.html">For IVF centres</a>
+    <a class="btn-rose" href="login.html?next=ivf.html">Sign in</a>
+  </div>
 </nav>
 
-<main class="wrap">
+<!-- ========== PUBLIC LANDING (before sign-in) ========== -->
+<div id="landingView" class="hidden">
+  <section class="ivl ivl-hero" aria-labelledby="ivlTitle">
+    <div class="fx-grid">
+      <div class="fx-copy">
+        <p class="fx-kicker">Biomexa IVF Care</p>
+        <h1 class="fx-title" id="ivlTitle">Your IVF journey, looked after every single day</h1>
+        <p class="fx-sub">Most of an IVF cycle happens at home, between clinic visits. Biomexa keeps you and your IVF doctor connected through every injection, every check-in and every report, from the first scan to the pregnancy test.</p>
+        <div class="fx-actions">
+          <a class="fx-btn" href="login.html?next=ivf.html">Start IVF Care</a>
+          <a class="fx-btn fx-btn-ghost" href="#ivlJourney">See how it works</a>
+        </div>
+        <ul class="ivl-trust">
+          <li><b>✓</b> Works on WhatsApp</li>
+          <li><b>✓</b> Linked to your own IVF centre</li>
+          <li><b>✓</b> Private and consent-based</li>
+        </ul>
+      </div>
+      <div class="orbit" id="careOrbit" role="list" aria-label="What Biomexa IVF Care includes">
+        <div class="orbit-ring orbit-ring-a" aria-hidden="true"></div>
+        <div class="orbit-ring orbit-ring-b" aria-hidden="true"></div>
+        <div class="orbit-core" aria-hidden="true"><b>IVF<br>Care</b><span>Every day, every dose</span></div>
+        <div class="orbit-node" role="listitem"><i>💉</i><b>Injection reminders</b><small>Including the trigger shot</small></div>
+        <div class="orbit-node" role="listitem"><i>🌡️</i><b>Daily check-in</b><small>Symptoms and vitals in a minute</small></div>
+        <div class="orbit-node" role="listitem"><i>📄</i><b>Report upload</b><small>Your doctor reviews it online</small></div>
+        <div class="orbit-node" role="listitem"><i>🎥</i><b>Virtual follow-ups</b><small>Video, audio or chat</small></div>
+        <div class="orbit-node" role="listitem"><i>🚨</i><b>Warning-sign alerts</b><small>Flagged to your doctor early</small></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="ivl ivl-alt" aria-labelledby="ivlBothTitle">
+    <div class="fx-head">
+      <p class="fx-kicker">One platform, both sides of care</p>
+      <h2 class="fx-title" id="ivlBothTitle">You check in from home. Your doctor sees it straight away.</h2>
+    </div>
+    <div class="ivl-book">
+      <article class="ivl-panel ivl-panel-patient">
+        <div class="ivl-panel-head"><i>🤰</i><div><h3>For you, the patient</h3><p>Less worry, fewer trips, nothing missed</p></div></div>
+        <ul class="fx-list">
+          <li><i>💉</i><div><b>Never miss a dose</b><span>WhatsApp reminders for every injection and tablet. Tap Taken or Not taken.</span></div></li>
+          <li><i>🌡️</i><div><b>One-minute daily check-in</b><span>Weight, pain, bloating, bleeding and mood, straight from your phone.</span></div></li>
+          <li><i>📄</i><div><b>Upload reports from anywhere</b><span>Blood tests and scan reports go directly to your IVF doctor.</span></div></li>
+          <li><i>🎥</i><div><b>Follow-ups without travel</b><span>Request a video, audio or chat follow-up with your centre.</span></div></li>
+        </ul>
+      </article>
+      <div class="ivl-sync" aria-hidden="true"><span>🔄</span>Live sync</div>
+      <article class="ivl-panel ivl-panel-doctor">
+        <div class="ivl-panel-head"><i>👩‍⚕️</i><div><h3>For your IVF doctor</h3><p>Every patient, every day, on one screen</p></div></div>
+        <ul class="fx-list">
+          <li><i>📋</i><div><b>One dashboard for all patients</b><span>Treatment stage, doses taken and last check-in at a glance.</span></div></li>
+          <li><i>🚨</i><div><b>Early warning signs</b><span>Sudden weight gain, breathlessness or severe pain are flagged by severity.</span></div></li>
+          <li><i>📈</i><div><b>Trends, not snapshots</b><span>Weight and symptom trends across the whole cycle.</span></div></li>
+          <li><i>💬</i><div><b>Review and reply</b><span>Comment on reports, message patients and schedule follow-ups.</span></div></li>
+        </ul>
+      </article>
+    </div>
+  </section>
+
+  <section class="ivl" id="ivlJourney" aria-labelledby="ivlJourneyTitle">
+    <div class="fx-head">
+      <p class="fx-kicker">The whole treatment, stage by stage</p>
+      <h2 class="fx-title" id="ivlJourneyTitle">What Biomexa does for you and your doctor at every step</h2>
+      <p class="fx-sub" style="margin-left:auto;margin-right:auto">Drag to turn, or pick a stage below.</p>
+    </div>
+    <div class="cube-scene prism-scene" id="howScene">
+      <div class="cube-floor" aria-hidden="true"></div>
+      <div class="cube prism" id="howPrism">
+        <div class="eco-stage cube-face"><div class="cf-top"><span class="cf-icon">🩺</span><span class="cf-badge">2–4 weeks</span></div><h3>Consultation and tests</h3>
+          <p class="cf-row cf-you"><b>You</b>Test-prep reminders and easy report upload.</p><p class="cf-row cf-doc"><b>Your doctor</b>Reviews your reports before the visit.</p></div>
+        <div class="eco-stage cube-face"><div class="cf-top"><span class="cf-icon">💉</span><span class="cf-badge key">Key stage</span></div><h3>Ovarian stimulation</h3>
+          <p class="cf-row cf-you"><b>You</b>A reminder for every injection, plus a daily check-in.</p><p class="cf-row cf-doc"><b>Your doctor</b>Sees doses, symptoms and scans; adjusts doses remotely.</p></div>
+        <div class="eco-stage cube-face"><div class="cf-top"><span class="cf-icon">⏰</span><span class="cf-badge key">Key stage</span></div><h3>Trigger injection</h3>
+          <p class="cf-row cf-you"><b>You</b>A reminder timed to the hour. Tap to confirm.</p><p class="cf-row cf-doc"><b>Your doctor</b>Knows it was taken, or is alerted if it wasn't.</p></div>
+        <div class="eco-stage cube-face"><div class="cf-top"><span class="cf-icon">🏥</span><span class="cf-badge">Clinic day</span></div><h3>Egg retrieval</h3>
+          <p class="cf-row cf-you"><b>You</b>Fasting and arrival instructions, then a recovery check-in.</p><p class="cf-row cf-doc"><b>Your doctor</b>Sees how you're feeling that evening.</p></div>
+        <div class="eco-stage cube-face"><div class="cf-top"><span class="cf-icon">🔬</span><span class="cf-badge">3–5 days</span></div><h3>Embryo culture</h3>
+          <p class="cf-row cf-you"><b>You</b>Updates from your centre and your transfer date.</p><p class="cf-row cf-doc"><b>Your doctor</b>Shares updates without phone calls.</p></div>
+        <div class="eco-stage cube-face"><div class="cf-top"><span class="cf-icon">🌱</span><span class="cf-badge">Clinic day</span></div><h3>Embryo transfer</h3>
+          <p class="cf-row cf-you"><b>You</b>Preparation steps and your new medicine schedule.</p><p class="cf-row cf-doc"><b>Your doctor</b>Sets up luteal support reminders.</p></div>
+        <div class="eco-stage cube-face"><div class="cf-top"><span class="cf-icon">⏳</span><span class="cf-badge key">Key stage</span></div><h3>Two-week wait</h3>
+          <p class="cf-row cf-you"><b>You</b>Daily progesterone reminders and a check-in, so you're never alone.</p><p class="cf-row cf-doc"><b>Your doctor</b>Alerted early to warning signs.</p></div>
+        <div class="eco-stage cube-face"><div class="cf-top"><span class="cf-icon">🧪</span><span class="cf-badge">Blood test</span></div><h3>Pregnancy test</h3>
+          <p class="cf-row cf-you"><b>You</b>Test-date reminder; upload the result from home.</p><p class="cf-row cf-doc"><b>Your doctor</b>Reviews it and talks it through on a virtual follow-up.</p></div>
+        <div class="eco-stage cube-face"><div class="cf-top"><span class="cf-icon">💗</span><span class="cf-badge">After the result</span></div><h3>Next step</h3>
+          <p class="cf-row cf-you"><b>You</b>Early-pregnancy follow-up, or support planning the next cycle.</p><p class="cf-row cf-doc"><b>Your doctor</b>Keeps your full history in one place.</p></div>
+      </div>
+    </div>
+    <div class="cube-steps" id="howSteps" role="tablist" aria-label="IVF treatment stages">
+      <button type="button" role="tab">Consultation</button>
+      <button type="button" role="tab">Stimulation</button>
+      <button type="button" role="tab">Trigger shot</button>
+      <button type="button" role="tab">Retrieval</button>
+      <button type="button" role="tab">Embryo culture</button>
+      <button type="button" role="tab">Transfer</button>
+      <button type="button" role="tab">Two-week wait</button>
+      <button type="button" role="tab">Pregnancy test</button>
+      <button type="button" role="tab">Next step</button>
+    </div>
+    <div class="ivl-legend"><span class="key">Key at-home stage: Biomexa matters most here</span><span>Supporting stage</span></div>
+  </section>
+
+  <section class="ivl ivl-alt" aria-labelledby="ivlStartTitle">
+    <div class="fx-head">
+      <p class="fx-kicker">Getting started</p>
+      <h2 class="fx-title" id="ivlStartTitle">Start in three simple steps</h2>
+    </div>
+    <ol class="ivl-steps">
+      <li class="ivl-step"><em>1</em><h3>Sign in or create an account</h3><p>Use your phone number. Your WhatsApp reminders come to the same number.</p></li>
+      <li class="ivl-step"><em>2</em><h3>Choose your IVF centre</h3><p>Pick your centre and share a few details. Your centre approves your request.</p></li>
+      <li class="ivl-step"><em>3</em><h3>Get daily support</h3><p>Reminders, check-ins, reports and follow-ups begin right away.</p></li>
+    </ol>
+    <div class="ivl-cta">
+      <a class="fx-btn" href="login.html?next=ivf.html">Sign in to IVF Care</a>
+      <a class="fx-btn fx-btn-ghost" href="signup.html">Create an account</a>
+    </div>
+    <p class="ivl-doctor-note">Are you an IVF centre? <a href="ivf-doctor.html">Open the IVF centre dashboard →</a></p>
+  </section>
+  <p class="ivl-foot">Biomexa IVF Care supports your treatment between visits. It does not replace in-person care or emergency services.</p>
+</div>
+
+<main class="wrap" id="appView">
   <div id="loading" class="empty">Loading your IVF programme…</div>
 
   <!-- ========== ENROLMENT ========== -->
@@ -171,7 +299,14 @@
 <script src="js/ivf-common.js"></script>
 <script>
 const token = localStorage.getItem('token');
-if (!token) window.location.href = 'login.html?next=ivf.html';
+// Signed-out visitors see the IVF Care landing page instead of being sent straight to sign-in.
+if (!token) {
+  document.getElementById('landingView').classList.remove('hidden');
+  document.getElementById('appView').classList.add('hidden');
+  document.getElementById('navIn').classList.add('hidden');
+  document.getElementById('navOut').classList.remove('hidden');
+  const s3d = document.createElement('script'); s3d.src = 'js/home-3d.js'; document.body.appendChild(s3d);
+}
 let state = null, selectedCentre = null, msgTimer = null;
 
 function logout() { localStorage.clear(); window.location.href = 'login.html'; }
