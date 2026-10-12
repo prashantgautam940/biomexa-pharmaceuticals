@@ -2201,3 +2201,38 @@ button { font-family: inherit; cursor: pointer; }
 .hero-subtitle { color: #d6e1f7 !important; }
 .hero .stat-number, .hero .stat-value { color: #5fe39a !important; }
 .hero .stat-label { color: #c3d2ef !important; }
+
+/* =====================================================================
+   Mobile menu fix (2026-10) — the header is white now, so the menu
+   button's lines must be dark; and the menu panel must scroll, starting
+   below the fixed header, instead of centring 18 links off-screen.
+   ===================================================================== */
+.mobile-menu-btn {
+    width: 44px; height: 44px;
+    align-items: center; justify-content: center;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+.mobile-menu-btn span { background: #16336b !important; }
+
+.mobile-menu {
+    background: #ffffff !important;
+    justify-content: flex-start;
+    gap: 0;
+    padding: 88px 1.5rem calc(2rem + env(safe-area-inset-bottom));
+    height: 100vh;
+    height: 100dvh;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+}
+.mobile-menu a {
+    width: 100%;
+    max-width: 360px;
+    text-align: center;
+    font-size: 1.15rem;
+    padding: 0.85rem 0;
+    border-bottom: 1px solid #e8edf5;
+    flex-shrink: 0;
+}
+.mobile-menu a:last-child { border-bottom: none; }

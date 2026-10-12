@@ -57,7 +57,10 @@ document.addEventListener('DOMContentLoaded', function() {
         mobileMenuBtn.addEventListener('click', function() {
             this.classList.toggle('active');
             mobileMenu.classList.toggle('active');
-            document.body.style.overflow = mobileMenu.classList.contains('active') ? 'hidden' : '';
+            const open = mobileMenu.classList.contains('active');
+            document.body.style.overflow = open ? 'hidden' : '';
+            this.setAttribute('aria-expanded', open ? 'true' : 'false');
+            if (open) { navbar.style.transform = 'translateY(0)'; mobileMenu.scrollTop = 0; }
         });
 
         mobileMenu.querySelectorAll('a').forEach(link => {
