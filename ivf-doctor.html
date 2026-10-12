@@ -6,35 +6,177 @@
 <title>IVF Centre Dashboard | Biomexa</title>
 <link rel="icon" type="image/svg+xml" href="logo.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Sora:wght@600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/ivf.css">
+<link rel="stylesheet" href="css/home-future.css">
+<link rel="stylesheet" href="css/ivf-landing.css">
+<link rel="stylesheet" href="css/ivf-doctor-landing.css">
 </head>
 <body>
 <nav class="ivf-nav">
   <a class="ivf-brand" href="index.html"><img src="images/logo-full.png" alt="Biomexa Pharmaceuticals"><span class="tag">IVF Centre</span></a>
   <div class="ivf-nav-links">
     <a href="index.html">Home</a>
-    <a href="doctor.html">Main doctor portal</a>
+    <a href="#ivdProblems" class="hide-sm out-only hidden">How it helps</a>
+    <a href="doctor.html" class="hide-sm">Main doctor portal</a>
+    <a href="#docLogin" class="btn-rose out-only hidden">Log in</a>
     <span id="whoami" class="small muted"></span>
     <button class="btn btn-ghost btn-sm hidden" id="logoutBtn" onclick="logout()">Logout</button>
   </div>
 </nav>
 
-<main class="wrap wide">
-  <!-- LOGIN -->
-  <section id="loginView" class="hidden">
-    <div class="ivf-hero"><span class="eyebrow">Biomexa IVF Care</span><h1>IVF centre dashboard</h1>
-      <p>Monitor your IVF patients between visits — daily check-ins, red-flag alerts, report analysis and virtual follow-ups.</p></div>
-    <form class="card" id="loginForm" style="max-width:440px">
-      <h2>Doctor login</h2>
-      <p class="sub">Use your verified Biomexa doctor account. New? <a href="doctor-signup.html">Sign up as a doctor</a> — an admin verifies your licence first.</p>
-      <div class="field"><label for="lPhone">WhatsApp number</label><input id="lPhone" type="tel" placeholder="98765 43210" required></div>
-      <div class="field"><label for="lPass">Password</label><input id="lPass" type="password" required></div>
-      <div id="loginErr" class="notice critical hidden"></div>
-      <button class="btn btn-primary" type="submit" id="loginBtn">Log in</button>
-    </form>
+<!-- ========== PUBLIC LANDING + LOGIN (before login) ========== -->
+<div id="loginView" class="hidden">
+  <section class="ivl ivd-hero" aria-labelledby="ivdTitle">
+    <div class="fx-grid">
+      <div class="fx-copy">
+        <p class="fx-kicker">Biomexa IVF Care · for IVF centres</p>
+        <h1 class="fx-title" id="ivdTitle">See every IVF patient <em>between visits</em>, not just at them</h1>
+        <p class="fx-sub">Most of an IVF cycle happens at home: injections, symptoms, worry. Biomexa gives your centre one dashboard for every patient's doses, daily check-ins, warning signs and reports, so you can act early and follow up without the phone chaos.</p>
+        <div class="fx-actions">
+          <a class="fx-btn fx-btn-rose" href="#docLogin">Log in to your dashboard</a>
+          <a class="fx-btn fx-btn-ghost" href="#ivdProblems">How it helps your centre</a>
+        </div>
+        <ul class="ivl-trust">
+          <li><b>✓</b> Patients use WhatsApp, no app to install</li>
+          <li><b>✓</b> Verified doctors only</li>
+          <li><b>✓</b> Consent-based patient data</li>
+        </ul>
+      </div>
+      <div class="ivd-stage" id="ivdStage" aria-hidden="true">
+        <div class="ivd-chip ivd-chip-a"><i>⏰</i><div>Trigger shot confirmed<small>Taken 9:02 PM, on time</small></div></div>
+        <div class="ivd-dash" id="ivdDash">
+          <div class="ivd-dash-top"><b>IVF patients · today</b><small>Sample view</small></div>
+          <div class="ivd-kpis">
+            <div><b>24</b><span>Active cycles</span></div>
+            <div class="alert"><b>2</b><span>Red flags</span></div>
+            <div><b>5</b><span>Reports to review</span></div>
+          </div>
+          <div class="ivd-rows">
+            <div class="ivd-row flagged"><i>PS</i><div><b>Patient S · Stimulation day 9</b><span>Weight up 1.4 kg since yesterday, breathless</span></div><span class="ivd-pill crit">Critical</span></div>
+            <div class="ivd-row"><i>AK</i><div><b>Patient A · Two-week wait</b><span>Mild cramps · progesterone taken</span></div><span class="ivd-pill watch">Watch</span></div>
+            <div class="ivd-row"><i>RM</i><div><b>Patient R · Trigger day</b><span>All doses taken · check-in done</span></div><span class="ivd-pill ok">On track</span></div>
+            <div class="ivd-row"><i>NG</i><div><b>Patient N · Post-retrieval</b><span>New report uploaded · AI draft ready</span></div><span class="ivd-pill watch">Review</span></div>
+          </div>
+        </div>
+        <div class="ivd-chip ivd-chip-b"><i>📄</i><div>Beta-hCG report uploaded<small>AI draft ready for your review</small></div></div>
+        <div class="ivd-chip ivd-chip-c"><i>🎥</i><div>Video follow-up<small>Requested for 6:30 PM</small></div></div>
+        <p class="ivd-note">Illustrative example. Patient details are not real.</p>
+      </div>
+    </div>
   </section>
 
+  <section class="ivl ivl-alt" id="ivdProblems" aria-labelledby="ivdProbTitle">
+    <div class="fx-head">
+      <p class="fx-kicker">The gap between visits</p>
+      <h2 class="fx-title" id="ivdProbTitle">The problems every IVF centre knows, and how Biomexa closes them</h2>
+      <p class="fx-sub" style="margin-left:auto;margin-right:auto">Each card shows a problem. Hover over it, or tap it, to see the fix.</p>
+    </div>
+    <ul class="ivd-flips">
+      <li class="ivd-flip" tabindex="0" role="button" aria-label="Missed and mistimed injections: show the fix">
+        <div class="ivd-flip-in">
+          <div class="ivd-face ivd-front"><span class="ivd-tag">The problem</span><span class="ivd-ico">💉</span><h3>Missed or mistimed injections</h3><p>Stimulation doses are skipped and trigger shots go in late, and you often only find out at the next scan.</p><span class="ivd-hint">See the fix</span></div>
+          <div class="ivd-face ivd-back"><span class="ivd-tag">With Biomexa</span><h3>Every dose reminded and confirmed</h3><ul><li>You set the medicines; patients get WhatsApp reminders</li><li>Trigger shot reminded at the exact time</li><li>Patients tap Taken or Not taken, and you see it live</li></ul></div>
+        </div>
+      </li>
+      <li class="ivd-flip" tabindex="0" role="button" aria-label="Warning signs reported late: show the fix">
+        <div class="ivd-flip-in">
+          <div class="ivd-face ivd-front"><span class="ivd-tag">The problem</span><span class="ivd-ico">🚨</span><h3>OHSS warning signs reported late</h3><p>Rapid weight gain, bloating or breathlessness reach you days later, sometimes only in casualty.</p><span class="ivd-hint">See the fix</span></div>
+          <div class="ivd-face ivd-back"><span class="ivd-tag">With Biomexa</span><h3>Red flags triaged for you</h3><ul><li>One-minute daily check-in on weight, pain, bloating, bleeding, fever</li><li>Rules flag OHSS signs, fever and heavy bleeding by severity</li><li>Critical patients rise to the top of your list</li></ul></div>
+        </div>
+      </li>
+      <li class="ivd-flip" tabindex="0" role="button" aria-label="Reports scattered across chats: show the fix">
+        <div class="ivd-flip-in">
+          <div class="ivd-face ivd-front"><span class="ivd-tag">The problem</span><span class="ivd-ico">📄</span><h3>Reports scattered across chats</h3><p>Hormone values and scan reports arrive as photos on personal WhatsApp, mixed with everything else.</p><span class="ivd-hint">See the fix</span></div>
+          <div class="ivd-face ivd-back"><span class="ivd-tag">With Biomexa</span><h3>One review queue, with an AI head start</h3><ul><li>Patients upload reports straight into their cycle</li><li>An AI draft reading is ready when you open it</li><li>You review, comment, and the patient is notified</li></ul></div>
+        </div>
+      </li>
+      <li class="ivd-flip" tabindex="0" role="button" aria-label="Endless phone calls: show the fix">
+        <div class="ivd-flip-in">
+          <div class="ivd-face ivd-front"><span class="ivd-tag">The problem</span><span class="ivd-ico">📞</span><h3>Endless calls from anxious patients</h3><p>"Is this pain normal?" calls interrupt your OPD, and the two-week wait is the hardest time of all.</p><span class="ivd-hint">See the fix</span></div>
+          <div class="ivd-face ivd-back"><span class="ivd-tag">With Biomexa</span><h3>Structured follow-up, on your schedule</h3><ul><li>Secure messages linked to the patient's cycle</li><li>Patients request video, audio or chat follow-ups</li><li>You confirm a time that fits your day</li></ul></div>
+        </div>
+      </li>
+      <li class="ivd-flip" tabindex="0" role="button" aria-label="No data between scans: show the fix">
+        <div class="ivd-flip-in">
+          <div class="ivd-face ivd-front"><span class="ivd-tag">The problem</span><span class="ivd-ico">📉</span><h3>No picture between scans</h3><p>You see a snapshot at each visit, with no record of how the patient was in the days between.</p><span class="ivd-hint">See the fix</span></div>
+          <div class="ivd-face ivd-back"><span class="ivd-tag">With Biomexa</span><h3>The whole cycle on one screen</h3><ul><li>Stage, dates and medicines for each patient</li><li>Weight and symptom trends across the cycle</li><li>Doses, check-ins and reports in one history</li></ul></div>
+        </div>
+      </li>
+      <li class="ivd-flip" tabindex="0" role="button" aria-label="Patients drop out: show the fix">
+        <div class="ivd-flip-in">
+          <div class="ivd-face ivd-front"><span class="ivd-tag">The problem</span><span class="ivd-ico">🧭</span><h3>Patients feel alone and drift away</h3><p>Between visits, patients feel unsupported. After a failed cycle, many never come back.</p><span class="ivd-hint">See the fix</span></div>
+          <div class="ivd-face ivd-back"><span class="ivd-tag">With Biomexa</span><h3>Daily contact that builds trust</h3><ul><li>A daily touchpoint from your centre, every stage</li><li>Patients choose your centre from your profile</li><li>Full history kept for the next cycle</li></ul></div>
+        </div>
+      </li>
+    </ul>
+  </section>
+
+  <section class="ivl ivd-flow" id="ivdFlow" aria-labelledby="ivdFlowTitle">
+    <div class="fx-head">
+      <p class="fx-kicker">How follow-up works</p>
+      <h2 class="fx-title" id="ivdFlowTitle">From the patient's phone to your dashboard in five steps</h2>
+      <p class="fx-sub" style="margin-left:auto;margin-right:auto">Drag to turn, or pick a step below.</p>
+    </div>
+    <div class="cube-scene prism-scene" id="howScene">
+      <div class="cube-floor" aria-hidden="true"></div>
+      <div class="cube prism" id="howPrism">
+        <div class="eco-stage cube-face"><div class="cf-top"><span class="cf-icon">🤝</span><span class="cf-badge">Step 1</span></div><h3>Patient joins your centre</h3>
+          <p class="cf-row cf-you"><b>Patient</b>Picks your centre on Biomexa and gives consent.</p><p class="cf-row cf-doc"><b>You</b>Accept the request and set stage, dates and protocol.</p></div>
+        <div class="eco-stage cube-face"><div class="cf-top"><span class="cf-icon">💊</span><span class="cf-badge key">Step 2</span></div><h3>You set the medicines</h3>
+          <p class="cf-row cf-you"><b>Patient</b>Gets a WhatsApp reminder for every dose and the trigger shot.</p><p class="cf-row cf-doc"><b>You</b>See each dose marked Taken or Not taken.</p></div>
+        <div class="eco-stage cube-face"><div class="cf-top"><span class="cf-icon">🌡️</span><span class="cf-badge key">Step 3</span></div><h3>Daily check-in</h3>
+          <p class="cf-row cf-you"><b>Patient</b>Logs weight, symptoms and vitals in about a minute.</p><p class="cf-row cf-doc"><b>You</b>Red flags are scored by severity and sent to your alerts.</p></div>
+        <div class="eco-stage cube-face"><div class="cf-top"><span class="cf-icon">📄</span><span class="cf-badge">Step 4</span></div><h3>Reports and review</h3>
+          <p class="cf-row cf-you"><b>Patient</b>Uploads blood tests and scans from home.</p><p class="cf-row cf-doc"><b>You</b>Read the AI draft, add your comment, mark it reviewed.</p></div>
+        <div class="eco-stage cube-face"><div class="cf-top"><span class="cf-icon">🎥</span><span class="cf-badge">Step 5</span></div><h3>Virtual follow-up</h3>
+          <p class="cf-row cf-you"><b>Patient</b>Requests a video, audio or chat follow-up.</p><p class="cf-row cf-doc"><b>You</b>Confirm the time, follow up and update the plan.</p></div>
+      </div>
+    </div>
+    <div class="cube-steps" id="howSteps" role="tablist" aria-label="Follow-up steps">
+      <button type="button" role="tab">1 · Join</button>
+      <button type="button" role="tab">2 · Medicines</button>
+      <button type="button" role="tab">3 · Check-in</button>
+      <button type="button" role="tab">4 · Reports</button>
+      <button type="button" role="tab">5 · Follow-up</button>
+    </div>
+    <ul class="ivd-wins">
+      <li><i>⏱️</i><b>Act earlier</b><span>Warning signs reach you the same day, not at the next scan.</span></li>
+      <li><i>🎯</i><b>Better adherence</b><span>Reminders and confirmations for every dose, including the trigger.</span></li>
+      <li><i>🗂️</i><b>Less admin</b><span>Reports, messages and follow-ups in one place, not five chats.</span></li>
+      <li><i>💗</i><b>Patients who stay</b><span>Daily contact that keeps patients with your centre.</span></li>
+    </ul>
+  </section>
+
+  <section class="ivl ivl-alt" id="docLogin" aria-labelledby="ivdJoinTitle">
+    <div class="fx-head">
+      <p class="fx-kicker">Get your centre live</p>
+      <h2 class="fx-title" id="ivdJoinTitle">Log in, or set your centre up in three steps</h2>
+    </div>
+    <div class="ivd-join">
+      <ol class="ivd-onboard">
+        <li><em>1</em><div><b>Sign up as a doctor</b><span>Use your WhatsApp number and medical registration details.</span></div></li>
+        <li><em>2</em><div><b>We verify your licence</b><span>A Biomexa admin checks your registration before you get access.</span></div></li>
+        <li><em>3</em><div><b>Create your IVF centre profile</b><span>Patients find your centre, request to join, and you accept them.</span></div></li>
+      </ol>
+      <div class="ivd-login-wrap">
+        <form class="card ivd-login" id="loginForm">
+          <span class="eyebrow">IVF centre dashboard</span>
+          <h2>Doctor login</h2>
+          <p class="sub">Use your verified Biomexa doctor account.</p>
+          <div class="field"><label for="lPhone">WhatsApp number</label><input id="lPhone" type="tel" placeholder="98765 43210" autocomplete="tel" required></div>
+          <div class="field"><label for="lPass">Password</label><input id="lPass" type="password" autocomplete="current-password" required></div>
+          <div id="loginErr" class="notice critical hidden"></div>
+          <button class="btn btn-primary" type="submit" id="loginBtn">Log in</button>
+          <p class="ivd-login-foot">New to Biomexa? <a href="doctor-signup.html">Sign up as a doctor</a></p>
+        </form>
+      </div>
+    </div>
+  </section>
+  <p class="ivl-foot">Biomexa IVF Care supports your treatment decisions between visits. Red flags are triage aids, not a diagnosis, and it does not replace clinical judgement or emergency care.</p>
+</div>
+
+<main class="wrap wide">
   <!-- CENTRE PROFILE -->
   <section id="centreView" class="hidden">
     <form class="card" id="centreForm">
@@ -177,7 +319,39 @@ let token = localStorage.getItem('doctorToken');
 let current = null; // patient detail payload
 let msgTimer = null;
 const views = ['loginView', 'centreView', 'dashView', 'detailView'];
-const show = v => views.forEach(x => $(x).classList.toggle('hidden', x !== v));
+let landing3d = false;
+const show = v => {
+  views.forEach(x => $(x).classList.toggle('hidden', x !== v));
+  const out = v === 'loginView';
+  document.querySelectorAll('.out-only').forEach(el => el.classList.toggle('hidden', !out));
+  document.querySelector('main').classList.toggle('hidden', out);
+  // 3D effects load only for the public page, once it is visible (the prism measures itself)
+  if (out && !landing3d) {
+    landing3d = true;
+    const s3d = document.createElement('script'); s3d.src = 'js/home-3d.js'; document.body.appendChild(s3d);
+    initLanding();
+  }
+};
+function initLanding() {
+  // Flip cards: tap/Enter flips on touch and keyboard (hover handles mouse)
+  document.querySelectorAll('.ivd-flip').forEach(card => {
+    const flip = () => card.classList.toggle('on');
+    card.addEventListener('click', () => { if (!window.matchMedia('(hover: hover)').matches) flip(); });
+    card.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); flip(); } });
+  });
+  // Hero dashboard tilts toward the pointer
+  const stage = $('ivdStage'), dash = $('ivdDash');
+  const calm = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (stage && dash && !calm && window.matchMedia('(hover: hover)').matches) {
+    stage.addEventListener('mousemove', e => {
+      const r = stage.getBoundingClientRect();
+      const x = (e.clientX - r.left) / r.width - 0.5, y = (e.clientY - r.top) / r.height - 0.5;
+      dash.classList.add('tilting');
+      dash.style.transform = `rotateY(${(-10 + x * 24).toFixed(1)}deg) rotateX(${(6 - y * 14).toFixed(1)}deg) translateY(-6px)`;
+    });
+    stage.addEventListener('mouseleave', () => { dash.classList.remove('tilting'); dash.style.transform = ''; });
+  }
+}
 const call = (path, opts = {}) => IVF.api(path, { ...opts, token }).catch(err => {
   if (err.status === 401 || err.code === 'not_approved') { logout(err.message); }
   throw err;
