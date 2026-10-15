@@ -1940,7 +1940,14 @@ app.post('/api/auth/register', signupLimiter, async (req, res) => {
     // Tries the welcome template first (works even for a brand-new contact who's never
     // messaged your business number), falls back to free text if the template isn't
     // configured — same fix already proven for risk_alert.
-    const welcomeMsg = `🎉 Welcome to Biomexa, ${name}!\n\nYour WhatsApp dose reminders are now active. We'll notify you when it's time to take your medicine.\n\nReply CONFIRM after each dose to track your adherence.\n\n- Biomexa Team`;
+    // IVF Care sign-ups (from ivf-auth.html) get an IVF welcome pointing back to IVF Care, not the
+    // general medicine-reminder portal.
+    const isIvf = req.body.program === 'ivf';
+    const welcomeMsg = isIvf
+      ? `🎉 Welcome to Biomexa IVF Care, ${name}!\n\nNext step: choose your IVF centre so your doctor can follow your treatment. You'll then get injection and trigger-shot reminders here on WhatsApp.\n\n${SITE_URL}/ivf.html\n\n- Biomexa IVF Care`
+      : `🎉 Welcome to Biomexa, ${name}!\n\nYour WhatsApp dose reminders are now active. We'll notify you when it's time to take your medicine.\n\nReply CONFIRM after each dose to track your adherence.\n\n- Biomexa Team`;
+    // The approved welcome template is tried first for everyone (it reaches brand-new contacts);
+    // the IVF-specific text is the free-text fallback when the template isn't configured.
     const waResult = await sendWelcomeMessage(phone, name, welcomeMsg);
 
     res.json({ message: 'Registered successfully', token, patient: { name, phone }, whatsappConnected: waResult.success });

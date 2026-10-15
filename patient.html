@@ -282,7 +282,6 @@ html { scroll-padding-top: 80px; }
       <a href="index.html">Home</a>
       <a href="products/index.html">Products</a>
       <a href="ai-assistant.html">AI Assistant</a>
-      <a href="ivf.html" style="color:#b83a6e;font-weight:600;">IVF Care</a>
       <a href="doctor.html">Doctor Portal</a>
       <button class="logout-btn" onclick="logout()">Logout</button>
     </div>
@@ -620,7 +619,7 @@ html { scroll-padding-top: 80px; }
       // showing stale cached data from a previous session on this device.
       fetch(`${API_URL}/api/patient/profile`, { headers: { 'Authorization': `Bearer ${token}` } })
         .then(r => {
-          if (!r.ok) { localStorage.clear(); window.location.href = loginRedirect; throw new Error('invalid session'); }
+          if (!r.ok) { localStorage.removeItem('token'); localStorage.removeItem('user'); window.location.href = loginRedirect; throw new Error('invalid session'); }
           return r.json();
         })
         .then(profile => {
@@ -704,7 +703,7 @@ html { scroll-padding-top: 80px; }
     });
 
     function logout() {
-      localStorage.clear();
+      localStorage.removeItem('token'); localStorage.removeItem('user');
       window.location.href = 'login.html';
     }
 

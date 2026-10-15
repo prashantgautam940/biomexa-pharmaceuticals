@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sign in | Biomexa IVF Care</title>
+<meta name="description" content="Sign in or create your Biomexa IVF Care account to connect with your IVF centre.">
+<link rel="icon" type="image/svg+xml" href="logo.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Sora:wght@600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/ivf.css">
+<style>
+  .auth-wrap { max-width: 1040px; margin: 0 auto; padding: 32px 16px 64px; display: grid; grid-template-columns: 1fr 1fr; gap: 24px; align-items: start; }
+  @media (max-width: 820px) { .auth-wrap { grid-template-columns: 1fr; } .auth-side { order: 2; } }
+  .auth-side { background: linear-gradient(135deg, var(--navy) 0%, #3b2a6b 55%, var(--rose) 100%); color: #fff; border-radius: 18px; padding: 28px; }
+  .auth-side h1 { font-family: 'Sora', 'Inter', sans-serif; font-size: 28px; line-height: 1.2; margin: 8px 0 10px; }
+  .auth-side p { color: rgba(255,255,255,.88); }
+  .auth-side ul { list-style: none; margin-top: 18px; display: grid; gap: 12px; }
+  .auth-side li { display: flex; gap: 10px; align-items: flex-start; }
+  .auth-side li span { flex: none; width: 32px; height: 32px; border-radius: 9px; background: rgba(255,255,255,.15); display: grid; place-items: center; }
+  .auth-side .eyebrow { color: #ffd3e4; }
+  .auth-side .note { margin-top: 22px; font-size: 13px; color: rgba(255,255,255,.75); }
+  .auth-card { padding: 26px; }
+  .auth-tabs { display: grid; grid-template-columns: 1fr 1fr; background: var(--bg); border-radius: 12px; padding: 4px; margin-bottom: 20px; }
+  .auth-tabs button { border: 0; background: transparent; padding: 10px; border-radius: 9px; font-weight: 700; color: var(--muted); }
+  .auth-tabs button.active { background: #fff; color: var(--rose); box-shadow: 0 1px 3px rgba(19,33,61,.12); }
+  .phone-row { display: flex; gap: 8px; }
+  .phone-row .cc { flex: none; display: grid; place-items: center; padding: 0 12px; border: 1px solid #d8d5e2; border-radius: 10px; background: var(--bg); font-weight: 600; }
+  input[type=email] { width: 100%; padding: 10px 12px; border: 1px solid #d8d5e2; border-radius: 10px; background: #fff; }
+  input[type=email]:focus { outline: none; border-color: var(--rose); box-shadow: 0 0 0 3px rgba(184,58,110,.14); }
+  .full { width: 100%; }
+  .links { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; font-size: 14px; margin: 4px 0 14px; }
+  .done-box { text-align: center; }
+  .done-box .ic { font-size: 44px; }
+  .wa-btn { background: #128c7e; color: #fff; }
+  .wa-btn:hover { background: #0e7065; }
+</style>
+</head>
+<body>
+<nav class="ivf-nav">
+  <a class="ivf-brand" href="ivf.html"><img src="images/logo-full.png" alt="Biomexa Pharmaceuticals"><span class="tag">IVF Care</span></a>
+  <div class="ivf-nav-links">
+    <a href="ivf.html">About IVF Care</a>
+    <a href="ivf-doctor.html">For IVF centres</a>
+  </div>
+</nav>
+
+<main class="auth-wrap">
+  <aside class="auth-side">
+    <span class="eyebrow">Biomexa IVF Care</span>
+    <h1>Support every day of your IVF treatment</h1>
+    <p>Your IVF Care account is separate from the regular Biomexa patient portal. It connects you only with your IVF centre.</p>
+    <ul>
+      <li><span>💉</span>Reminders for every injection, including the trigger shot</li>
+      <li><span>🌡️</span>A one-minute daily symptom and vitals check-in</li>
+      <li><span>📄</span>Upload reports for your IVF doctor to review</li>
+      <li><span>🎥</span>Video, audio or chat follow-ups with your centre</li>
+    </ul>
+    <p class="note">Already use Biomexa for other medicines? You can sign in here with the same mobile number and password.</p>
+  </aside>
+
+  <section class="card auth-card">
+    <div class="auth-tabs" role="tablist">
+      <button type="button" id="tabIn" role="tab" class="active">Sign in</button>
+      <button type="button" id="tabUp" role="tab">Create account</button>
+    </div>
+    <div id="msg" class="notice hidden" role="alert"></div>
+
+    <form id="inForm" autocomplete="on">
+      <div class="field"><label for="inPhone">Mobile number</label>
+        <div class="phone-row"><span class="cc">+91</span><input id="inPhone" type="tel" inputmode="numeric" placeholder="9876543210" required autocomplete="tel-national"></div></div>
+      <div class="field"><label for="inPass">Password</label><input id="inPass" type="password" required autocomplete="current-password"></div>
+      <div class="links"><a href="forgot-password.html?from=ivf">Forgot password?</a><a href="#" id="toUp">New here? Create an account</a></div>
+      <button class="btn btn-primary full" id="inBtn" type="submit">Sign in to IVF Care</button>
+    </form>
+
+    <form id="upForm" class="hidden" autocomplete="on">
+      <div class="field"><label for="upName">Full name</label><input id="upName" type="text" required maxlength="80" autocomplete="name"></div>
+      <div class="field"><label for="upPhone">Mobile number (WhatsApp)</label>
+        <div class="phone-row"><span class="cc">+91</span><input id="upPhone" type="tel" inputmode="numeric" placeholder="9876543210" required autocomplete="tel-national"></div></div>
+      <div class="field"><label for="upEmail">Email (optional)</label><input id="upEmail" type="email" autocomplete="email"></div>
+      <div class="field"><label for="upPass">Password (at least 6 characters)</label><input id="upPass" type="password" minlength="6" required autocomplete="new-password"></div>
+      <p class="small muted" style="margin-bottom:12px">By creating an account you agree to receive IVF treatment reminders on WhatsApp.</p>
+      <button class="btn btn-primary full" id="upBtn" type="submit">Create IVF Care account</button>
+      <div class="links" style="margin-top:12px"><span></span><a href="#" id="toIn">Already have an account? Sign in</a></div>
+    </form>
+
+    <div id="doneBox" class="done-box hidden">
+      <div class="ic">🎉</div>
+      <h2>Your IVF Care account is ready</h2>
+      <p class="sub">One last step: tap below to say hello to Biomexa on WhatsApp. This lets us send your injection and trigger-shot reminders.</p>
+      <a class="btn wa-btn full" id="waLink" href="#" target="_blank" rel="noopener">Activate WhatsApp reminders</a>
+      <a class="btn btn-primary full mt" href="ivf.html">Continue to IVF Care →</a>
+    </div>
+  </section>
+</main>
+
+<script src="js/ivf-common.js"></script>
+<script>
+// IVF Care keeps its own login session (ivfToken), separate from the main patient portal (token),
+// so signing in or out here never moves the patient into, or out of, the other portal.
+if (localStorage.getItem('ivfToken')) window.location.replace('ivf.html');
+
+const $ = id => document.getElementById(id);
+function show(tab) {
+  const up = tab === 'up';
+  $('tabUp').classList.toggle('active', up); $('tabIn').classList.toggle('active', !up);
+  $('upForm').classList.toggle('hidden', !up); $('inForm').classList.toggle('hidden', up);
+  $('msg').classList.add('hidden');
+  document.title = (up ? 'Create account' : 'Sign in') + ' | Biomexa IVF Care';
+}
+function note(text, kind = 'critical') { const m = $('msg'); m.className = 'notice ' + kind; m.innerHTML = text; }
+const fullPhone = v => { v = v.trim().replace(/\s+/g, ''); return v.startsWith('+') ? v : '+91' + v.replace(/^0/, ''); };
+function saveSession(data, fallbackUser) {
+  localStorage.setItem('ivfToken', data.token);
+  localStorage.setItem('ivfUser', JSON.stringify(data.user || data.patient || fallbackUser || {}));
+}
+
+$('tabIn').onclick = () => show('in');
+$('tabUp').onclick = () => show('up');
+$('toUp').onclick = e => { e.preventDefault(); show('up'); };
+$('toIn').onclick = e => { e.preventDefault(); show('in'); };
+if (location.hash === '#signup') show('up');
+
+$('inForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  $('inBtn').disabled = true; $('inBtn').textContent = 'Signing in…';
+  try {
+    const data = await IVF.api('/api/auth/login', { method: 'POST', body: { phone: fullPhone($('inPhone').value), password: $('inPass').value } });
+    saveSession(data);
+    window.location.href = 'ivf.html';
+  } catch (err) {
+    note(IVF.esc(err.message === 'User not found' ? 'No account found with this number. Create an IVF Care account instead.' : err.message));
+  } finally { $('inBtn').disabled = false; $('inBtn').textContent = 'Sign in to IVF Care'; }
+});
+
+$('upForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  $('upBtn').disabled = true; $('upBtn').textContent = 'Creating account…';
+  const name = $('upName').value.trim(), phone = fullPhone($('upPhone').value);
+  try {
+    const data = await IVF.api('/api/auth/register', { method: 'POST', body: { name, phone, email: $('upEmail').value.trim(), password: $('upPass').value, program: 'ivf' } });
+    saveSession(data, { name, phone });
+    $('upForm').classList.add('hidden'); $('msg').classList.add('hidden');
+    document.querySelector('.auth-tabs').classList.add('hidden');
+    $('waLink').href = 'https://wa.me/919625339181?text=' + encodeURIComponent(`Hi Biomexa! This is ${name}, I just joined IVF Care.`);
+    $('doneBox').classList.remove('hidden');
+  } catch (err) {
+    if (err.code === 'exists') { show('in'); $('inPhone').value = $('upPhone').value; note('This number already has a Biomexa account. Sign in with your password, or use <a href="forgot-password.html?from=ivf">Forgot password</a>.', 'info'); }
+    else note(IVF.esc(err.message));
+  } finally { $('upBtn').disabled = false; $('upBtn').textContent = 'Create IVF Care account'; }
+});
+</script>
+</body>
+</html>
