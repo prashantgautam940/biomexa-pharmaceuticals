@@ -265,3 +265,13 @@ tr.clickable:hover td { background: #faf8fc; }
 .pg-table td.num { font-variant-numeric: tabular-nums; }
 .pg-table td.flag { color: var(--critical); font-weight: 600; }
 .pg-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+
+/* ========== Early pregnancy tab (doctor) ========== */
+fieldset.sac { border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px 4px; margin: 10px 0; }
+fieldset.sac legend { font-weight: 800; font-size: 13px; color: var(--rose); padding: 0 6px; }
+.f-ga { padding: 10px 12px; border-radius: 10px; background: var(--bg); font-weight: 700; }
+.sac-res { margin-top: 10px; }
+ul.findings { list-style: none; margin-top: 6px; display: grid; gap: 6px; }
+ul.findings li { font-size: 13.5px; line-height: 1.45; }
+ul.findings .ref { display: block; color: var(--faint); font-size: 12px; margin-top: 1px; }
+td.num { font-variant-numeric: tabular-nums; }

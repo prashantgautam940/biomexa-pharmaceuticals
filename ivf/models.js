@@ -225,8 +225,37 @@ const ivfAlertSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now }
 }, { collection: 'ivf_alerts' });
 
+// Early pregnancy follow-up after a positive test (one record per cycle). Entered by the IVF
+// doctor; evaluated against published criteria in ./pregnancy.js. Patients only see what the
+// doctor chooses to share (sharedNotes), plus their dates.
+const ivfFetusSchema = new mongoose.Schema({
+  label: { type: String, default: 'A' },  // sac A, B, C (twins / triplets)
+  msdMm: Number,                           // mean gestational sac diameter
+  yolkSac: Boolean, yolkSacMm: Number,
+  embryo: Boolean, crlMm: Number,          // crown–rump length
+  heartbeat: { type: String, default: 'na' }, // yes | no | na (not assessed)
+  fhrBpm: Number,
+  emptyAmnion: { type: Boolean, default: false }
+}, { _id: false });
+const ivfPregnancySchema = new mongoose.Schema({
+  cycleId: { type: String, unique: true },
+  patientPhone: String,
+  doctorId: String,
+  transferDate: Date,
+  embryoAgeDays: { type: Number, default: 5 },    // 3, 5 or 6 (day of embryo at transfer)
+  embryosTransferred: { type: Number, default: 1 },
+  hcgTests: [{ date: Date, value: Number, note: String, addedAt: { type: Date, default: Date.now } }],
+  scans: [{ date: Date, location: { type: String, default: 'intrauterine' }, fetuses: [ivfFetusSchema], notes: String, addedBy: String, addedAt: { type: Date, default: Date.now } }],
+  nextHcgDate: String,   // YYYY-MM-DD — patient gets a WhatsApp reminder that morning
+  nextScanDate: String,  // YYYY-MM-DD
+  remindersSent: { type: [String], default: [] },
+  sharedNotes: [{ text: String, by: String, at: { type: Date, default: Date.now } }],
+  updatedAt: { type: Date, default: Date.now }
+}, { collection: 'ivf_pregnancies' });
+
 module.exports = {
   IVF_STAGES, STAGE_KEYS, PROTOCOLS, REPORT_CATEGORIES,
+  IvfPregnancy: mongoose.model('IvfPregnancy', ivfPregnancySchema),
   IvfCenter: mongoose.model('IvfCenter', ivfCenterSchema),
   IvfCycle: mongoose.model('IvfCycle', ivfCycleSchema),
   IvfMedication: mongoose.model('IvfMedication', ivfMedicationSchema),

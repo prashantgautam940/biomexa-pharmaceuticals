@@ -235,6 +235,7 @@
       <button class="tab" data-ptab="meds">Medicines</button>
       <button class="tab" data-ptab="preports">Reports</button>
       <button class="tab" data-ptab="consults">Follow-ups</button>
+      <button class="tab" data-ptab="preg">Early pregnancy</button>
       <button class="tab" data-ptab="pmsgs">Messages</button>
     </div>
 
@@ -310,6 +311,8 @@
       <div class="card"><h2>Follow-ups</h2><div id="consultList" class="list mt"></div></div>
     </div>
 
+    <div class="ptab hidden" id="ptab-preg"></div>
+
     <div class="ptab hidden" id="ptab-pmsgs">
       <div class="card"><h2>Messages</h2><div class="thread" id="dThread"></div>
         <form class="composer" id="dMsgForm"><textarea id="dMsgText" maxlength="2000" placeholder="Reply to the patient…" aria-label="Message"></textarea><button class="btn btn-primary" type="submit">Send</button></form></div>
@@ -319,6 +322,7 @@
 
 <script src="js/ivf-common.js"></script>
 <script src="js/ivf-charts.js"></script>
+<script src="js/ivf-pregnancy-doctor.js"></script>
 <script>
 const $ = id => document.getElementById(id);
 let token = localStorage.getItem('doctorToken');
@@ -463,6 +467,7 @@ function backToDash() { current = null; clearInterval(msgTimer); show('dashView'
 // ---------- patient detail ----------
 async function openPatient(id, tab) {
   try {
+    if (!current || current.cycle._id !== id) PregnancyTab.reset();
     current = await call('/api/ivf/doctor/cycles/' + id);
     show('detailView'); renderDetail();
     selectPtab(tab || document.querySelector('[data-ptab].active')?.dataset.ptab || 'plan');
@@ -644,6 +649,7 @@ function selectPtab(name) {
   document.querySelectorAll('[data-ptab]').forEach(x => x.classList.toggle('active', x.dataset.ptab === name));
   document.querySelectorAll('.ptab').forEach(p => p.classList.toggle('hidden', p.id !== 'ptab-' + name));
   clearInterval(msgTimer);
+  if (name === 'preg' && current) PregnancyTab.load(current.cycle._id);
   if (name === 'pmsgs') { loadMsgs().catch(err => IVF.toast(err.message, true)); msgTimer = setInterval(() => loadMsgs().catch(() => {}), 20000); }
 }
 document.querySelectorAll('[data-ptab]').forEach(t => t.addEventListener('click', () => selectPtab(t.dataset.ptab)));

@@ -13,10 +13,11 @@ const mongoose = require('mongoose');
 const cron = require('node-cron');
 const {
   IVF_STAGES, STAGE_KEYS, PROTOCOLS, REPORT_CATEGORIES,
-  IvfCenter, IvfCycle, IvfMedication, IvfDose, IvfDailyLog, IvfReport, IvfConsult, IvfMessage, IvfAlert
+  IvfCenter, IvfCycle, IvfMedication, IvfDose, IvfDailyLog, IvfReport, IvfConsult, IvfMessage, IvfAlert, IvfPregnancy
 } = require('./models');
 const { evaluateDailyLog, SEVERITY_RANK, maxSeverity } = require('./redflags');
 const { buildProgress } = require('./progress');
+const { evaluatePregnancy, gaLabel: pregGaLabel, gaOn: pregGaOn } = require('./pregnancy');
 
 const STAGE_LABEL = Object.fromEntries(IVF_STAGES.map(s => [s.key, s.label]));
 const CONSENT_TEXT = 'I agree that Biomexa and my chosen IVF centre may store and use my treatment, symptom, vitals and report information to monitor my IVF treatment and contact me on WhatsApp. I understand this monitoring supports, but does not replace, in-person care and emergency services.';
@@ -344,6 +345,17 @@ async function sendDoctorDigest(center, today) {
   if (alerts.length) lines.push(`🚨 Open alerts: ${alerts.length} (${[...new Set(alerts.map(a => a.patientName).filter(Boolean))].slice(0, 3).join(', ')})`);
   if (trends.length) lines.push('', '⚠️ *Trends to watch*', ...trends);
   if (missing.length) lines.push('', `📋 No check-in: ${missing.slice(0, 5).join(', ')}${missing.length > 5 ? ` +${missing.length - 5} more` : ''}`);
+  // Early pregnancy follow-ups (doctor-only wording)
+  const pregs = await IvfPregnancy.find({ cycleId: { $in: ids } }).lean();
+  const pregLines = [];
+  for (const p of pregs) {
+    const ev = evaluatePregnancy(p), name = (cycles.find(c => String(c._id) === p.cycleId) || {}).patientName || p.patientPhone;
+    if (ev.repeatScanDue && today >= ev.repeatScanDue.from) pregLines.push(`• ${name}: repeat scan due (${ev.status.label.toLowerCase()} on ${ev.latestSummary.date})`);
+    else if (['diagnostic', 'urgent', 'watch'].includes(ev.status.level)) pregLines.push(`• ${name}: ${ev.status.label}`);
+    if (p.nextHcgDate === today) pregLines.push(`• ${name}: hCG test today`);
+    if (p.nextScanDate === today) pregLines.push(`• ${name}: scan today`);
+  }
+  if (pregLines.length) lines.push('', '🤰 *Early pregnancy*', ...pregLines.slice(0, 6));
   const todo = [reports && `${reports} report(s) to review`, consults && `${consults} follow-up(s) today`, pending && `${pending} new request(s)`].filter(Boolean);
   if (todo.length) lines.push(`📄 ${todo.join(' · ')}`);
   lines.push('', `Open dashboard: ${ivfUrl('ivf-doctor.html')}`);
@@ -410,6 +422,19 @@ async function ivfTick() {
         await D.ConversationState.findOneAndUpdate({ patientPhone: cycle.patientPhone }, { state: 'ivf_awaiting_checkin', doseId: null, updatedAt: new Date() }, { upsert: true });
         return D.sendWhatsAppFree(cycle.patientPhone, `🌙 Hi ${cycle.patientName || ''}, time for today's IVF check-in.\n\nJust reply here, for example:\n*61.5 kg, pain 3, bloating mild*\n(or *FINE* if you have no symptoms)\n\nOr use the app: ${ivfUrl('ivf.html')}\n\n- Biomexa IVF Care`);
       })());
+    }
+  }
+
+  // Early pregnancy: remind the patient on the morning of a planned hCG test or scan (7–10 AM).
+  if (hour >= 7 && hour < 10) {
+    const pregs = await IvfPregnancy.find({ $or: [{ nextHcgDate: today }, { nextScanDate: today }] }).limit(300);
+    for (const p of pregs) {
+      for (const [kind, label] of [['hcg', 'beta-hCG blood test'], ['scan', 'pregnancy scan']]) {
+        const due = kind === 'hcg' ? p.nextHcgDate : p.nextScanDate, key = `${kind}:${today}`;
+        if (due !== today || (p.remindersSent || []).includes(key)) continue;
+        const claimed = await IvfPregnancy.findOneAndUpdate({ _id: p._id, remindersSent: { $ne: key } }, { $push: { remindersSent: key } });
+        if (claimed) fire(D.sendWhatsAppFree(p.patientPhone, `🗓️ *Reminder:* your ${label} is planned for today.\n\nPlease follow your IVF centre's instructions for the time and place. Your doctor will update you once the result is reviewed.\n\n- Biomexa IVF Care`));
+      }
     }
   }
 
@@ -549,6 +574,17 @@ function mount(app, deps) {
     if (!hasCheckinData(vitals, symptoms)) return res.status(400).json({ message: 'Please fill in at least one reading or symptom.' });
     const { log, flags, severity, alert } = await saveCheckin(cycle, vitals, symptoms, str(b.notes, 1000), 'web');
     res.json({ message: CHECKIN_ADVICE[severity || 'none'], log, severity, flags, alertId: alert?._id || null });
+  }));
+
+  // Early pregnancy, patient view: dates, upcoming tests and the doctor's own notes only.
+  app.get(`${R}/pregnancy`, auth, withCycle(async (req, res, cycle) => {
+    const p = await IvfPregnancy.findOne({ cycleId: String(cycle._id) }).lean();
+    if (!p) return res.json({ pregnancy: null });
+    const today = D.localDateStr(new Date()), ga = pregGaOn(p, today);
+    const ev = evaluatePregnancy(p);
+    res.json({ pregnancy: { gaToday: ga, gaTodayLabel: pregGaLabel(ga), edd: ev.edd, nextHcgDate: p.nextHcgDate, nextScanDate: p.nextScanDate,
+      hcgTests: (p.hcgTests || []).map(t => ({ date: t.date })), scanDates: (p.scans || []).map(s => s.date),
+      sharedNotes: (p.sharedNotes || []).slice().reverse() } });
   }));
 
   // Treatment progress for the graphs (patient's own cycle).
@@ -752,6 +788,97 @@ function mount(app, deps) {
     if (!cycle) return res.status(404).json({ message: 'Patient not found.' });
     const r = await sendCheckinPrompt(cycle);
     res.json({ message: r && r.success ? 'Check-in request sent on WhatsApp.' : 'WhatsApp could not deliver right now (the patient may need to message Biomexa first).' });
+  }));
+
+  // ---------- Early pregnancy viability (doctor decision support) ----------
+  async function pregnancyFor(cycle, create) {
+    let p = await IvfPregnancy.findOne({ cycleId: String(cycle._id) });
+    if (!p && create) p = await IvfPregnancy.create({ cycleId: String(cycle._id), patientPhone: cycle.patientPhone, doctorId: cycle.doctorId, transferDate: cycle.dates?.transferAt || undefined });
+    return p;
+  }
+  const pregPayload = p => ({ pregnancy: p, evaluation: evaluatePregnancy(p ? p.toObject() : null) });
+  const dateOnly = v => { const s = String(v || '').slice(0, 10); return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : undefined; };
+
+  app.get(`${DR}/cycles/:id/pregnancy`, doctorAuth, wrap(async (req, res) => {
+    const cycle = await doctorCycle(req);
+    if (!cycle) return res.status(404).json({ message: 'Patient not found.' });
+    const p = await pregnancyFor(cycle, false);
+    res.json({ ...pregPayload(p), suggestedTransferDate: cycle.dates?.transferAt || null });
+  }));
+  app.put(`${DR}/cycles/:id/pregnancy`, doctorAuth, wrap(async (req, res) => {
+    const cycle = await doctorCycle(req);
+    if (!cycle) return res.status(404).json({ message: 'Patient not found.' });
+    const p = await pregnancyFor(cycle, true), b = req.body || {};
+    if ('transferDate' in b) { const d = dateOnly(b.transferDate); if (!d) return res.status(400).json({ message: 'Please enter the embryo transfer date.' }); p.transferDate = new Date(`${d}T12:00:00`); }
+    if ('embryoAgeDays' in b) p.embryoAgeDays = oneOf(Number(b.embryoAgeDays), [3, 5, 6], 5);
+    if ('embryosTransferred' in b) p.embryosTransferred = num(b.embryosTransferred, 1, 4) || 1;
+    if ('nextHcgDate' in b) p.nextHcgDate = dateOnly(b.nextHcgDate) || null;
+    if ('nextScanDate' in b) p.nextScanDate = dateOnly(b.nextScanDate) || null;
+    p.updatedAt = new Date(); await p.save();
+    if (!['pregnancy_test', 'early_pregnancy', 'closed'].includes(cycle.stage)) {
+      cycle.stage = 'early_pregnancy'; cycle.stageHistory.push({ stage: 'early_pregnancy', changedAt: new Date(), by: 'doctor' }); cycle.updatedAt = new Date(); await cycle.save();
+    }
+    res.json({ message: 'Pregnancy details saved.', ...pregPayload(p) });
+  }));
+  app.post(`${DR}/cycles/:id/pregnancy/hcg`, doctorAuth, wrap(async (req, res) => {
+    const cycle = await doctorCycle(req);
+    if (!cycle) return res.status(404).json({ message: 'Patient not found.' });
+    const d = dateOnly(req.body.date), v = num(req.body.value, 0.1, 1000000);
+    if (!d || v === undefined) return res.status(400).json({ message: 'Enter the test date and the beta-hCG value (mIU/mL).' });
+    const p = await pregnancyFor(cycle, true);
+    p.hcgTests.push({ date: new Date(`${d}T12:00:00`), value: v, note: str(req.body.note, 200) });
+    p.updatedAt = new Date(); await p.save();
+    res.json({ message: 'hCG result added.', ...pregPayload(p) });
+  }));
+  app.delete(`${DR}/cycles/:id/pregnancy/hcg/:tid`, doctorAuth, wrap(async (req, res) => {
+    const cycle = await doctorCycle(req);
+    const p = cycle && await pregnancyFor(cycle, false);
+    if (!p) return res.status(404).json({ message: 'Not found.' });
+    p.hcgTests = p.hcgTests.filter(t => String(t._id) !== req.params.tid); await p.save();
+    res.json({ message: 'hCG result removed.', ...pregPayload(p) });
+  }));
+  app.post(`${DR}/cycles/:id/pregnancy/scans`, doctorAuth, wrap(async (req, res) => {
+    const cycle = await doctorCycle(req);
+    if (!cycle) return res.status(404).json({ message: 'Patient not found.' });
+    const b = req.body || {}, d = dateOnly(b.date);
+    if (!d) return res.status(400).json({ message: 'Enter the scan date.' });
+    const fetuses = (Array.isArray(b.fetuses) ? b.fetuses : []).slice(0, 4).map((f, i) => ({
+      label: ['A', 'B', 'C', 'D'][i], msdMm: num(f.msdMm, 0.5, 100), yolkSac: f.yolkSac === true ? true : f.yolkSac === false ? false : undefined,
+      yolkSacMm: num(f.yolkSacMm, 0.5, 20), embryo: f.embryo === true || num(f.crlMm, 0.5, 100) !== undefined, crlMm: num(f.crlMm, 0.5, 100),
+      heartbeat: oneOf(f.heartbeat, ['yes', 'no', 'na'], 'na'), fhrBpm: num(f.fhrBpm, 20, 250), emptyAmnion: f.emptyAmnion === true
+    }));
+    const location = oneOf(b.location, ['intrauterine', 'unknown', 'ectopic_suspected'], 'intrauterine');
+    if (!fetuses.length && location === 'intrauterine') return res.status(400).json({ message: 'Add at least one gestational sac.' });
+    const p = await pregnancyFor(cycle, true);
+    const doctor = await D.Doctor.findById(req.doctor.id).select('name');
+    p.scans.push({ date: new Date(`${d}T12:00:00`), location, fetuses, notes: str(b.notes, 1000), addedBy: doctor?.name });
+    p.updatedAt = new Date(); await p.save();
+    const payload = pregPayload(p);
+    // A suspicious or diagnostic result is added to the centre's alert queue (doctor-only).
+    const lvl = payload.evaluation.status.level;
+    if (['suspicious', 'diagnostic', 'urgent'].includes(lvl)) {
+      await IvfAlert.create({ cycleId: String(cycle._id), patientPhone: cycle.patientPhone, patientName: cycle.patientName, doctorId: cycle.doctorId, severity: lvl === 'suspicious' ? 'watch' : 'high', reasons: [`Early pregnancy: ${payload.evaluation.status.label}`], source: 'pregnancy_scan' });
+    }
+    res.json({ message: 'Scan added.', ...payload });
+  }));
+  app.delete(`${DR}/cycles/:id/pregnancy/scans/:sid`, doctorAuth, wrap(async (req, res) => {
+    const cycle = await doctorCycle(req);
+    const p = cycle && await pregnancyFor(cycle, false);
+    if (!p) return res.status(404).json({ message: 'Not found.' });
+    p.scans = p.scans.filter(t => String(t._id) !== req.params.sid); await p.save();
+    res.json({ message: 'Scan removed.', ...pregPayload(p) });
+  }));
+  // The doctor writes what the patient should hear; nothing automatic is ever sent about viability.
+  app.post(`${DR}/cycles/:id/pregnancy/share`, doctorAuth, wrap(async (req, res) => {
+    const cycle = await doctorCycle(req);
+    const p = cycle && await pregnancyFor(cycle, true);
+    if (!p) return res.status(404).json({ message: 'Patient not found.' });
+    const text = str(req.body.text, 1500);
+    if (!text) return res.status(400).json({ message: 'Write the update you want the patient to see.' });
+    const doctor = await D.Doctor.findById(req.doctor.id).select('name');
+    p.sharedNotes.push({ text, by: doctor?.name }); await p.save();
+    fire(D.sendWhatsAppFree(cycle.patientPhone, `🤰 *Update from ${doctor?.name || 'your IVF doctor'}*\n\n${text.slice(0, 900)}\n\n${ivfUrl('ivf.html')}\n- ${cycle.centerName}`));
+    res.json({ message: 'Update shared with the patient.', ...pregPayload(p) });
   }));
 
   app.post(`${DR}/cycles/:id/:decision(accept|decline)`, doctorAuth, wrap(async (req, res) => {

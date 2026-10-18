@@ -208,6 +208,7 @@
             <p class="sub">Set by your IVF centre. You also get a WhatsApp reminder at each time.</p>
             <div id="doseList"></div>
           </div>
+          <div class="card hidden" id="pregCard"></div>
           <div class="card" id="planCard"></div>
         </div>
         <form class="card" id="checkinForm">
@@ -420,7 +421,7 @@ function showMain() {
 
   const u = state.unreadMessages; $('unreadCount').textContent = u; $('unreadCount').classList.toggle('hidden', !u);
 
-  renderDoses(); renderPlan(); renderCheckinState();
+  renderDoses(); renderPlan(); renderCheckinState(); loadPregnancyCard();
 }
 
 function renderDoses() {
@@ -580,6 +581,21 @@ $('progressWaBtn').addEventListener('click', async () => {
   try { const r = await call('/api/ivf/progress/whatsapp', { method: 'POST' }); IVF.toast(r.message); } catch (err) { IVF.toast(err.message, true); }
   finally { $('progressWaBtn').disabled = false; }
 });
+
+// ---------- early pregnancy (dates + doctor's own updates only) ----------
+async function loadPregnancyCard() {
+  try {
+    const { pregnancy: p } = await call('/api/ivf/pregnancy');
+    const el = $('pregCard');
+    if (!p) { el.classList.add('hidden'); return; }
+    const next = [p.nextHcgDate && `🩸 Beta-hCG test: <b>${IVF.fmtDate(p.nextHcgDate)}</b>`, p.nextScanDate && `🩻 Scan: <b>${IVF.fmtDate(p.nextScanDate)}</b>`].filter(Boolean);
+    el.innerHTML = `<h2>🤰 Your pregnancy</h2>
+      <div class="kv">${p.gaToday !== null ? `<div>Weeks today<b>${IVF.esc(p.gaTodayLabel)}</b></div>` : ''}${p.edd ? `<div>Estimated due date<b>${IVF.fmtDate(p.edd)}</b></div>` : ''}<div>Tests recorded<b>${p.hcgTests.length} hCG · ${p.scanDates.length} scan(s)</b></div></div>
+      ${next.length ? `<p class="mt">${next.join('<br>')}</p><p class="small muted">You'll get a WhatsApp reminder that morning.</p>` : ''}
+      ${p.sharedNotes.length ? `<h3 class="mt">Updates from your doctor</h3><div class="list">${p.sharedNotes.slice(0, 3).map(n => `<div class="item"><div class="small muted">${IVF.fmtDateTime(n.at)}${n.by ? ' · ' + IVF.esc(n.by) : ''}</div><div class="pre">${IVF.esc(n.text)}</div></div>`).join('')}</div>` : '<p class="small muted mt">Your doctor will share updates here after reviewing your tests and scans.</p>'}`;
+    el.classList.remove('hidden');
+  } catch (err) { /* card stays hidden */ }
+}
 
 // ---------- tabs ----------
 const loaders = { reports: loadReports, followups: loadConsults, messages: loadMessages, history: loadHistory };
