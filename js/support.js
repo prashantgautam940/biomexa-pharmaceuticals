@@ -15,13 +15,25 @@
   ];
   const roles = [['patient', 'Patient'], ['doctor', 'Doctor'], ['ivf_patient', 'IVF patient'], ['ivf_centre', 'IVF centre'], ['visitor', 'Other']];
 
-  // Pre-fill from whoever is signed in on this browser (they can still edit it).
+  // Privacy: pre-fill ONLY inside a portal, and only for the account signed in to THAT portal
+  // right now (it has a live login token). Public pages (home, products, sign-up…) never show
+  // anyone's saved name or number — on a shared phone that would expose another patient.
+  const SESSION = {
+    patient: ['token', 'user'],
+    doctor: ['doctorToken', 'doctorProfile'],
+    ivf_centre: ['doctorToken', 'doctorProfile'],
+    ivf_patient: ['ivfToken', 'ivfUser']
+  };
   function who() {
-    const read = k => { try { return JSON.parse(localStorage.getItem(k) || 'null'); } catch { return null; } };
-    const order = role === 'doctor' || role === 'ivf_centre' ? ['doctorProfile', 'ivfUser', 'user'] : role === 'ivf_patient' ? ['ivfUser', 'user', 'doctorProfile'] : ['user', 'ivfUser', 'doctorProfile'];
-    for (const k of order) { const u = read(k); if (u && (u.name || u.phone)) return u; }
-    return {};
+    const pair = guess !== 'visitor' && SESSION[guess];
+    if (!pair) return {};
+    try {
+      if (!localStorage.getItem(pair[0])) return {};
+      const u = JSON.parse(localStorage.getItem(pair[1]) || 'null');
+      return u && typeof u === 'object' ? { name: u.name || '', phone: u.phone || '' } : {};
+    } catch { return {}; }
   }
+  const SUPPORT_EMAIL = 'biomexapharmaceuticals@gmail.com';
 
   const css = `
   .bxs-fab{position:fixed;left:16px;bottom:16px;z-index:9990;display:inline-flex;align-items:center;gap:8px;padding:11px 16px;border-radius:999px;border:1px solid #d6e0f3;background:#fff;color:#16336b;font:600 14px/1 Inter,system-ui,sans-serif;cursor:pointer;box-shadow:0 10px 28px rgba(19,33,61,.16)}
@@ -46,6 +58,8 @@
   .bxs-done .no{display:inline-block;margin:10px 0;padding:8px 14px;border-radius:10px;background:#e8f6ee;color:#11663a;font-weight:800;font-size:1.1rem;letter-spacing:.02em}
   .bxs-done p{color:#5b6b86;font-size:.9rem;line-height:1.55}
   .bxs-link{display:block;text-align:center;margin-top:10px;font-size:.82rem;color:#16336b}
+  .bxs-mail{margin:10px 0 0;text-align:center;font-size:.82rem;color:#5b6b86}
+  .bxs-mail a{color:#16336b;font-weight:600;word-break:break-all}
   @media (max-width:600px){.bxs-fab span{display:none}.bxs-fab{padding:12px}.bxs-row{grid-template-columns:1fr}}
   @media print{.bxs-fab{display:none}}`;
   const style = document.createElement('style'); style.textContent = css; document.head.appendChild(style);
@@ -61,10 +75,10 @@
   <div class="bxs-modal" role="dialog" aria-modal="true" aria-labelledby="bxsTitle">
     <form id="bxsForm" novalidate>
       <h3 id="bxsTitle">Report a problem</h3>
-      <p class="sub">Tell us what went wrong. You'll get a ticket number, and we'll reply on WhatsApp.</p>
+      <p class="sub">Tell us what went wrong. You'll get a ticket number, and we'll reply on WhatsApp. Never include passwords or OTP codes.</p>
       <div class="bxs-row">
-        <div class="bxs-f"><label for="bxsName">Your name</label><input id="bxsName" autocomplete="name" required></div>
-        <div class="bxs-f"><label for="bxsPhone">WhatsApp number</label><input id="bxsPhone" type="tel" inputmode="tel" autocomplete="tel" placeholder="98765 43210" required></div>
+        <div class="bxs-f"><label for="bxsName">Your name</label><input id="bxsName" autocomplete="off" required></div>
+        <div class="bxs-f"><label for="bxsPhone">WhatsApp number</label><input id="bxsPhone" type="tel" inputmode="tel" autocomplete="off" placeholder="98765 43210" required></div>
       </div>
       <div class="bxs-row">
         <div class="bxs-f"><label for="bxsRole">I am a</label><select id="bxsRole">${roles.map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select></div>
@@ -77,6 +91,7 @@
         <button type="button" class="bxs-btn ghost" data-close>Cancel</button>
         <button type="submit" class="bxs-btn" id="bxsSend">Send report</button>
       </div>
+      <p class="bxs-mail">Prefer email? Write to <a href="mailto:biomexapharmaceuticals@gmail.com?subject=Biomexa%20support%20request">biomexapharmaceuticals@gmail.com</a></p>
       <a class="bxs-link" href="${location.pathname.includes('/products/') ? '../' : ''}support.html#status">Check an existing ticket</a>
     </form>
     <div class="bxs-done" id="bxsDone" hidden>
@@ -84,6 +99,7 @@
       <h3>Ticket raised</h3>
       <div class="no" id="bxsNo"></div>
       <p>We've sent the ticket number to your WhatsApp and will reply there. Keep the number to check the status later.</p>
+      <p class="bxs-mail" id="bxsMailDone"></p>
       <div class="bxs-actions" style="justify-content:center"><button type="button" class="bxs-btn" data-close>Done</button></div>
     </div>
   </div>`;
@@ -91,8 +107,8 @@
   function open() {
     const u = who();
     const $ = id => bg.querySelector('#' + id);
-    if (!$('bxsName').value) $('bxsName').value = u.name || '';
-    if (!$('bxsPhone').value) $('bxsPhone').value = (u.phone || '').replace(/^\+91\s?/, '');
+    $('bxsName').value = u.name || '';
+    $('bxsPhone').value = String(u.phone || '').replace(/^\+91\s?/, '');
     $('bxsRole').value = role;
     if (role.startsWith('ivf')) $('bxsCat').value = 'ivf';
     $('bxsForm').hidden = false; $('bxsDone').hidden = true; $('bxsErr').textContent = '';
@@ -125,7 +141,8 @@
       if (!r.ok) throw new Error(d.message || 'Could not send your report. Please try again.');
       $('bxsNo').textContent = d.ticketNo;
       $('bxsForm').hidden = true; $('bxsDone').hidden = false;
-      $('bxsSubject').value = ''; $('bxsMsg').value = '';
+      ['bxsName', 'bxsPhone', 'bxsSubject', 'bxsMsg'].forEach(id => { $(id).value = ''; });
+      $('bxsMailDone').innerHTML = `Need to send a file or screenshot? Email <a href="mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent('Ticket ' + d.ticketNo)}">${SUPPORT_EMAIL}</a> with your ticket number.`;
     } catch (ex) {
       err.textContent = /fetch|network/i.test(ex.message) ? 'Could not connect — check your internet and try again.' : ex.message;
     } finally {
