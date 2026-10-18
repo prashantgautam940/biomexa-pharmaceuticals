@@ -3704,8 +3704,10 @@ app.post('/api/webhooks/msg91-whatsapp', async (req, res) => {
       return;
     }
 
-    // IVF Care replies (IVF medicine / trigger-shot "Taken" buttons) are handled by the IVF module.
-    if (convo && typeof convo.state === 'string' && convo.state.startsWith('ivf_')) {
+    // IVF Care replies (IVF medicine / trigger-shot buttons, WhatsApp check-ins, and the CHECKIN /
+    // PROGRESS keywords) are handled by the IVF module.
+    const ivfKeyword = /^\s*(check\s*-?\s*in|checkin|progress|my progress|summary)\s*$/i.test(freeText || buttonText || '');
+    if ((convo && typeof convo.state === 'string' && convo.state.startsWith('ivf_')) || ivfKeyword) {
       if (await ivfCare.handleWhatsAppReply({ phone, convo, buttonText, freeText })) return;
     }
 

@@ -44,6 +44,7 @@ const ivfCenterSchema = new mongoose.Schema({
   consultationModes: { type: [String], default: ['video', 'audio', 'chat'] },
   about: String,
   acceptingPatients: { type: Boolean, default: true },
+  lastDigestDate: String, // YYYY-MM-DD of the last daily WhatsApp digest sent to the doctor
   createdAt: { type: Date, default: Date.now }
 }, { collection: 'ivf_centers' });
 
@@ -81,6 +82,7 @@ const ivfCycleSchema = new mongoose.Schema({
   riskLevel: { type: String, default: 'normal' }, // normal | watch | high | critical (latest)
   lastCheckInAt: Date,
   lastNudgeDate: String, // YYYY-MM-DD of the last "please do today's check-in" WhatsApp nudge
+  lastProgressSummaryAt: Date, // last weekly WhatsApp progress summary
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
 }, { collection: 'ivf_cycles' });

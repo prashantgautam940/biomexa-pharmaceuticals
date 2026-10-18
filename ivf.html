@@ -196,7 +196,7 @@
       <button class="tab" data-tab="reports" role="tab">Reports</button>
       <button class="tab" data-tab="followups" role="tab">Virtual follow-ups</button>
       <button class="tab" data-tab="messages" role="tab">Messages <span class="count hidden" id="unreadCount"></span></button>
-      <button class="tab" data-tab="history" role="tab">My history</button>
+      <button class="tab" data-tab="history" role="tab">My progress</button>
     </div>
 
     <!-- TODAY -->
@@ -235,6 +235,7 @@
           <div class="field"><label for="cNotes">Notes for your doctor</label><textarea id="cNotes" maxlength="1000"></textarea></div>
           <div id="checkinResult"></div>
           <button class="btn btn-primary" id="checkinBtn" type="submit">Save today's check-in</button>
+          <p class="small muted mt">💬 You can also check in on WhatsApp: reply to the evening reminder, or send <b>CHECKIN</b> to Biomexa.</p>
           <p class="small muted mt">Severe pain, trouble breathing, fainting or heavy bleeding? Don't wait for a reply — call your IVF centre or go to the nearest emergency department.</p>
         </form>
       </div>
@@ -287,7 +288,12 @@
 
     <!-- HISTORY -->
     <div class="tab-panel hidden" id="tab-history">
-      <div class="card"><h2>Weight trend</h2><p class="sub">A fast rise during stimulation can be an early warning sign — your centre watches this.</p><div id="weightChart"></div></div>
+      <div class="spread" style="margin-bottom:12px">
+        <div><h2 style="font-size:20px">Your treatment progress</h2><p class="sub" style="margin:2px 0 0">How your readings and results have changed through each stage of the cycle. Hover or tap a graph to see each day.</p></div>
+        <button class="btn btn-ghost btn-sm" id="progressWaBtn" type="button">Send summary to my WhatsApp</button>
+      </div>
+      <div id="progressView"><div class="empty">Loading your progress…</div></div>
+      <div class="notice info">💬 <b>Check in on WhatsApp too.</b> Reply to the evening reminder with your readings, for example <b>61.5 kg, pain 3, bloating mild</b>, or send <b>CHECKIN</b> any time. Send <b>PROGRESS</b> to get this summary on WhatsApp.</div>
       <div class="card"><h2>Past check-ins</h2><div id="logList" class="list mt"></div></div>
     </div>
   </section>
@@ -296,6 +302,7 @@
 </main>
 
 <script src="js/ivf-common.js"></script>
+<script src="js/ivf-charts.js"></script>
 <script>
 // IVF Care has its own login session, separate from the main patient portal.
 const token = localStorage.getItem('ivfToken');
@@ -558,15 +565,21 @@ $('msgText').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shif
 
 // ---------- history ----------
 async function loadHistory() {
-  const logs = await call('/api/ivf/logs');
-  $('weightChart').innerHTML = IVF.sparkline(logs.slice().reverse().map(l => ({ t: l.createdAt, v: l.vitals?.weightKg })), ' kg');
+  const [pr, logs] = await Promise.all([call('/api/ivf/progress'), call('/api/ivf/logs')]);
+  IVFCharts.renderProgress($('progressView'), pr, { audience: 'patient' });
   $('logList').innerHTML = logs.length ? logs.map(l => {
     const worst = (l.flags || []).reduce((a, f) => ({ critical: 3, high: 2, watch: 1 }[f.severity] > ({ critical: 3, high: 2, watch: 1 }[a] || 0) ? f.severity : a), null);
-    return `<div class="item ${worst === 'critical' ? 'critical' : worst ? 'flagged' : ''}"><div class="spread"><b>${IVF.fmtDateTime(l.createdAt)}</b>${worst ? IVF.sevBadge(worst) : ''}</div>
+    return `<div class="item ${worst === 'critical' ? 'critical' : worst ? 'flagged' : ''}"><div class="spread"><b>${IVF.fmtDateTime(l.createdAt)}${l.source === 'whatsapp' ? ' <span class="badge b-ok">via WhatsApp</span>' : ''}</b>${worst ? IVF.sevBadge(worst) : ''}</div>
       <div class="small mt">${IVF.esc(IVF.logSummary(l)) || '—'}</div>${l.notes ? `<div class="small muted mt">“${IVF.esc(l.notes)}”</div>` : ''}
       ${(l.flags || []).length ? `<div class="small mt" style="color:var(--high)">${l.flags.map(f => IVF.esc(f.message)).join(' · ')}</div>` : ''}</div>`;
   }).join('') : '<div class="empty">No check-ins yet.</div>';
 }
+
+$('progressWaBtn').addEventListener('click', async () => {
+  $('progressWaBtn').disabled = true;
+  try { const r = await call('/api/ivf/progress/whatsapp', { method: 'POST' }); IVF.toast(r.message); } catch (err) { IVF.toast(err.message, true); }
+  finally { $('progressWaBtn').disabled = false; }
+});
 
 // ---------- tabs ----------
 const loaders = { reports: loadReports, followups: loadConsults, messages: loadMessages, history: loadHistory };

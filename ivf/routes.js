@@ -16,6 +16,7 @@ const {
   IvfCenter, IvfCycle, IvfMedication, IvfDose, IvfDailyLog, IvfReport, IvfConsult, IvfMessage, IvfAlert
 } = require('./models');
 const { evaluateDailyLog, SEVERITY_RANK, maxSeverity } = require('./redflags');
+const { buildProgress } = require('./progress');
 
 const STAGE_LABEL = Object.fromEntries(IVF_STAGES.map(s => [s.key, s.label]));
 const CONSENT_TEXT = 'I agree that Biomexa and my chosen IVF centre may store and use my treatment, symptom, vitals and report information to monitor my IVF treatment and contact me on WhatsApp. I understand this monitoring supports, but does not replace, in-person care and emergency services.';
@@ -149,7 +150,38 @@ async function sendIvfDoseReminder(dose, kind) {
 }
 
 // Called from the shared MSG91 webhook when the conversation state belongs to IVF.
+async function activeCycleFor(phone) {
+  return IvfCycle.findOne({ patientPhone: { $in: D.phoneVariants(phone) }, status: 'active' }).sort({ createdAt: -1 });
+}
 async function handleWhatsAppReply({ phone, convo, buttonText, freeText }) {
+  const text = String(buttonText || freeText || '').trim();
+  // Keywords work at any time for patients in an active IVF cycle.
+  if (/^(check\s*-?\s*in|checkin|log|daily check\s*-?\s*in)$/i.test(text) || /^(progress|summary|my progress)$/i.test(text)) {
+    const cycle = await activeCycleFor(phone);
+    if (!cycle) return false;
+    if (/progress|summary/i.test(text)) await sendPatientProgress(cycle);
+    else await sendCheckinPrompt(cycle);
+    return true;
+  }
+  if (convo && convo.state === 'ivf_awaiting_checkin') {
+    const clear = () => D.ConversationState.findOneAndUpdate({ patientPhone: convo.patientPhone }, { state: null, doseId: null, updatedAt: new Date() });
+    const cycle = await activeCycleFor(phone);
+    if (!cycle) { await clear(); return false; }
+    if (/^skip$/i.test(text)) { await clear(); await D.sendWhatsAppFree(phone, 'No problem. Reply *CHECKIN* when you are ready.'); return true; }
+    const { vitals, symptoms } = parseCheckinText(freeText || buttonText);
+    if (!hasCheckinData(vitals, symptoms)) {
+      await D.sendWhatsAppFree(phone, "Sorry, I couldn't read that. Please reply like *61.5 kg, pain 3, bloating mild*, or *FINE* if you have no symptoms. Reply *SKIP* to do it later.");
+      return true;
+    }
+    const r = await saveCheckin(cycle, vitals, symptoms, `WhatsApp: ${String(freeText || '').slice(0, 300)}`, 'whatsapp');
+    await clear();
+    const change = Number.isFinite(vitals.weightKg) && Number.isFinite(r.prevWeight) ? ` (${vitals.weightKg - r.prevWeight >= 0 ? '+' : ''}${(vitals.weightKg - r.prevWeight).toFixed(1)} kg since last check-in)` : '';
+    // A warning-sign check-in already sent its own alert message through raiseAlert().
+    if (!r.severity || r.severity === 'watch') {
+      await D.sendWhatsAppFree(phone, `✅ Check-in saved: ${checkinSummaryLine(vitals, symptoms)}${change}.\n\n${CHECKIN_ADVICE[r.severity || 'none']}\n\nSee your graphs: ${ivfUrl('ivf.html')}`);
+    }
+    return true;
+  }
   if (!convo || convo.state !== 'ivf_awaiting_dose') return false;
   const reply = (buttonText || freeText || '').toLowerCase();
   const dose = isId(convo.doseId) ? await IvfDose.findById(convo.doseId) : null;
@@ -183,6 +215,139 @@ async function handleWhatsAppReply({ phone, convo, buttonText, freeText }) {
   }
   await D.sendWhatsAppFree(phone, 'Please reply *TAKEN*, *NOT TAKEN* or *LATER* for your IVF medicine.');
   return true;
+}
+
+// ---------- daily check-in (shared by the web form and WhatsApp replies) ----------
+function hasCheckinData(vitals, symptoms) {
+  return Object.values(vitals).some(v => v !== undefined) || Object.values(symptoms).some(v => v !== undefined && v !== false);
+}
+async function saveCheckin(cycle, vitals, symptoms, notes, source = 'web') {
+  const recent = await IvfDailyLog.find({ cycleId: String(cycle._id) }).sort({ createdAt: -1 }).limit(10);
+  const draft = { vitals, symptoms, stage: cycle.stage, createdAt: new Date() };
+  const { flags, severity } = evaluateDailyLog(draft, recent, cycle);
+  const log = await IvfDailyLog.create({
+    cycleId: String(cycle._id), patientPhone: cycle.patientPhone, stage: cycle.stage,
+    logDate: D.localDateStr(new Date()), vitals, symptoms, notes, flags, source
+  });
+  const update = { lastCheckInAt: new Date(), updatedAt: new Date() };
+  if (!severity && cycle.riskLevel !== 'normal') {
+    // Clear an old risk level only once the centre has acknowledged every alert.
+    const open = await IvfAlert.exists({ cycleId: String(cycle._id), acknowledged: false });
+    if (!open) update.riskLevel = 'normal';
+  }
+  await IvfCycle.updateOne({ _id: cycle._id }, update);
+  let alert = null;
+  if (severity && cycle.status === 'active') alert = await raiseAlert(cycle, severity, flags.map(f => f.message), 'daily_log', String(log._id));
+  else if (severity) alert = await IvfAlert.create({ cycleId: String(cycle._id), patientPhone: cycle.patientPhone, patientName: cycle.patientName, doctorId: cycle.doctorId, severity, reasons: flags.map(f => f.message), source: 'daily_log', logId: String(log._id) });
+  const prev = recent.find(r => r.vitals && Number.isFinite(r.vitals.weightKg));
+  return { log, flags, severity, alert, prevWeight: prev ? prev.vitals.weightKg : null };
+}
+const CHECKIN_ADVICE = {
+  critical: 'Some of your answers need urgent attention. Please call your IVF centre now. If you have severe pain, trouble breathing or heavy bleeding, go to the nearest emergency department.',
+  high: 'Your IVF centre has been alerted. Please call them today to discuss these symptoms.',
+  watch: 'Saved. Your IVF centre will see a note about this on their dashboard.',
+  none: 'Saved — thank you. Everything you reported is within the usual range.'
+};
+
+// Reads a free-text WhatsApp check-in such as
+//   "61.5 kg, pain 3, bloating mild, temp 98.6"  or  "W 61.5 P3 BP 118/76"  or  "fine"
+// Returns { vitals, symptoms } with only the fields the patient actually mentioned.
+function parseCheckinText(raw) {
+  const t = ' ' + String(raw || '').toLowerCase().replace(/[,;]+/g, ' ').replace(/\s+/g, ' ') + ' ';
+  const n = (re, min, max) => { const m = t.match(re); if (!m) return undefined; const v = parseFloat(m[1]); return v >= min && v <= max ? v : undefined; };
+  const vitals = {}, symptoms = {};
+  vitals.weightKg = n(/\b(?:w|wt|weight)\s*[:=-]?\s*(\d{2,3}(?:\.\d+)?)/, 30, 200) ?? n(/(\d{2,3}(?:\.\d+)?)\s*kgs?\b/, 30, 200);
+  let temp = n(/\b(?:t|temp|temperature|fever)\s*[:=-]?\s*(\d{2,3}(?:\.\d+)?)/, 30, 110) ?? n(/(\d{2,3}(?:\.\d+)?)\s*°?\s*(?:f|c)\b/, 30, 110);
+  if (temp !== undefined && temp < 45) temp = +(temp * 9 / 5 + 32).toFixed(1);
+  if (temp !== undefined && temp >= 90) vitals.temperatureF = temp;
+  const bp = t.match(/(\d{2,3})\s*\/\s*(\d{2,3})/);
+  if (bp && +bp[1] >= 60 && +bp[1] <= 260 && +bp[2] >= 30 && +bp[2] <= 160) { vitals.bpSystolic = +bp[1]; vitals.bpDiastolic = +bp[2]; }
+  vitals.heartRate = n(/\b(?:pulse|hr|heart rate)\s*[:=-]?\s*(\d{2,3})/, 30, 220);
+  vitals.abdominalGirthCm = n(/\b(?:girth|waist|tummy|abdomen)\s*[:=-]?\s*(\d{2,3}(?:\.\d+)?)/, 40, 200);
+  symptoms.painScore = n(/\b(?:pain|p)\s*[:=-]?\s*(\d{1,2})(?:\s*\/\s*10)?\b/, 0, 10);
+  const bl = t.match(/\b(no|none|mild|moderate|severe|bad|heavy)\s+bloat/) || t.match(/\bbloat\w*\s*[:=-]?\s*(no|none|mild|moderate|severe|bad|heavy)\b/);
+  if (bl) symptoms.bloating = { no: 'none', none: 'none', mild: 'mild', moderate: 'moderate', severe: 'severe', bad: 'severe', heavy: 'severe' }[bl[1]];
+  else if (/\bbloat/.test(t)) symptoms.bloating = 'mild';
+  if (/vomit/.test(t)) symptoms.nausea = 'vomiting'; else if (/\bnause|\bnausea/.test(t) && !/\bno nausea/.test(t)) symptoms.nausea = 'mild';
+  if (/heavy (?:bleed|blood)|bleeding heavy/.test(t)) symptoms.bleeding = 'heavy';
+  else if (/spotting/.test(t) && !/no spotting/.test(t)) symptoms.bleeding = 'spotting';
+  else if (/(?:light )?bleed/.test(t) && !/no bleed/.test(t)) symptoms.bleeding = 'light';
+  if (/breath/.test(t) && !/\bno (?:short(?:ness)? of )?breath/.test(t)) symptoms.breathlessness = true;
+  if (/(?:less|low|reduced|little|no) urine|not passing urine|urine (?:less|low|reduced)/.test(t)) symptoms.reducedUrine = true;
+  if (/headache/.test(t) && !/no headache/.test(t)) symptoms.headache = true;
+  const mood = t.match(/\bmood\s*[:=-]?\s*(very low|good|okay|ok|low)\b/) || t.match(/\bfeeling\s+(very low|good|okay|ok|low)\b/);
+  if (mood) symptoms.mood = { 'very low': 'very_low', good: 'good', okay: 'okay', ok: 'okay', low: 'low' }[mood[1]];
+  // "fine" / "all good" / "no symptoms" on its own = nothing to report today
+  if (/^\s*(fine|all good|all ok|ok|okay|good|normal|no symptoms|no problem|nothing)\s*[.!]?\s*$/.test(String(raw || '').toLowerCase())) {
+    Object.assign(symptoms, { painScore: 0, bloating: 'none', bleeding: 'none', nausea: 'none', mood: symptoms.mood || 'good' });
+  }
+  for (const o of [vitals, symptoms]) for (const k of Object.keys(o)) if (o[k] === undefined) delete o[k];
+  return { vitals, symptoms };
+}
+function checkinSummaryLine(vitals, symptoms) {
+  return [
+    vitals.weightKg && `Weight ${vitals.weightKg} kg`, vitals.temperatureF && `Temp ${vitals.temperatureF}°F`,
+    vitals.bpSystolic && `BP ${vitals.bpSystolic}/${vitals.bpDiastolic}`, vitals.heartRate && `Pulse ${vitals.heartRate}`,
+    vitals.abdominalGirthCm && `Girth ${vitals.abdominalGirthCm} cm`, Number.isFinite(symptoms.painScore) && `Pain ${symptoms.painScore}/10`,
+    symptoms.bloating && `Bloating ${symptoms.bloating}`, symptoms.nausea && symptoms.nausea !== 'none' && `Nausea: ${symptoms.nausea}`,
+    symptoms.bleeding && symptoms.bleeding !== 'none' && `Bleeding: ${symptoms.bleeding}`, symptoms.breathlessness && 'Breathless',
+    symptoms.reducedUrine && 'Less urine', symptoms.headache && 'Headache', symptoms.mood && `Mood ${symptoms.mood.replace('_', ' ')}`
+  ].filter(Boolean).join(', ');
+}
+const CHECKIN_PROMPT = `📋 *IVF daily check-in*\n\nReply in one message with whatever you have, for example:\n\n*61.5 kg, pain 3, bloating mild, temp 98.6*\n\nYou can also add BP (118/76), waist (cm), bleeding, vomiting, breathless or less urine.\nNo symptoms today? Reply *FINE*. Reply *SKIP* to do it later.`;
+async function sendCheckinPrompt(cycle) {
+  await D.ConversationState.findOneAndUpdate({ patientPhone: cycle.patientPhone }, { state: 'ivf_awaiting_checkin', doseId: null, updatedAt: new Date() }, { upsert: true });
+  return D.sendWhatsAppFree(cycle.patientPhone, CHECKIN_PROMPT);
+}
+
+// ---------- WhatsApp progress messages ----------
+function progressMessage(cycle, pr) {
+  const s = pr.summary, lines = [];
+  lines.push(`📈 *Your IVF progress* · Day ${pr.dayNo} · ${pr.stage.label}`);
+  if (s.latestWeight !== null) lines.push(`⚖️ Weight ${s.latestWeight} kg${s.weightChange !== null ? ` (${s.weightChange > 0 ? '+' : ''}${s.weightChange} kg since start)` : ''}`);
+  if (s.adherencePct !== null) lines.push(`💉 Medicines taken: ${s.adherencePct}%`);
+  lines.push(`📋 Check-ins: ${s.checkinDays7} of the last ${s.expected7} days`);
+  const notable = pr.insights.filter(i => i.tone === 'bad' || i.tone === 'watch').slice(0, 2);
+  for (const i of notable) lines.push(`⚠️ ${i.text}`);
+  const labs = pr.insights.filter(i => /latest report/.test(i.text)).slice(0, 2);
+  for (const i of labs) lines.push(`🔬 ${i.text.replace(' (latest report).', '')}`);
+  lines.push('', `See your graphs: ${ivfUrl('ivf.html')}`, 'Reply *CHECKIN* any time to log today, or *PROGRESS* for this summary.', '- Biomexa IVF Care');
+  return lines.join('\n');
+}
+async function sendPatientProgress(cycle) {
+  const pr = await buildProgress(cycle);
+  return D.sendWhatsAppFree(cycle.patientPhone, progressMessage(cycle, pr));
+}
+async function sendDoctorDigest(center, today) {
+  const doctor = isId(center.doctorId) ? await D.Doctor.findById(center.doctorId).select('name phone') : null;
+  if (!doctor) return;
+  const cycles = await IvfCycle.find({ doctorId: center.doctorId, status: 'active' }).limit(300);
+  if (!cycles.length) return;
+  const yesterday = D.localDateStr(new Date(Date.now() - 864e5));
+  const ids = cycles.map(c => String(c._id));
+  const [checked, alerts, reports, consults, pending] = await Promise.all([
+    IvfDailyLog.distinct('cycleId', { cycleId: { $in: ids }, logDate: { $in: [yesterday, today] } }),
+    IvfAlert.find({ doctorId: center.doctorId, acknowledged: false }).select('patientName severity'),
+    IvfReport.countDocuments({ doctorId: center.doctorId, reviewStatus: 'awaiting_review' }),
+    IvfConsult.countDocuments({ doctorId: center.doctorId, status: 'scheduled', scheduledAt: { $gte: new Date(`${today}T00:00:00`), $lt: new Date(`${today}T23:59:59`) } }),
+    IvfCycle.countDocuments({ doctorId: center.doctorId, status: 'pending' })
+  ]);
+  const trends = [];
+  for (const c of cycles) {
+    if (trends.length >= 5) break;
+    const pr = await buildProgress(c);
+    const worst = pr.insights.find(i => i.tone === 'bad') || pr.insights.find(i => i.tone === 'watch' && !/checked in/.test(i.text));
+    if (worst) trends.push(`• ${c.patientName || c.patientPhone}: ${worst.text}`);
+  }
+  const missing = cycles.filter(c => !checked.includes(String(c._id))).map(c => c.patientName || c.patientPhone);
+  const lines = [`🩺 *IVF daily digest* · ${center.centerName}`, `Active patients: ${cycles.length} · Checked in (since yesterday): ${checked.length}`];
+  if (alerts.length) lines.push(`🚨 Open alerts: ${alerts.length} (${[...new Set(alerts.map(a => a.patientName).filter(Boolean))].slice(0, 3).join(', ')})`);
+  if (trends.length) lines.push('', '⚠️ *Trends to watch*', ...trends);
+  if (missing.length) lines.push('', `📋 No check-in: ${missing.slice(0, 5).join(', ')}${missing.length > 5 ? ` +${missing.length - 5} more` : ''}`);
+  const todo = [reports && `${reports} report(s) to review`, consults && `${consults} follow-up(s) today`, pending && `${pending} new request(s)`].filter(Boolean);
+  if (todo.length) lines.push(`📄 ${todo.join(' · ')}`);
+  lines.push('', `Open dashboard: ${ivfUrl('ivf-doctor.html')}`);
+  return D.sendWhatsAppFree(doctor.phone, lines.join('\n'));
 }
 
 // ---------- scheduler ----------
@@ -241,7 +406,29 @@ async function ivfTick() {
       const logged = await IvfDailyLog.exists({ cycleId: String(cycle._id), logDate: today });
       const claimed = await IvfCycle.findOneAndUpdate({ _id: cycle._id, lastNudgeDate: { $ne: today } }, { lastNudgeDate: today });
       if (!claimed || logged) continue;
-      fire(D.sendWhatsAppFree(cycle.patientPhone, `🌙 Hi ${cycle.patientName || ''}, time for today's IVF check-in (takes 1 minute): weight, pain, bloating and any symptoms.\n\n${ivfUrl('ivf.html')}\n\n- Biomexa IVF Care`));
+      fire((async () => {
+        await D.ConversationState.findOneAndUpdate({ patientPhone: cycle.patientPhone }, { state: 'ivf_awaiting_checkin', doseId: null, updatedAt: new Date() }, { upsert: true });
+        return D.sendWhatsAppFree(cycle.patientPhone, `🌙 Hi ${cycle.patientName || ''}, time for today's IVF check-in.\n\nJust reply here, for example:\n*61.5 kg, pain 3, bloating mild*\n(or *FINE* if you have no symptoms)\n\nOr use the app: ${ivfUrl('ivf.html')}\n\n- Biomexa IVF Care`);
+      })());
+    }
+  }
+
+  // Weekly progress summary for each patient (10 AM–12 PM, once every 7 days).
+  if (hour >= 10 && hour < 12) {
+    const weekAgo = new Date(now - 7 * 864e5);
+    const due = await IvfCycle.find({ status: 'active', createdAt: { $lte: weekAgo }, $or: [{ lastProgressSummaryAt: { $exists: false } }, { lastProgressSummaryAt: null }, { lastProgressSummaryAt: { $lte: weekAgo } }] }).limit(200);
+    for (const cycle of due) {
+      const claimed = await IvfCycle.findOneAndUpdate({ _id: cycle._id, $or: [{ lastProgressSummaryAt: { $exists: false } }, { lastProgressSummaryAt: null }, { lastProgressSummaryAt: { $lte: weekAgo } }] }, { lastProgressSummaryAt: now });
+      if (claimed) fire(sendPatientProgress(cycle));
+    }
+  }
+
+  // Daily digest for each IVF centre doctor (8–10 AM): alerts, worrying trends, missing check-ins.
+  if (hour >= 8 && hour < 10) {
+    const centers = await IvfCenter.find({ lastDigestDate: { $ne: today } }).limit(200);
+    for (const c of centers) {
+      const claimed = await IvfCenter.findOneAndUpdate({ _id: c._id, lastDigestDate: { $ne: today } }, { lastDigestDate: today });
+      if (claimed) fire(sendDoctorDigest(c, today));
     }
   }
 }
@@ -359,35 +546,19 @@ function mount(app, deps) {
       injectionSiteReaction: b.injectionSiteReaction === true,
       mood: oneOf(b.mood, ['good', 'okay', 'low', 'very_low'], undefined)
     };
-    const hasData = Object.values(vitals).some(v => v !== undefined) || Object.values(symptoms).some(v => v !== undefined && v !== false);
-    if (!hasData) return res.status(400).json({ message: 'Please fill in at least one reading or symptom.' });
+    if (!hasCheckinData(vitals, symptoms)) return res.status(400).json({ message: 'Please fill in at least one reading or symptom.' });
+    const { log, flags, severity, alert } = await saveCheckin(cycle, vitals, symptoms, str(b.notes, 1000), 'web');
+    res.json({ message: CHECKIN_ADVICE[severity || 'none'], log, severity, flags, alertId: alert?._id || null });
+  }));
 
-    const recent = await IvfDailyLog.find({ cycleId: String(cycle._id) }).sort({ createdAt: -1 }).limit(10);
-    const draft = { vitals, symptoms, stage: cycle.stage, createdAt: new Date() };
-    const { flags, severity } = evaluateDailyLog(draft, recent, cycle);
-    const log = await IvfDailyLog.create({
-      cycleId: String(cycle._id), patientPhone: cycle.patientPhone, stage: cycle.stage,
-      logDate: D.localDateStr(new Date()), vitals, symptoms, notes: str(b.notes, 1000), flags
-    });
-    const update = { lastCheckInAt: new Date(), updatedAt: new Date() };
-    if (!severity && cycle.riskLevel !== 'normal') {
-      // Clear an old risk level only once the centre has acknowledged every alert.
-      const open = await IvfAlert.exists({ cycleId: String(cycle._id), acknowledged: false });
-      if (!open) update.riskLevel = 'normal';
-    }
-    await IvfCycle.updateOne({ _id: cycle._id }, update);
-    let alert = null;
-    if (severity && cycle.status === 'active') alert = await raiseAlert(cycle, severity, flags.map(f => f.message), 'daily_log', String(log._id));
-    else if (severity) alert = await IvfAlert.create({ cycleId: String(cycle._id), patientPhone: cycle.patientPhone, patientName: cycle.patientName, doctorId: cycle.doctorId, severity, reasons: flags.map(f => f.message), source: 'daily_log', logId: String(log._id) });
-
-    const advice = severity === 'critical'
-      ? 'Some of your answers need urgent attention. Please call your IVF centre now. If you have severe pain, trouble breathing or heavy bleeding, go to the nearest emergency department.'
-      : severity === 'high'
-        ? 'Your IVF centre has been alerted. Please call them today to discuss these symptoms.'
-        : severity === 'watch'
-          ? 'Saved. Your IVF centre will see a note about this on their dashboard.'
-          : 'Saved — thank you. Everything you reported is within the usual range.';
-    res.json({ message: advice, log, severity, flags, alertId: alert?._id || null });
+  // Treatment progress for the graphs (patient's own cycle).
+  app.get(`${R}/progress`, auth, withCycle(async (req, res, cycle) => {
+    res.json(await buildProgress(cycle));
+  }));
+  // Send my progress summary to my WhatsApp now.
+  app.post(`${R}/progress/whatsapp`, auth, withCycle(async (req, res, cycle) => {
+    const r = await sendPatientProgress(cycle);
+    res.json({ message: r && r.success ? 'Progress summary sent to your WhatsApp.' : 'Could not send on WhatsApp right now. Message "Hi" to Biomexa on WhatsApp first, then try again.' });
   }));
 
   app.get(`${R}/logs`, auth, withCycle(async (req, res, cycle) => {
@@ -565,6 +736,24 @@ function mount(app, deps) {
     res.json({ cycle, stage: stageInfo(cycle.stage), medications: meds, doses, logs, reports, consults, alerts, adherence });
   }));
 
+  app.get(`${DR}/cycles/:id/progress`, doctorAuth, wrap(async (req, res) => {
+    const cycle = await doctorCycle(req);
+    if (!cycle) return res.status(404).json({ message: 'Patient not found.' });
+    res.json(await buildProgress(cycle));
+  }));
+  app.post(`${DR}/cycles/:id/progress/whatsapp`, doctorAuth, wrap(async (req, res) => {
+    const cycle = await doctorCycle(req);
+    if (!cycle) return res.status(404).json({ message: 'Patient not found.' });
+    const r = await sendPatientProgress(cycle);
+    res.json({ message: r && r.success ? 'Progress summary sent to the patient on WhatsApp.' : 'WhatsApp could not deliver right now (the patient may need to message Biomexa first).' });
+  }));
+  app.post(`${DR}/cycles/:id/checkin-request`, doctorAuth, wrap(async (req, res) => {
+    const cycle = await doctorCycle(req);
+    if (!cycle) return res.status(404).json({ message: 'Patient not found.' });
+    const r = await sendCheckinPrompt(cycle);
+    res.json({ message: r && r.success ? 'Check-in request sent on WhatsApp.' : 'WhatsApp could not deliver right now (the patient may need to message Biomexa first).' });
+  }));
+
   app.post(`${DR}/cycles/:id/:decision(accept|decline)`, doctorAuth, wrap(async (req, res) => {
     const cycle = await doctorCycle(req);
     if (!cycle) return res.status(404).json({ message: 'Patient not found.' });
@@ -686,7 +875,7 @@ function mount(app, deps) {
       needsFollowUp: req.body.needsFollowUp === true, reviewStatus: 'reviewed', reviewedBy: doctor?.name, reviewedAt: new Date()
     });
     await report.save();
-    fire(D.sendWhatsAppFree(report.patientPhone, `🩺 *Your IVF report has been reviewed*\n\n${report.title}\n\n*Findings:* ${findings.slice(0, 500)}${report.doctorAdvice ? `\n\n*Advice:* ${report.doctorAdvice.slice(0, 400)}` : ''}${report.needsFollowUp ? '\n\n📅 Your doctor would like a follow-up — please book one in the app.' : ''}\n\n${ivfUrl('ivf.html')}\n- ${doctor?.name || 'Your IVF centre'}`));
+    fire(D.sendWhatsAppFree(report.patientPhone, `🩺 *Your IVF report has been reviewed*\n\n${report.title}\n\n*Findings:* ${findings.slice(0, 500)}${report.doctorAdvice ? `\n\n*Advice:* ${report.doctorAdvice.slice(0, 400)}` : ''}${report.needsFollowUp ? '\n\n📅 Your doctor would like a follow-up — please book one in the app.' : ''}${Object.keys(values).length ? '\n\n📈 Your graphs are updated with these values.' : ''}\n\n${ivfUrl('ivf.html')}\n- ${doctor?.name || 'Your IVF centre'}`));
     const out = report.toObject(); out.files = out.files.map(f => ({ fileName: f.fileName, fileType: f.fileType }));
     res.json({ message: 'Analysis saved and shared with the patient.', report: out });
   }));
@@ -769,4 +958,4 @@ function mount(app, deps) {
   console.log('🧬 Biomexa IVF Care module mounted at /api/ivf');
 }
 
-module.exports = { mount, handleWhatsAppReply, ivfTick, generateAllDoses };
+module.exports = { mount, handleWhatsAppReply, ivfTick, generateAllDoses, parseCheckinText, buildProgress, sendDoctorDigest, sendPatientProgress };

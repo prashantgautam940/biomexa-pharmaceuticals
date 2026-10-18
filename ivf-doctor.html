@@ -231,7 +231,7 @@
     <div id="dPending"></div>
     <div class="tabs" role="tablist">
       <button class="tab active" data-ptab="plan">Treatment plan</button>
-      <button class="tab" data-ptab="checkins">Check-ins</button>
+      <button class="tab" data-ptab="checkins">Progress &amp; check-ins</button>
       <button class="tab" data-ptab="meds">Medicines</button>
       <button class="tab" data-ptab="preports">Reports</button>
       <button class="tab" data-ptab="consults">Follow-ups</button>
@@ -259,7 +259,12 @@
     </div>
 
     <div class="ptab hidden" id="ptab-checkins">
-      <div class="card"><h2>Weight trend</h2><div id="dWeight"></div></div>
+      <div id="dAlerts"></div>
+      <div class="pg-actions">
+        <button class="btn btn-ghost btn-sm" type="button" id="reqCheckinBtn">Ask for a check-in on WhatsApp</button>
+        <button class="btn btn-ghost btn-sm" type="button" id="sendProgBtn">Send progress summary to patient</button>
+      </div>
+      <div id="dProgress"><div class="empty">Loading progress…</div></div>
       <div class="card"><h2>Daily check-ins</h2><div class="table-wrap"><table><thead><tr><th>When</th><th>Stage</th><th>Readings & symptoms</th><th>Flags</th></tr></thead><tbody id="logRows"></tbody></table></div></div>
     </div>
 
@@ -313,6 +318,7 @@
 </main>
 
 <script src="js/ivf-common.js"></script>
+<script src="js/ivf-charts.js"></script>
 <script>
 const $ = id => document.getElementById(id);
 let token = localStorage.getItem('doctorToken');
@@ -483,8 +489,11 @@ function renderDetail() {
 
   // Check-ins
   const openAlerts = current.alerts.filter(a => !a.acknowledged);
-  $('dWeight').innerHTML = (openAlerts.length ? `<div class="list" style="margin-bottom:12px">${openAlerts.map(alertHtml).join('')}</div>` : '') + IVF.sparkline(current.logs.slice().reverse().map(l => ({ t: l.createdAt, v: l.vitals?.weightKg })), ' kg');
-  $('logRows').innerHTML = current.logs.length ? current.logs.map(l => `<tr><td class="small">${IVF.fmtDateTime(l.createdAt)}</td><td class="small">${IVF.esc(IVF.meta.stages.find(s => s.key === l.stage)?.label || '')}</td>
+  $('dAlerts').innerHTML = openAlerts.length ? `<div class="list" style="margin-bottom:12px">${openAlerts.map(alertHtml).join('')}</div>` : '';
+  const pid = c._id;
+  call(`/api/ivf/doctor/cycles/${pid}/progress`).then(pr => { if (current && current.cycle._id === pid) IVFCharts.renderProgress($('dProgress'), pr, { audience: 'doctor' }); })
+    .catch(err => { $('dProgress').innerHTML = `<div class="empty">${IVF.esc(err.message)}</div>`; });
+  $('logRows').innerHTML = current.logs.length ? current.logs.map(l => `<tr><td class="small">${IVF.fmtDateTime(l.createdAt)}${l.source === 'whatsapp' ? '<div><span class="badge b-ok">WhatsApp</span></div>' : ''}</td><td class="small">${IVF.esc(IVF.meta.stages.find(s => s.key === l.stage)?.label || '')}</td>
     <td class="small">${IVF.esc(IVF.logSummary(l))}${l.notes ? `<div class="muted">“${IVF.esc(l.notes)}”</div>` : ''}</td>
     <td class="small">${(l.flags || []).map(f => `<div>${IVF.sevBadge(f.severity)} ${IVF.esc(f.message)}</div>`).join('') || '—'}</td></tr>`).join('') : '<tr><td colspan="4" class="empty">No check-ins yet.</td></tr>';
 
@@ -622,6 +631,14 @@ $('dMsgForm').addEventListener('submit', async e => {
   try { await call(`/api/ivf/doctor/cycles/${current.cycle._id}/messages`, { method: 'POST', body: { text } }); $('dMsgText').value = ''; loadMsgs(); } catch (err) { IVF.toast(err.message, true); }
 });
 $('dMsgText').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('dMsgForm').requestSubmit(); } });
+
+async function waAction(btn, path) {
+  btn.disabled = true;
+  try { const r = await call(`/api/ivf/doctor/cycles/${current.cycle._id}/${path}`, { method: 'POST' }); IVF.toast(r.message); } catch (err) { IVF.toast(err.message, true); }
+  finally { btn.disabled = false; }
+}
+$('reqCheckinBtn').addEventListener('click', e => waAction(e.currentTarget, 'checkin-request'));
+$('sendProgBtn').addEventListener('click', e => waAction(e.currentTarget, 'progress/whatsapp'));
 
 function selectPtab(name) {
   document.querySelectorAll('[data-ptab]').forEach(x => x.classList.toggle('active', x.dataset.ptab === name));
