@@ -44,6 +44,7 @@ const ivfCenterSchema = new mongoose.Schema({
   consultationModes: { type: [String], default: ['video', 'audio', 'chat'] },
   about: String,
   acceptingPatients: { type: Boolean, default: true },
+  meetLink: String, // doctor's own Google Meet room, used for video/audio follow-ups by default
   lastDigestDate: String, // YYYY-MM-DD of the last daily WhatsApp digest sent to the doctor
   createdAt: { type: Date, default: Date.now }
 }, { collection: 'ivf_centers' });

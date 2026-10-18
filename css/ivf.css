@@ -91,7 +91,7 @@ input, select, textarea { font: inherit; color: var(--ink); }
 /* Forms */
 label { display: block; font-size: 13px; font-weight: 600; color: var(--muted); margin-bottom: 5px; }
 .field { margin-bottom: 12px; }
-input[type=text], input[type=tel], input[type=number], input[type=password], input[type=date], input[type=datetime-local], input[type=time], select, textarea {
+input[type=text], input[type=url], input[type=tel], input[type=number], input[type=password], input[type=date], input[type=datetime-local], input[type=time], select, textarea {
   width: 100%; padding: 10px 12px; border: 1px solid #d8d5e2; border-radius: 10px; background: #fff; transition: border-color .15s, box-shadow .15s;
 }
 input:focus, select:focus, textarea:focus { outline: none; border-color: var(--rose); box-shadow: 0 0 0 3px rgba(184,58,110,.14); }

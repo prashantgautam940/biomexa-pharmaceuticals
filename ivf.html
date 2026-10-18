@@ -267,7 +267,7 @@
     <div class="tab-panel hidden" id="tab-followups">
       <form class="card" id="consultForm">
         <h2>Request a virtual follow-up</h2>
-        <p class="sub">Your centre confirms a time and sends you a video/audio link on WhatsApp.</p>
+        <p class="sub">Your centre confirms a time and sends you a Google Meet link on WhatsApp.</p>
         <div class="grid grid-2">
           <div class="field"><label>How would you like to talk?</label><div class="chips" data-name="mode" data-opts="video:Video call,audio:Audio call,chat:Chat"></div></div>
           <div class="field"><label for="fSlot">Preferred time</label><input id="fSlot" type="text" maxlength="120" placeholder="E.g. Tomorrow after 5 PM"></div>
@@ -525,6 +525,12 @@ $('reportForm').addEventListener('submit', async e => {
 });
 
 // ---------- follow-ups ----------
+function gcalLink(c) {
+  const f = d => new Date(d).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+  const end = new Date(new Date(c.scheduledAt).getTime() + (c.durationMin || 15) * 60e3);
+  const q = new URLSearchParams({ action: 'TEMPLATE', text: 'IVF follow-up: ' + (c.reason || 'Biomexa IVF Care'), dates: `${f(c.scheduledAt)}/${f(end)}`, details: `Join on Google Meet: ${c.meetingLink}\n\nBiomexa IVF Care`, location: c.meetingLink });
+  return 'https://calendar.google.com/calendar/render?' + q.toString();
+}
 async function loadConsults() {
   const list = await call('/api/ivf/consults');
   const badge = { requested: 'b-watch', scheduled: 'b-navy', completed: 'b-ok', cancelled: 'b-neutral' };
@@ -532,7 +538,7 @@ async function loadConsults() {
     <div class="item"><div class="spread"><div><div class="title">${c.mode === 'video' ? '🎥' : c.mode === 'audio' ? '📞' : '💬'} ${IVF.esc(c.reason)}</div>
       <div class="small muted">${c.scheduledAt ? IVF.fmtDateTime(c.scheduledAt) + ` · ${c.durationMin} min` : 'Preferred: ' + IVF.esc(c.preferredSlot || 'any time')}</div></div>
       <span class="badge ${badge[c.status]}">${c.status}</span></div>
-      ${c.status === 'scheduled' && c.meetingLink ? `<div class="row mt"><a class="btn btn-primary btn-sm" href="${IVF.esc(c.meetingLink)}" target="_blank" rel="noopener">Join ${c.mode} call</a><span class="small muted">${IVF.countdown(c.scheduledAt)}</span></div>` : ''}
+      ${c.status === 'scheduled' && c.meetingLink ? (() => { const meet = /meet\.google\.com/.test(c.meetingLink); return `<div class="row mt"><a class="btn btn-primary btn-sm" href="${IVF.esc(c.meetingLink)}" target="_blank" rel="noopener">${meet ? 'Join on Google Meet' : `Join ${c.mode} call`}</a><a class="btn btn-ghost btn-sm" href="${gcalLink(c)}" target="_blank" rel="noopener">Add to Google Calendar</a><span class="small muted">${IVF.countdown(c.scheduledAt)}</span></div>${meet ? `<div class="small muted mt">Opens in the Google Meet app or your browser. Tap "Ask to join" and your doctor will let you in.${c.mode === 'audio' ? ' You can keep your camera off.' : ''}</div>` : ''}`; })() : ''}
       ${c.status === 'scheduled' && c.mode === 'chat' ? '<div class="small mt">This follow-up happens in the Messages tab.</div>' : ''}
       ${c.doctorSummary ? `<div class="notice ok mt"><b>Doctor's notes:</b> <span class="pre">${IVF.esc(c.doctorSummary)}</span></div>` : ''}
       ${['requested', 'scheduled'].includes(c.status) ? `<button class="btn btn-ghost btn-sm mt" onclick="cancelConsult('${c._id}')">Cancel</button>` : ''}

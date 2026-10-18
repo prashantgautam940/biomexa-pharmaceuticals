@@ -194,6 +194,10 @@
         <div class="row"><label class="check"><input type="checkbox" name="cMode" value="video" checked> Video</label>
           <label class="check"><input type="checkbox" name="cMode" value="audio" checked> Audio</label>
           <label class="check"><input type="checkbox" name="cMode" value="chat" checked> Chat</label></div></div>
+      <div class="field"><label for="cMeet">Your Google Meet room (used for video and audio follow-ups)</label>
+        <div class="row"><input id="cMeet" type="url" maxlength="200" placeholder="https://meet.google.com/abc-defg-hij" style="flex:1;min-width:220px">
+          <a class="btn btn-ghost btn-sm" href="https://meet.google.com/new" target="_blank" rel="noopener">Create Google Meet</a></div>
+        <p class="small muted">Sign in to Google with your clinic account, create a meeting, copy its link and paste it here. You are the host, so you admit the patient when they join. You can still use a different link for any single follow-up.</p></div>
       <label class="check"><input type="checkbox" id="cAccepting" checked> Accepting new IVF patients</label>
       <div class="row mt"><button class="btn btn-primary" type="submit">Save centre profile</button><button class="btn btn-ghost hidden" type="button" id="centreCancel">Back to dashboard</button></div>
     </form>
@@ -294,7 +298,7 @@
     <div class="ptab hidden" id="ptab-consults">
       <form class="card" id="schedForm">
         <h2>Schedule a virtual follow-up</h2>
-        <p class="sub">A private video/audio link is created automatically (or paste your own Zoom/Meet link). The patient gets it on WhatsApp plus a reminder 15 minutes before.</p>
+        <p class="sub">Video and audio follow-ups run on Google Meet. The patient gets the link on WhatsApp, plus a reminder 15 minutes before. Join a minute early and admit the patient when they ask to join.</p>
         <input type="hidden" id="sConsultId">
         <div id="sFor" class="notice info hidden"></div>
         <div class="grid grid-3">
@@ -304,7 +308,10 @@
         </div>
         <div class="grid grid-2">
           <div class="field"><label for="sReason">Purpose</label><input id="sReason" type="text" maxlength="600" placeholder="E.g. Review day-8 scan"></div>
-          <div class="field"><label for="sLink">Own meeting link (optional)</label><input id="sLink" type="text" maxlength="300" placeholder="https://…"></div>
+          <div class="field" id="sLinkField"><label for="sLink">Google Meet link</label>
+            <div class="row"><input id="sLink" type="url" maxlength="200" placeholder="https://meet.google.com/abc-defg-hij" style="flex:1;min-width:200px">
+              <a class="btn btn-ghost btn-sm" href="https://meet.google.com/new" target="_blank" rel="noopener">Create Google Meet</a></div>
+            <p class="small muted" id="sLinkHint">Leave empty to use your saved Meet room.</p></div>
         </div>
         <button class="btn btn-primary" type="submit">Schedule & notify patient</button>
       </form>
@@ -406,6 +413,7 @@ function showCentre(editing) {
   const c = window._center || {};
   $('cName').value = c.centerName || ''; $('cCity').value = c.city || ''; $('cReg').value = c.registrationNumber || '';
   $('cAddr').value = c.address || ''; $('cAbout').value = c.about || ''; $('cAccepting').checked = c.acceptingPatients !== false;
+  $('cMeet').value = c.meetLink || '';
   document.querySelectorAll('input[name=cMode]').forEach(i => i.checked = !c.consultationModes || c.consultationModes.includes(i.value));
   $('centreCancel').classList.toggle('hidden', !editing);
   show('centreView');
@@ -416,7 +424,7 @@ $('centreForm').addEventListener('submit', async e => {
   try {
     const r = await call('/api/ivf/doctor/center', { method: 'PUT', body: {
       centerName: $('cName').value, city: $('cCity').value, registrationNumber: $('cReg').value, address: $('cAddr').value, about: $('cAbout').value,
-      acceptingPatients: $('cAccepting').checked, consultationModes: [...document.querySelectorAll('input[name=cMode]:checked')].map(i => i.value)
+      acceptingPatients: $('cAccepting').checked, meetLink: $('cMeet').value, consultationModes: [...document.querySelectorAll('input[name=cMode]:checked')].map(i => i.value)
     } });
     IVF.toast(r.message); start();
   } catch (err) { IVF.toast(err.message, true); }
@@ -524,7 +532,7 @@ function renderDetail() {
     <span class="badge ${badge[c.status]}">${c.status}</span></div>
     <div class="row mt">
       ${c.status === 'requested' ? `<button class="btn btn-primary btn-sm" onclick="prefillSchedule('${c._id}')">Pick a time</button>` : ''}
-      ${c.status === 'scheduled' && c.meetingLink ? `<a class="btn btn-primary btn-sm" href="${IVF.esc(c.meetingLink)}" target="_blank" rel="noopener">Start ${c.mode} call</a>` : ''}
+      ${c.status === 'scheduled' && c.meetingLink ? `<a class="btn btn-primary btn-sm" href="${IVF.esc(c.meetingLink)}" target="_blank" rel="noopener">${/meet\.google\.com/.test(c.meetingLink) ? 'Start on Google Meet' : `Start ${c.mode} call`}</a>` : ''}
       ${c.status === 'scheduled' ? `<button class="btn btn-ghost btn-sm" onclick="completeConsult('${c._id}')">Mark done + notes</button>` : ''}
       ${['requested', 'scheduled'].includes(c.status) ? `<button class="btn btn-danger btn-sm" onclick="cancelConsult('${c._id}')">Cancel</button>` : ''}</div>
     ${c.doctorSummary ? `<div class="small mt"><b>Your notes:</b> <span class="pre">${IVF.esc(c.doctorSummary)}</span></div>` : ''}</div>`).join('') : '<div class="empty">No follow-ups yet.</div>';
@@ -600,8 +608,15 @@ function prefillSchedule(consultId) {
   const c = current.consults.find(x => x._id === consultId);
   $('sConsultId').value = consultId; $('sMode').value = c.mode; $('sReason').value = c.reason || '';
   $('sFor').innerHTML = `Scheduling the patient's request${c.preferredSlot ? ` — they prefer <b>${IVF.esc(c.preferredSlot)}</b>` : ''}.`; $('sFor').classList.remove('hidden');
-  $('sWhen').focus();
+  syncMeetField(); $('sWhen').focus();
 }
+function syncMeetField() {
+  const chat = $('sMode').value === 'chat';
+  $('sLinkField').classList.toggle('hidden', chat);
+  const saved = (window._center || {}).meetLink;
+  $('sLinkHint').textContent = saved ? `Leave empty to use your saved Meet room (${saved}).` : 'Tap "Create Google Meet", copy the meeting link and paste it here. Tip: save a Meet room in your centre profile to skip this step.';
+}
+$('sMode').addEventListener('change', syncMeetField);
 $('schedForm').addEventListener('submit', async e => {
   e.preventDefault();
   try {
@@ -609,7 +624,7 @@ $('schedForm').addEventListener('submit', async e => {
       consultId: $('sConsultId').value || undefined, scheduledAt: new Date($('sWhen').value).toISOString(), mode: $('sMode').value,
       durationMin: $('sDur').value, reason: $('sReason').value, meetingLink: $('sLink').value
     } });
-    IVF.toast(r.message); $('schedForm').reset(); $('sConsultId').value = ''; $('sFor').classList.add('hidden'); openPatient(current.cycle._id, 'consults');
+    IVF.toast(r.message); $('schedForm').reset(); $('sConsultId').value = ''; $('sFor').classList.add('hidden'); syncMeetField(); openPatient(current.cycle._id, 'consults');
   } catch (err) { IVF.toast(err.message, true); }
 });
 async function completeConsult(id) {
@@ -650,6 +665,7 @@ function selectPtab(name) {
   document.querySelectorAll('.ptab').forEach(p => p.classList.toggle('hidden', p.id !== 'ptab-' + name));
   clearInterval(msgTimer);
   if (name === 'preg' && current) PregnancyTab.load(current.cycle._id);
+  if (name === 'consults') syncMeetField();
   if (name === 'pmsgs') { loadMsgs().catch(err => IVF.toast(err.message, true)); msgTimer = setInterval(() => loadMsgs().catch(() => {}), 20000); }
 }
 document.querySelectorAll('[data-ptab]').forEach(t => t.addEventListener('click', () => selectPtab(t.dataset.ptab)));

@@ -48,7 +48,16 @@ function date(v) {
 }
 const fire = p => { Promise.resolve(p).catch(err => console.log('⚠️ IVF notify failed:', err.message)); };
 const fmtWhen = d => new Date(d).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
-const meetingLink = () => `https://meet.jit.si/BiomexaIVF-${crypto.randomBytes(8).toString('hex')}`;
+// Video/audio follow-ups run on Google Meet. The doctor creates the meeting in their own Google
+// account (so they are the host and can admit the patient) and pastes the link here.
+// Returns the normalised link, '' for empty input, or null if it is not a Google Meet link.
+function normaliseMeetLink(v) {
+  const t = String(v || '').trim();
+  if (!t) return '';
+  const m = t.match(/^(?:https?:\/\/)?meet\.google\.com\/([a-z]{3}-[a-z]{4}-[a-z]{3}|lookup\/[a-z0-9_-]{3,60})(?:[?#].*)?$/i);
+  return m ? `https://meet.google.com/${m[1].toLowerCase()}` : null;
+}
+const isMeet = l => /^https:\/\/meet\.google\.com\//.test(l || '');
 const ivfUrl = page => `${D.SITE_URL}/${page}`;
 
 async function patientCycle(phone) {
@@ -411,11 +420,11 @@ async function ivfTick() {
   for (const c of soon) {
     const claimed = await IvfConsult.findOneAndUpdate({ _id: c._id, remindersSent: { $ne: 't-15' } }, { $push: { remindersSent: 't-15' } });
     if (!claimed) continue;
-    const join = c.mode === 'chat' ? `Open your IVF messages: ${ivfUrl('ivf.html')}` : `Join here: ${c.meetingLink}`;
+    const join = c.mode === 'chat' ? `Open your IVF messages: ${ivfUrl('ivf.html')}` : `${isMeet(c.meetingLink) ? 'Join on Google Meet' : 'Join here'}: ${c.meetingLink}`;
     fire(D.sendWhatsAppFree(c.patientPhone, `📅 *IVF follow-up in 15 minutes* (${c.mode})\n${fmtWhen(c.scheduledAt)}\n\n${join}\n\n- Biomexa IVF Care`));
     const cycle = isId(c.cycleId) ? await IvfCycle.findById(c.cycleId) : null;
     const doctor = await doctorOf(cycle);
-    if (doctor) fire(D.sendWhatsAppFree(doctor.phone, `📅 IVF follow-up in 15 min with ${cycle.patientName || cycle.patientPhone} (${c.mode}). ${c.mode === 'chat' ? ivfUrl('ivf-doctor.html') : c.meetingLink}`));
+    if (doctor) fire(D.sendWhatsAppFree(doctor.phone, `📅 IVF follow-up in 15 min with ${cycle.patientName || cycle.patientPhone} (${c.mode}). ${c.mode === 'chat' ? ivfUrl('ivf-doctor.html') : `Start on Google Meet and admit the patient: ${c.meetingLink}`}`));
   }
 
   // Evening nudge (7–9 PM) for anyone in an active cycle who hasn't checked in today.
@@ -752,13 +761,16 @@ function mount(app, deps) {
     const centerName = str(req.body.centerName, 120);
     if (!centerName) return res.status(400).json({ message: 'Please enter your IVF centre name.' });
     const modes = (Array.isArray(req.body.consultationModes) ? req.body.consultationModes : []).filter(m => ['video', 'audio', 'chat'].includes(m));
+    const centerMeet = normaliseMeetLink(req.body.meetLink);
+    if (centerMeet === null) return res.status(400).json({ message: 'Please paste a Google Meet link, like https://meet.google.com/abc-defg-hij' });
     const center = await IvfCenter.findOneAndUpdate(
       { doctorId: String(req.doctor.id) },
       {
         centerName, city: str(req.body.city, 80), address: str(req.body.address, 300),
         registrationNumber: str(req.body.registrationNumber, 60), about: str(req.body.about, 800),
         consultationModes: modes.length ? modes : ['video', 'audio', 'chat'],
-        acceptingPatients: req.body.acceptingPatients !== false
+        acceptingPatients: req.body.acceptingPatients !== false,
+        meetLink: centerMeet || undefined
       },
       { new: true, upsert: true, setDefaultsOnInsert: true }
     );
@@ -1062,13 +1074,20 @@ function mount(app, deps) {
     const scheduledAt = date(req.body.scheduledAt);
     if (!scheduledAt || scheduledAt < new Date(Date.now() - 5 * 60e3)) return res.status(400).json({ message: 'Please pick a future date and time.' });
     const mode = oneOf(req.body.mode, ['video', 'audio', 'chat'], 'video');
+    let link;
+    if (mode !== 'chat') {
+      link = normaliseMeetLink(req.body.meetingLink);
+      if (link === null) return res.status(400).json({ message: 'Please paste a Google Meet link, like https://meet.google.com/abc-defg-hij' });
+      if (!link) link = (await IvfCenter.findOne({ doctorId: cycle.doctorId }).select('meetLink').lean())?.meetLink || '';
+      if (!link) return res.status(400).json({ message: 'Add a Google Meet link: tap "Create Google Meet", copy the link and paste it here (or save your Meet room in your centre profile).' });
+    }
     let consult;
-    const fields = { scheduledAt, mode, durationMin: num(req.body.durationMin, 5, 120) || 15, status: 'scheduled', meetingLink: mode === 'chat' ? undefined : (str(req.body.meetingLink, 300) || meetingLink()), remindersSent: [] };
+    const fields = { scheduledAt, mode, durationMin: num(req.body.durationMin, 5, 120) || 15, status: 'scheduled', meetingLink: mode === 'chat' ? undefined : link, remindersSent: [] };
     if (req.body.consultId && isId(req.body.consultId)) {
       consult = await IvfConsult.findOneAndUpdate({ _id: req.body.consultId, cycleId: String(cycle._id) }, fields, { new: true });
     }
     if (!consult) consult = await IvfConsult.create({ cycleId: String(cycle._id), patientPhone: cycle.patientPhone, doctorId: cycle.doctorId, requestedBy: 'doctor', reason: str(req.body.reason, 600) || 'Follow-up', ...fields });
-    fire(D.sendWhatsAppFree(cycle.patientPhone, `📅 *Virtual IVF follow-up booked*\n\n${fmtWhen(scheduledAt)} · ${mode} · ${consult.durationMin} min\n${consult.meetingLink ? `Join: ${consult.meetingLink}` : `It will happen in your IVF messages: ${ivfUrl('ivf.html')}`}\n\nWe'll remind you 15 minutes before.\n- ${cycle.centerName}`));
+    fire(D.sendWhatsAppFree(cycle.patientPhone, `📅 *Virtual IVF follow-up booked*\n\n${fmtWhen(scheduledAt)} · ${mode} · ${consult.durationMin} min\n${consult.meetingLink ? `${isMeet(consult.meetingLink) ? 'Join on Google Meet' : 'Join'}: ${consult.meetingLink}${mode === 'audio' ? ' (you can keep your camera off)' : ''}` : `It will happen in your IVF messages: ${ivfUrl('ivf.html')}`}\n\nWe'll remind you 15 minutes before.\n- ${cycle.centerName}`));
     res.json({ message: 'Follow-up scheduled and shared with the patient.', consult });
   }));
   app.patch(`${DR}/consults/:cid`, doctorAuth, wrap(async (req, res) => {

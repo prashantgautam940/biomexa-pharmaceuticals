@@ -56,7 +56,7 @@ const IVF = {
   countdown(d) {
     const ms = new Date(d) - Date.now();
     if (ms <= 0) return 'now';
-    const h = Math.floor(ms / 36e5), m = Math.round((ms % 36e5) / 60000);
+    const mins = Math.ceil(ms / 60000), h = Math.floor(mins / 60), m = mins % 60;
     return h >= 24 ? `in ${Math.floor(h / 24)}d ${h % 24}h` : h ? `in ${h}h ${m}m` : `in ${m} min`;
   },
 
