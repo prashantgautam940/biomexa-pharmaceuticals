@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Help & Support | Biomexa Pharmaceuticals</title>
+<meta name="description" content="Report a problem with Biomexa reminders, the patient portal, doctor connect or IVF Care, and check the status of your support ticket.">
+<link rel="icon" type="image/svg+xml" href="logo.svg">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root { --navy: #16336b; --green: #1c9a55; --bg: #f3f6fb; --card: #fff; --text: #13213d; --muted: #5b6b86; --line: #e2e8f2; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg); color: var(--text); }
+header { background: #fff; border-bottom: 1px solid var(--line); }
+.top { max-width: 1000px; margin: 0 auto; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.top nav { display: flex; gap: 18px; flex-wrap: wrap; }
+.top nav a { color: var(--muted); text-decoration: none; font-weight: 500; font-size: .92rem; }
+.top nav a:hover { color: var(--navy); }
+main { max-width: 1000px; margin: 0 auto; padding: 40px 16px 60px; }
+h1 { font-size: clamp(1.7rem, 4vw, 2.3rem); letter-spacing: -.02em; }
+.lead { color: var(--muted); margin: 8px 0 28px; max-width: 620px; line-height: 1.6; }
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 22px; box-shadow: 0 1px 2px rgba(19,33,61,.05), 0 8px 24px rgba(19,33,61,.07); }
+.card h2 { font-size: 1.15rem; margin-bottom: 6px; }
+.card p { color: var(--muted); font-size: .92rem; line-height: 1.55; }
+.btn { display: inline-flex; align-items: center; gap: 8px; margin-top: 16px; padding: 11px 18px; border-radius: 11px; border: 0; font: 700 .92rem Inter, sans-serif; cursor: pointer; background: var(--navy); color: #fff; text-decoration: none; }
+.btn.green { background: var(--green); }
+.btn:focus-visible, input:focus-visible { outline: 3px solid #0aa6c9; outline-offset: 2px; }
+.f { margin-top: 12px; }
+.f label { display: block; font-size: .8rem; font-weight: 600; color: #34425e; margin-bottom: 4px; }
+.f input { width: 100%; padding: 10px 12px; border: 1px solid #cfd8e6; border-radius: 10px; font: inherit; }
+.err { color: #c0262d; font-size: .86rem; margin-top: 10px; min-height: 1em; }
+.result { margin-top: 18px; display: none; }
+.result.show { display: block; }
+.pill { display: inline-block; padding: 4px 10px; border-radius: 99px; font-size: .78rem; font-weight: 700; }
+.pill.open { background: #fff6e6; color: #b45309; } .pill.in_progress { background: #eaf0fb; color: #1f4494; } .pill.resolved { background: #e8f6ee; color: #11663a; }
+.thread { margin-top: 14px; display: grid; gap: 10px; }
+.msg { padding: 12px 14px; border-radius: 12px; font-size: .9rem; line-height: 1.5; white-space: pre-wrap; }
+.msg.you { background: #f3f6fb; border: 1px solid var(--line); }
+.msg.team { background: #e8f6ee; border: 1px solid #cdebd9; }
+.msg small { display: block; color: var(--muted); font-size: .74rem; margin-bottom: 4px; font-weight: 600; }
+.faq { margin-top: 28px; }
+.faq h2 { font-size: 1.15rem; margin-bottom: 10px; }
+details { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; margin-bottom: 8px; }
+summary { font-weight: 600; cursor: pointer; }
+details p { color: var(--muted); margin-top: 8px; line-height: 1.55; font-size: .92rem; }
+@media (max-width: 760px) { .grid { grid-template-columns: 1fr; } }
+</style>
+<link rel="stylesheet" href="css/biomexa-ui.css">
+</head>
+<body>
+<header><div class="top">
+  <a href="index.html"><img src="images/logo-full.png" alt="Biomexa Pharmaceuticals" style="height:30px;display:block"></a>
+  <nav><a href="index.html">Home</a><a href="patient.html">Patient Portal</a><a href="doctor.html">Doctor Portal</a><a href="ivf.html">IVF Care</a></nav>
+</div></header>
+
+<main>
+  <h1>Help & support</h1>
+  <p class="lead">Something not working? Report it here and you'll get a ticket number straight away. Our team replies on WhatsApp — usually within one working day.</p>
+
+  <div class="grid">
+    <section class="card">
+      <h2>Report a problem</h2>
+      <p>For patients, doctors and IVF centres: missed reminders, login trouble, reports, payments or anything else.</p>
+      <button class="btn green" type="button" onclick="window.openSupportTicket && window.openSupportTicket()">🛟 Raise a ticket</button>
+    </section>
+
+    <section class="card" id="status">
+      <h2>Check a ticket</h2>
+      <p>Enter your ticket number and the WhatsApp number you used.</p>
+      <form id="statusForm" novalidate>
+        <div class="f"><label for="tNo">Ticket number</label><input id="tNo" placeholder="BX-123456" autocomplete="off"></div>
+        <div class="f"><label for="tPhone">WhatsApp number</label><input id="tPhone" type="tel" inputmode="tel" placeholder="98765 43210"></div>
+        <button class="btn" type="submit" id="tBtn">Check status</button>
+        <p class="err" id="tErr" role="alert"></p>
+      </form>
+    </section>
+  </div>
+
+  <section class="card result" id="result" aria-live="polite"></section>
+
+  <div class="faq">
+    <h2>Quick fixes</h2>
+    <details><summary>I'm not getting WhatsApp reminders</summary><p>Send "Hi" to the Biomexa WhatsApp number once — WhatsApp only lets us message people who have chatted with us. Then check the reminder time in your patient portal under My medicines.</p></details>
+    <details><summary>I forgot my password</summary><p>Use "Forgot password?" on the login page, or send RESET to the Biomexa WhatsApp number to get a code.</p></details>
+    <details><summary>My reminder came at the wrong time</summary><p>Reminder times are in Indian time. Open My medicines in the patient portal, stop the medicine and add it again with the right time. If it still happens, raise a ticket.</p></details>
+  </div>
+</main>
+
+<script>
+const API = (location.hostname === 'localhost' || location.hostname === '127.0.0.1') ? 'http://localhost:3000' : 'https://biomexa-api-f9f6.onrender.com';
+const esc = t => String(t ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const when = d => new Date(d).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+document.getElementById('statusForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const no = document.getElementById('tNo').value.trim().toUpperCase();
+  const phone = document.getElementById('tPhone').value.trim();
+  const err = document.getElementById('tErr'), btn = document.getElementById('tBtn'), out = document.getElementById('result');
+  err.textContent = ''; out.className = 'card result';
+  if (!/^BX-\d{4,}$/.test(no)) { err.textContent = 'Ticket numbers look like BX-123456.'; return; }
+  if (phone.replace(/\D/g, '').length < 10) { err.textContent = 'Enter the 10-digit WhatsApp number you used.'; return; }
+  btn.disabled = true; btn.textContent = 'Checking…';
+  try {
+    const r = await fetch(`${API}/api/tickets/${encodeURIComponent(no)}?phone=${encodeURIComponent(phone)}`);
+    const t = await r.json();
+    if (!r.ok) throw new Error(t.message || 'Ticket not found.');
+    out.innerHTML = `<div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center">
+        <h2>${esc(t.ticketNo)} · ${esc(t.subject)}</h2><span class="pill ${esc(t.status)}">${esc(t.statusLabel)}</span></div>
+      <p style="margin-top:4px">${esc(t.category)} · raised ${when(t.createdAt)}</p>
+      <div class="thread">
+        <div class="msg you"><small>You · ${when(t.createdAt)}</small>${esc(t.message)}</div>
+        ${t.replies.map(x => `<div class="msg team"><small>Biomexa team · ${when(x.at)}</small>${esc(x.text)}</div>`).join('')}
+        ${t.replies.length ? '' : '<p>No reply yet — we\'ll message you on WhatsApp as soon as we do.</p>'}
+      </div>`;
+    out.className = 'card result show';
+  } catch (ex) {
+    err.textContent = /fetch|network/i.test(ex.message) ? 'Could not connect — please try again.' : ex.message;
+  } finally { btn.disabled = false; btn.textContent = 'Check status'; }
+});
+if (location.hash === '#status') setTimeout(() => document.getElementById('tNo').focus(), 100);
+</script>
+<script src="js/support.js" defer></script>
+</body>
+</html>

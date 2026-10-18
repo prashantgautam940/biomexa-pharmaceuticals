@@ -357,5 +357,6 @@ load();
 const wanted = new URLSearchParams(location.search).get('plan');
 if (wanted && token) window.addEventListener('load', () => { document.getElementById('plans').scrollIntoView(); setTimeout(() => buy(wanted), 400); });
 </script>
+<script src="js/support.js" defer></script>
 </body>
 </html>

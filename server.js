@@ -5052,6 +5052,121 @@ async function processSubscriptionNotices(now = new Date()) {
   }
 }
 
+// ========== SUPPORT TICKETS ("Report a problem" on every portal) ==========
+// Patients, doctors, IVF centres (and anyone on the site) can raise a ticket. They get a ticket
+// number on screen and on WhatsApp, can check its status with ticket number + phone, and every
+// admin reply / status change is sent to them on WhatsApp. Optional SUPPORT_ALERT_PHONE gets a
+// WhatsApp for each new ticket.
+const TICKET_ROLES = { patient: 'Patient', doctor: 'Doctor', ivf_patient: 'IVF patient', ivf_centre: 'IVF centre', visitor: 'Visitor' };
+const TICKET_CATEGORIES = {
+  reminders: 'WhatsApp reminders', login: 'Login / account', reports: 'Reports / AI analysis', doctor: 'Doctor connect',
+  payment: 'Payment / subscription', ivf: 'IVF Care', website: 'Website not working', other: 'Something else'
+};
+const TICKET_STATUS = { open: 'Open', in_progress: 'In progress', resolved: 'Resolved' };
+const ticketSchema = new mongoose.Schema({
+  ticketNo: { type: String, unique: true },
+  role: String, name: String, phone: String, email: String,
+  category: String, subject: String, message: String, page: String, userAgent: String,
+  status: { type: String, default: 'open' },
+  replies: [{ by: String, text: String, at: { type: Date, default: Date.now } }],
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now }
+});
+const Ticket = mongoose.model('Ticket', ticketSchema);
+const ticketLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 6, message: 'Too many tickets from this connection — please wait a while, or reply to your earlier ticket on WhatsApp.' });
+const clip = (v, n) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
+
+async function newTicketNo() {
+  for (let i = 0; i < 6; i++) {
+    const no = 'BX-' + Math.floor(100000 + Math.random() * 900000);
+    if (!(await Ticket.exists({ ticketNo: no }))) return no;
+  }
+  return 'BX-' + Date.now().toString().slice(-8);
+}
+
+app.post('/api/tickets', ticketLimiter, async (req, res) => {
+  try {
+    const b = req.body || {};
+    const role = TICKET_ROLES[b.role] ? b.role : 'visitor';
+    const category = TICKET_CATEGORIES[b.category] ? b.category : 'other';
+    const name = clip(b.name, 80);
+    const phone = normalizePhone(b.phone);
+    const email = clip(b.email, 120);
+    const subject = clip(b.subject, 140);
+    const message = String(b.message || '').trim().slice(0, 3000);
+    if (!name) return res.status(400).json({ message: 'Please enter your name.' });
+    if (!/^\+\d{11,13}$/.test(phone)) return res.status(400).json({ message: 'Please enter a valid WhatsApp number so we can reply to you.' });
+    if (message.length < 10) return res.status(400).json({ message: 'Please describe the problem in a little more detail.' });
+
+    const t = await Ticket.create({
+      ticketNo: await newTicketNo(), role, name, phone, email, category,
+      subject: subject || TICKET_CATEGORIES[category], message,
+      page: clip(b.page, 200), userAgent: clip(req.headers['user-agent'], 200)
+    });
+    console.log(`🎫 Ticket ${t.ticketNo} (${TICKET_ROLES[role]}, ${TICKET_CATEGORIES[category]}) from ${phone}`);
+    const first = name.split(' ')[0];
+    sendWhatsAppFree(phone, `🎫 *Biomexa support — ticket ${t.ticketNo}*\n\nHi ${first}, we've received your report: "${t.subject}".\n\nOur team will look into it and reply here on WhatsApp. You can check the status any time at ${SITE_URL}/support.html with your ticket number.\n\n- Biomexa Team`).catch(() => {});
+    if (process.env.SUPPORT_ALERT_PHONE) {
+      sendWhatsAppFree(process.env.SUPPORT_ALERT_PHONE, `🎫 New ticket ${t.ticketNo}\n${TICKET_ROLES[role]}: ${name} (${phone})\n${TICKET_CATEGORIES[category]} — ${t.subject}\n\n${message.slice(0, 500)}`).catch(() => {});
+    }
+    res.json({ ticketNo: t.ticketNo, message: `Ticket ${t.ticketNo} raised. We'll reply on WhatsApp.` });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Status check: ticket number + the phone it was raised from.
+app.get('/api/tickets/:ticketNo', loginLimiter, async (req, res) => {
+  try {
+    const t = await Ticket.findOne({ ticketNo: String(req.params.ticketNo || '').toUpperCase().trim() });
+    if (!t || last10(t.phone) !== last10(req.query.phone)) return res.status(404).json({ message: 'No ticket found with that number and WhatsApp number.' });
+    res.json({
+      ticketNo: t.ticketNo, status: t.status, statusLabel: TICKET_STATUS[t.status] || t.status,
+      category: TICKET_CATEGORIES[t.category] || t.category, subject: t.subject, message: t.message,
+      createdAt: t.createdAt, updatedAt: t.updatedAt,
+      replies: t.replies.filter(r => r.by !== 'internal').map(r => ({ text: r.text, at: r.at }))
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+app.get('/api/admin/tickets', adminAuth, async (req, res) => {
+  try {
+    const tickets = await Ticket.find().sort({ createdAt: -1 }).limit(300).lean();
+    const counts = { open: 0, in_progress: 0, resolved: 0 };
+    tickets.forEach(t => { counts[t.status] = (counts[t.status] || 0) + 1; });
+    res.json({ counts, tickets, roles: TICKET_ROLES, categories: TICKET_CATEGORIES });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Admin reply and/or status change — the reporter is told on WhatsApp.
+app.post('/api/admin/tickets/:id', adminAuth, async (req, res) => {
+  try {
+    const t = await Ticket.findById(req.params.id);
+    if (!t) return res.status(404).json({ message: 'Ticket not found.' });
+    const text = String(req.body?.reply || '').trim().slice(0, 2000);
+    const status = TICKET_STATUS[req.body?.status] ? req.body.status : t.status;
+    if (!text && status === t.status) return res.status(400).json({ message: 'Write a reply or change the status.' });
+    if (text) t.replies.push({ by: req.admin?.username || 'admin', text });
+    const statusChanged = status !== t.status;
+    t.status = status; t.updatedAt = new Date();
+    await t.save();
+    const first = String(t.name || '').split(' ')[0] || 'there';
+    const lines = [`🎫 *Biomexa support — ticket ${t.ticketNo}*`, '', `Hi ${first},`];
+    if (text) lines.push('', text);
+    if (statusChanged) lines.push('', status === 'resolved' ? '✅ We have marked this ticket as *resolved*. If the problem is still there, just reply here.' : `Status: *${TICKET_STATUS[status]}*`);
+    lines.push('', '- Biomexa Team');
+    const wa = await sendWhatsAppFree(t.phone, lines.join('\n'));
+    console.log(`🎫 Ticket ${t.ticketNo} → ${status}${text ? ' (replied)' : ''} by ${req.admin?.username || 'admin'}`);
+    res.json({ message: `Ticket ${t.ticketNo} updated.`, whatsappSent: !!wa?.success, ticket: t });
+  } catch (err) {
+    res.status(500).json({ message: err.name === 'CastError' ? 'Ticket not found.' : err.message });
+  }
+});
+
 // ========== ADMIN REMINDER CENTER (admin-reminders.html) ==========
 // Who is getting reminders right now, whose course has finished or was stopped, and who never set
 // one — plus a one-click WhatsApp invite to add a reminder for another medicine/dose, and a way

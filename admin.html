@@ -116,6 +116,21 @@ tbody tr:hover { background: #f6f8fc !important; }
 .doc-status.pending { background: #fff6e6; color: #b45309; } .doc-status.verified { background: #e8f6ee; color: #11663a; }
 .doc-status.rejected, .doc-status.suspended { background: #fdecec; color: #c0262d; }
 .doc-note { font-size: 0.82rem; color: #c0262d; margin-top: 6px; }
+.tk { border: 1px solid var(--border); border-radius: 14px; padding: 14px 16px; margin-bottom: 10px; background: #fff; }
+.tk-head { display: flex; gap: 10px; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; cursor: pointer; }
+.tk-head b { font-size: .95rem; }
+.tk-meta { color: var(--text-muted); font-size: .8rem; margin-top: 3px; }
+.tk-pill { font-size: .72rem; font-weight: 700; padding: 3px 9px; border-radius: 99px; white-space: nowrap; }
+.tk-pill.open { background: #fff6e6; color: #b45309; } .tk-pill.in_progress { background: #eaf0fb; color: #1f4494; } .tk-pill.resolved { background: #e8f6ee; color: #11663a; }
+.tk-body { display: none; margin-top: 12px; border-top: 1px solid var(--border); padding-top: 12px; }
+.tk.open-body .tk-body { display: block; }
+.tk-msg { white-space: pre-wrap; background: var(--bg-light); border-radius: 10px; padding: 10px 12px; font-size: .88rem; line-height: 1.5; margin-bottom: 8px; }
+.tk-msg.team { background: #e8f6ee; }
+.tk-msg small { display: block; color: var(--text-muted); font-size: .72rem; font-weight: 600; margin-bottom: 3px; }
+.tk-reply { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; margin-top: 8px; }
+.tk-reply textarea { grid-column: 1 / -1; min-height: 70px; padding: 10px; border: 1px solid var(--border); border-radius: 10px; font: inherit; font-size: .88rem; }
+.tk-reply select { padding: 8px 10px; border: 1px solid var(--border); border-radius: 10px; font: inherit; }
+@media (max-width: 600px) { .tk-reply { grid-template-columns: 1fr 1fr; } }
 </style>
 <link rel="stylesheet" href="css/biomexa-ui.css">
 <script src="js/biomexa-ui.js" defer></script>
@@ -192,6 +207,23 @@ tbody tr:hover { background: #f6f8fc !important; }
     </div>
   </div>
 
+
+  <div class="ai-panel" id="ticketsPanel" style="border-color: rgba(10,166,201,.4);">
+    <div class="ai-panel-head">
+      <div>
+        <h2><i class="fas fa-life-ring"></i> Support tickets <span id="openTicketBadge" class="doc-badge" style="display:none"></span></h2>
+        <p style="color:var(--text-muted);font-size:0.88rem;margin-top:4px;">Problems reported by patients, doctors and IVF centres from the "Report a problem" button. Your reply and status changes go to them on WhatsApp.</p>
+      </div>
+      <button class="btn" onclick="loadTickets()" style="padding:9px 16px;"><i class="fas fa-rotate"></i> Refresh</button>
+    </div>
+    <div class="doc-tabs" id="ticketTabs">
+      <button class="doc-tab active" data-t="open" onclick="setTicketTab('open')">Open</button>
+      <button class="doc-tab" data-t="in_progress" onclick="setTicketTab('in_progress')">In progress</button>
+      <button class="doc-tab" data-t="resolved" onclick="setTicketTab('resolved')">Resolved</button>
+      <button class="doc-tab" data-t="all" onclick="setTicketTab('all')">All</button>
+    </div>
+    <div id="ticketList"><div class="loading">Loading tickets…</div></div>
+  </div>
 
   <div class="ai-panel" id="carePanel" style="border-color: rgba(28,154,85,.35);">
     <div class="ai-panel-head">
@@ -518,6 +550,55 @@ function enterDashboard() {
   loadOrders();
   loadDoctors();
   loadCare();
+  loadTickets();
+}
+
+let ticketData = [], ticketTab = 'open';
+const tkEsc = t => String(t ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const tkWhen = d => new Date(d).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+let ticketMeta = { roles: {}, categories: {} };
+function loadTickets() {
+  authFetch('/api/admin/tickets').then(r => r.json()).then(d => {
+    if (!d.tickets) throw new Error(d.message || 'Could not load');
+    ticketData = d.tickets; ticketMeta = d; 
+    const b = document.getElementById('openTicketBadge');
+    if (d.counts.open) { b.textContent = d.counts.open + ' open'; b.style.display = 'inline-block'; } else b.style.display = 'none';
+    renderTickets();
+  }).catch(e => { document.getElementById('ticketList').innerHTML = '<div class="loading">Could not load tickets — ' + tkEsc(e.message) + '</div>'; });
+}
+function setTicketTab(t) { ticketTab = t; document.querySelectorAll('#ticketTabs .doc-tab').forEach(x => x.classList.toggle('active', x.dataset.t === t)); renderTickets(); }
+function renderTickets() {
+  const list = ticketData.filter(t => ticketTab === 'all' || t.status === ticketTab);
+  const labels = { open: 'Open', in_progress: 'In progress', resolved: 'Resolved' };
+  document.getElementById('ticketList').innerHTML = list.length ? list.map(t => `
+    <div class="tk" id="tk-${t._id}">
+      <div class="tk-head" onclick="this.parentElement.classList.toggle('open-body')">
+        <div><b>${tkEsc(t.ticketNo)} · ${tkEsc(t.subject)}</b>
+          <div class="tk-meta">${tkEsc(ticketMeta.roles[t.role] || t.role)}: ${tkEsc(t.name)} (${tkEsc(t.phone)}) · ${tkEsc(ticketMeta.categories[t.category] || t.category)} · ${tkWhen(t.createdAt)}</div></div>
+        <span class="tk-pill ${t.status}">${labels[t.status] || t.status}</span>
+      </div>
+      <div class="tk-body">
+        <div class="tk-msg"><small>${tkEsc(t.name)} · ${tkWhen(t.createdAt)}${t.page ? ' · from ' + tkEsc(t.page) : ''}</small>${tkEsc(t.message)}</div>
+        ${(t.replies || []).map(x => `<div class="tk-msg team"><small>${tkEsc(x.by)} · ${tkWhen(x.at)}</small>${tkEsc(x.text)}</div>`).join('')}
+        <div class="tk-reply">
+          <textarea id="tkr-${t._id}" placeholder="Reply to ${tkEsc(String(t.name).split(' ')[0])} — sent on WhatsApp"></textarea>
+          <select id="tks-${t._id}">${Object.entries(labels).map(([v, l]) => `<option value="${v}" ${v === t.status ? 'selected' : ''}>${l}</option>`).join('')}</select>
+          <button class="btn" style="padding:8px 14px" onclick="replyTicket('${t._id}')"><i class="fab fa-whatsapp"></i> Send</button>
+        </div>
+      </div>
+    </div>`).join('') : '<div class="loading">No tickets here.</div>';
+}
+function replyTicket(id) {
+  const reply = document.getElementById('tkr-' + id).value.trim();
+  const status = document.getElementById('tks-' + id).value;
+  authFetch('/api/admin/tickets/' + id, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reply, status }) })
+    .then(r => r.json().then(d => ({ ok: r.ok, d })))
+    .then(({ ok, d }) => {
+      if (!ok) throw new Error(d.message);
+      alert(d.message + (d.whatsappSent ? ' The reporter was told on WhatsApp.' : ' (WhatsApp could not be delivered — they can still see it on the support page.)'));
+      loadTickets();
+    })
+    .catch(e => alert(e.message));
 }
 
 function loadCare() {
