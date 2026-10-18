@@ -156,6 +156,14 @@ async function activeCycleFor(phone) {
 }
 async function handleWhatsAppReply({ phone, convo, buttonText, freeText }) {
   const text = String(buttonText || freeText || '').trim();
+  // "Hi Biomexa IVF Care" from the app's WhatsApp button — confirms updates are switched on.
+  if (/biomexa\s*ivf/i.test(text) && text.length < 60) {
+    const cycle = await activeCycleFor(phone);
+    await D.sendWhatsAppFree(phone, cycle
+      ? `✅ Hi ${cycle.patientName || ''}! WhatsApp updates for your IVF treatment are on.\n\nYou'll get medicine reminders, check-in prompts and your report updates here.\n\nReply *CHECKIN* any time to log how you feel, or *PROGRESS* for your summary.\n\n- Biomexa IVF Care`
+      : `👋 Hi from Biomexa IVF Care! Join an IVF centre in the app to start getting reminders here: ${ivfUrl('ivf.html')}`);
+    return true;
+  }
   // Keywords work at any time for patients in an active IVF cycle.
   if (/^(check\s*-?\s*in|checkin|log|daily check\s*-?\s*in)$/i.test(text) || /^(progress|summary|my progress)$/i.test(text)) {
     const cycle = await activeCycleFor(phone);
@@ -466,8 +474,37 @@ function stageInfo(stage) {
 const reportListFields = '-files.fileData';
 
 // =====================================================================================
+// ---------- WhatsApp delivery ----------
+// Free text only reaches someone who messaged the Biomexa number in the last 24 hours; outside
+// that window Meta silently drops it. So: free text inside the window, the approved IVF update
+// template outside it (report-analysis template as a second choice for report messages).
+function waTitleAndBody(text) {
+  const clean = l => l.replace(/\*/g, '').replace(/^[\p{Extended_Pictographic}️‍\s]+/u, '').trim();
+  const lines = String(text || '').split('\n').map(l => l.trim()).filter(Boolean);
+  const title = clean(lines[0] || 'Update').replace(/[:\s]+$/, '');
+  const body = lines.slice(1).filter(l => !/^-\s/.test(l)).map(clean).filter(Boolean).join(' · ');
+  return { title, body: body || title };
+}
+async function smartSend(rawSend, phone, text, opts = {}) {
+  if (!phone) return { success: false };
+  const open = D.whatsappWindowOpen ? await D.whatsappWindowOpen(phone).catch(() => false) : true;
+  if (open) return rawSend(phone, text);
+  const { title, body } = waTitleAndBody(text);
+  if (D.sendIvfUpdateTemplate) {
+    const t = await D.sendIvfUpdateTemplate(phone, opts.title || title, opts.details || body).catch(() => ({ success: false }));
+    if (t && t.success) return t;
+  }
+  if (opts.report && D.sendReportAnalysisTemplate) {
+    const t = await D.sendReportAnalysisTemplate(phone, opts.report.name || 'IVF patient', opts.report.fileName || 'IVF report', opts.report.summary || body).catch(() => ({ success: false }));
+    if (t && t.success) return t;
+  }
+  console.log(`⚠️ IVF WhatsApp to ${phone} is outside the 24h window and MSG91_IVF_UPDATE_TEMPLATE_NAME is not set — Meta will probably drop this free-text message`);
+  return rawSend(phone, text);
+}
+
 function mount(app, deps) {
-  D = deps;
+  const rawSend = deps.sendWhatsAppFree;
+  D = { ...deps, sendWhatsAppFree: (phone, text, opts) => smartSend(rawSend, phone, text, opts) };
   const { auth, doctorAuth } = deps;
   const R = '/api/ivf';
 
@@ -625,6 +662,14 @@ function mount(app, deps) {
       await IvfReport.updateOne({ _id: report._id }, result.ok
         ? { aiSummary: result.analysis, aiStatus: 'done' }
         : { aiStatus: result.reason === 'not_configured' ? 'not_configured' : 'failed' });
+      if (result.ok && result.analysis) {
+        const reading = String(result.analysis).slice(0, 1400);
+        await D.sendWhatsAppFree(cycle.patientPhone, `📄 *Your IVF report: ${report.title}*\n\n*Quick AI reading (not yet checked by your doctor):*\n${reading}\n\nYour IVF doctor will review it and send you their findings.\n${ivfUrl('ivf.html')}\n- Biomexa IVF Care`,
+          { title: `Your IVF report: ${report.title}`, details: `Quick AI reading, not yet checked by your doctor: ${reading.replace(/\*/g, '')} Your IVF doctor will review it and send you their findings.`,
+            report: { name: cycle.patientName || 'IVF patient', fileName: report.title, summary: `Quick AI reading (not yet checked by your doctor): ${reading.replace(/\*/g, '')}` } });
+      } else {
+        await D.sendWhatsAppFree(cycle.patientPhone, `📄 *IVF report received: ${report.title}*\n\nYour IVF doctor will review it and send you their findings here.\n${ivfUrl('ivf.html')}\n- Biomexa IVF Care`);
+      }
     })());
     const doctor = await doctorOf(cycle);
     if (doctor) fire(D.sendWhatsAppFree(doctor.phone, `📄 New IVF report from ${cycle.patientName || cycle.patientPhone}: ${report.title}.\nReview it: ${ivfUrl('ivf-doctor.html')}`));
@@ -997,12 +1042,15 @@ function mount(app, deps) {
     const values = {};
     for (const [k, [lo, hi]] of Object.entries(lim)) { const n = num(v[k], lo, hi); if (n !== undefined) values[k] = n; }
     const doctor = await D.Doctor.findById(req.doctor.id).select('name');
+    const rCycle = isId(report.cycleId) ? await IvfCycle.findById(report.cycleId).select('patientName').lean() : null;
     Object.assign(report, {
       doctorFindings: findings, doctorAdvice: str(req.body.doctorAdvice, 2000), values,
       needsFollowUp: req.body.needsFollowUp === true, reviewStatus: 'reviewed', reviewedBy: doctor?.name, reviewedAt: new Date()
     });
     await report.save();
-    fire(D.sendWhatsAppFree(report.patientPhone, `🩺 *Your IVF report has been reviewed*\n\n${report.title}\n\n*Findings:* ${findings.slice(0, 500)}${report.doctorAdvice ? `\n\n*Advice:* ${report.doctorAdvice.slice(0, 400)}` : ''}${report.needsFollowUp ? '\n\n📅 Your doctor would like a follow-up — please book one in the app.' : ''}${Object.keys(values).length ? '\n\n📈 Your graphs are updated with these values.' : ''}\n\n${ivfUrl('ivf.html')}\n- ${doctor?.name || 'Your IVF centre'}`));
+    fire(D.sendWhatsAppFree(report.patientPhone, `🩺 *Your IVF report has been reviewed*\n\n${report.title}\n\n*Findings:* ${findings.slice(0, 500)}${report.doctorAdvice ? `\n\n*Advice:* ${report.doctorAdvice.slice(0, 400)}` : ''}${report.needsFollowUp ? '\n\n📅 Your doctor would like a follow-up — please book one in the app.' : ''}${Object.keys(values).length ? '\n\n📈 Your graphs are updated with these values.' : ''}\n\n${ivfUrl('ivf.html')}\n- ${doctor?.name || 'Your IVF centre'}`,
+      { title: `Your IVF report has been reviewed: ${report.title}`, details: `Findings: ${findings}${report.doctorAdvice ? ` Advice: ${report.doctorAdvice}` : ''}${report.needsFollowUp ? ' Your doctor would like a follow-up, please book one in the app.' : ''} - ${doctor?.name || 'Your IVF centre'}`,
+        report: { name: rCycle?.patientName || 'IVF patient', fileName: report.title, summary: `Reviewed by ${doctor?.name || 'your doctor'}. Findings: ${findings}${report.doctorAdvice ? ` Advice: ${report.doctorAdvice}` : ''}` } }));
     const out = report.toObject(); out.files = out.files.map(f => ({ fileName: f.fileName, fileType: f.fileType }));
     res.json({ message: 'Analysis saved and shared with the patient.', report: out });
   }));

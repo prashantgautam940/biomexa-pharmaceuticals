@@ -1447,6 +1447,65 @@ async function sendWhatsAppFree(phone, message, userApiKey) {
   return { success: false, provider: 'none' };
 }
 
+// ===== WHATSAPP 24-HOUR WINDOW + IVF CARE UPDATE TEMPLATE =====
+// Meta only delivers free-text messages within 24 hours of the person's last message to the
+// Biomexa number; outside that window MSG91 still answers "sent" but Meta drops it (131047).
+// Every inbound message is recorded here so senders know which kind of message will arrive.
+const WaInbound = mongoose.model('WaInbound', new mongoose.Schema({
+  digits: { type: String, unique: true }, lastInboundAt: Date
+}), 'wa_inbound');
+const waDigits = p => String(p || '').replace(/\D/g, '').slice(-10);
+function noteWhatsAppInbound(phone) {
+  return WaInbound.updateOne({ digits: waDigits(phone) }, { lastInboundAt: new Date() }, { upsert: true }).catch(() => {});
+}
+async function whatsappWindowOpen(phone) {
+  const r = await WaInbound.findOne({ digits: waDigits(phone) }).lean().catch(() => null);
+  return !!(r && r.lastInboundAt && Date.now() - new Date(r.lastInboundAt).getTime() < 23.5 * 3600e3);
+}
+
+// Setup: create + get Meta approval for a UTILITY template in MSG91 named e.g. ivf_care_update:
+//   Body: "Biomexa IVF Care: {{1}}\n\n{{2}}\n\nOpen your IVF Care app for full details."
+//   Variables: {{1}} = title, {{2}} = details. No buttons.
+// then set MSG91_IVF_UPDATE_TEMPLATE_NAME (and MSG91_IVF_UPDATE_TEMPLATE_NAMESPACE if different).
+const MSG91_IVF_UPDATE_TEMPLATE_NAME = process.env.MSG91_IVF_UPDATE_TEMPLATE_NAME || null;
+const MSG91_IVF_UPDATE_TEMPLATE_NAMESPACE = process.env.MSG91_IVF_UPDATE_TEMPLATE_NAMESPACE || MSG91_TEMPLATE_NAMESPACE;
+async function sendIvfUpdateTemplate(phone, title, details) {
+  if (!MSG91_CONFIGURED || !MSG91_IVF_UPDATE_TEMPLATE_NAME) return { success: false, provider: 'msg91_ivf_update_template_not_configured' };
+  try {
+    const res = await fetch('https://api.msg91.com/api/v5/whatsapp/whatsapp-outbound-message/bulk/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'authkey': MSG91_AUTH_KEY },
+      body: JSON.stringify({
+        integrated_number: MSG91_INTEGRATED_NUMBER,
+        content_type: 'template',
+        payload: {
+          messaging_product: 'whatsapp', type: 'template',
+          template: {
+            name: MSG91_IVF_UPDATE_TEMPLATE_NAME,
+            language: { code: MSG91_TEMPLATE_LANG, policy: 'deterministic' },
+            namespace: MSG91_IVF_UPDATE_TEMPLATE_NAMESPACE,
+            to_and_components: [{
+              to: [phone.replace(/\D/g, '')],
+              components: {
+                body_1: { type: 'text', value: sanitizeTemplateParam(title, 80) || 'Update', parameter_name: 'title' },
+                body_2: { type: 'text', value: sanitizeTemplateParam(details, 700) || '-', parameter_name: 'details' }
+              }
+            }]
+          }
+        }
+      }),
+      signal: AbortSignal.timeout(10000)
+    });
+    const data = await res.json();
+    if (!res.ok) { console.log('⚠️ MSG91 IVF update template send failed:', JSON.stringify(data).substring(0, 500)); return { success: false, provider: 'msg91', detail: data }; }
+    console.log('✅ MSG91 IVF update template sent to', phone);
+    return { success: true, provider: 'msg91' };
+  } catch (err) {
+    console.log('⚠️ MSG91 IVF update template send error:', err.message);
+    return { success: false, provider: 'msg91', detail: err.message };
+  }
+}
+
 // ========== MONGODB SETUP ==========
 mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/biomexa')
   .then(async () => {
@@ -3655,6 +3714,7 @@ app.post('/api/webhooks/msg91-whatsapp', async (req, res) => {
       || (payload.user && payload.user.msisdn) || payload.from;
     if (!rawPhone) { console.log('⚠️ Could not find sender phone in MSG91 webhook payload'); return; }
     let phone = '+' + rawPhone.replace(/\D/g, '');
+    noteWhatsAppInbound(phone); // opens the 24h free-text window for this number
 
     // Button reply — confirmed as a flat top-level "button" field, not nested. Its own value can
     // still be a JSON string like {"payload":"Taken","text":"Taken"} depending on message type,
@@ -3706,7 +3766,7 @@ app.post('/api/webhooks/msg91-whatsapp', async (req, res) => {
 
     // IVF Care replies (IVF medicine / trigger-shot buttons, WhatsApp check-ins, and the CHECKIN /
     // PROGRESS keywords) are handled by the IVF module.
-    const ivfKeyword = /^\s*(check\s*-?\s*in|checkin|progress|my progress|summary)\s*$/i.test(freeText || buttonText || '');
+    const ivfKeyword = /^\s*(check\s*-?\s*in|checkin|progress|my progress|summary)\s*$/i.test(freeText || buttonText || '') || /^\s*hi\s+biomexa\s+ivf/i.test(freeText || '');
     if ((convo && typeof convo.state === 'string' && convo.state.startsWith('ivf_')) || ivfKeyword) {
       if (await ivfCare.handleWhatsAppReply({ phone, convo, buttonText, freeText })) return;
     }
@@ -5490,6 +5550,7 @@ ivfCare.mount(app, {
   auth, doctorAuth, Patient, Doctor, ConversationState,
   phoneVariants, localDateStr, SITE_URL,
   sendWhatsAppFree, sendDoseReminderTemplate, sendRiskAlertTemplate, sendDoctorAlertMessage,
+  sendIvfUpdateTemplate, sendReportAnalysisTemplate, whatsappWindowOpen,
   analyzeDocument, ALLOWED_DOCUMENT_TYPES, MAX_FILES_PER_UPLOAD, MAX_DOCUMENT_BASE64_LENGTH,
   disableScheduler: process.env.IVF_SCHEDULER_DISABLED === 'true'
 });
