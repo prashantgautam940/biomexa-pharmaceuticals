@@ -560,7 +560,10 @@ function resultRow(x) {
 }
 function resultsEditor(r) {
   const rows = startingRows(r);
-  const src = r.extractStatus === 'pending' && !(r.results || []).length ? '⏳ AI is reading the report… tap "Re-read" in a moment.'
+  const reading = r.extractStatus === 'pending' && !(r.results || []).length && r.reviewStatus !== 'reviewed' && Date.now() - new Date(r.uploadedAt) < 5 * 60e3;
+  const legacy = !(r.results || []).length && Object.values(r.values || {}).some(v => v !== null && v !== undefined);
+  const src = reading ? '⏳ AI is reading the report… tap "Re-read" in a moment.'
+    : legacy ? 'Values you saved earlier. Tap "Re-read with AI" to pull every result from the report.'
     : r.resultsSource === 'ai' ? '🤖 Read from the report by AI. Check each value against the original before saving.'
     : r.resultsSource === 'doctor' ? '✅ Checked and saved by you.'
     : r.extractStatus === 'failed' ? 'AI could not read this file. Standard fields for this report type are shown. Edit or add rows.'
