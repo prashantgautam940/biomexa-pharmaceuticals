@@ -502,7 +502,8 @@ async function loadReports() {
       ${r.reviewStatus === 'reviewed' ? `<div class="notice ok mt"><b>Doctor's findings (${IVF.esc(r.reviewedBy || '')}, ${IVF.fmtDate(r.reviewedAt)}):</b><div class="pre">${IVF.esc(r.doctorFindings)}</div>
         ${r.doctorAdvice ? `<div class="mt"><b>Advice:</b> <span class="pre">${IVF.esc(r.doctorAdvice)}</span></div>` : ''}
         ${r.needsFollowUp ? '<div class="mt">📅 Your doctor would like a follow-up — request one in the Virtual follow-ups tab.</div>' : ''}</div>
-        ${vals.length ? `<div class="kv">${vals.map(([k, v]) => `<div>${vLabels[k] || k}<b>${v}</b></div>`).join('')}</div>` : ''}`
+        ${(r.results || []).length ? `<div class="table-wrap mt"><table class="res-table ro"><thead><tr><th>Test</th><th>Result</th><th>Normal range</th></tr></thead><tbody>${r.results.map(x => `<tr class="${x.flag ? 'flag-' + x.flag : ''}"><td>${IVF.esc(x.name)}</td><td class="num"><b>${IVF.esc(x.value)}</b> ${IVF.esc(x.unit || '')}${['high', 'low', 'abnormal'].includes(x.flag) ? ` <span class="badge b-watch">${x.flag}</span>` : ''}</td><td class="small muted">${IVF.esc(x.refRange || '')}</td></tr>`).join('')}</tbody></table></div>`
+          : vals.length ? `<div class="kv">${vals.map(([k, v]) => `<div>${vLabels[k] || k}<b>${v}</b></div>`).join('')}</div>` : ''}`
         : r.aiStatus === 'done' && r.aiSummary ? `<details class="mt"><summary class="small muted">Automatic summary (not yet checked by your doctor)</summary><div class="small pre mt">${IVF.rich(r.aiSummary)}</div></details>` : ''}
     </div>`;
   }).join('') : '<div class="empty">No reports yet.</div>';

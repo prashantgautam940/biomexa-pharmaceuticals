@@ -176,6 +176,12 @@ const ivfReportSchema = new mongoose.Schema({
     betaHcg: Number, follicleCountLeft: Number, follicleCountRight: Number,
     leadFollicleMm: Number, endometriumMm: Number
   },
+  // Every result row on the report (read by AI at upload, then checked/edited by the doctor).
+  // `key` links a row to an IVF graph value (amh, estradiol, betaHcg, ...) when it is one.
+  results: [{ _id: false, name: String, value: String, unit: String, refRange: String, flag: String, key: String }],
+  detectedType: String, // e.g. "Diabetes panel", "Follicle scan" (from the AI reading)
+  resultsSource: { type: String, default: 'none' }, // ai | template | doctor | none
+  extractStatus: { type: String, default: 'pending' }, // pending | done | failed | not_configured
   needsFollowUp: { type: Boolean, default: false },
   reviewedBy: String,
   reviewedAt: Date,

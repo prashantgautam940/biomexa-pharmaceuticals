@@ -379,6 +379,61 @@ async function analyzeDocument(files, language, documentType = 'prescription', a
   return analyzeDocumentWithClaude(files, language, documentType, audience, referenceContext, patientContext);
 }
 
+// ========== STRUCTURED RESULT EXTRACTION (any lab / scan report) ==========
+// Reads every result row printed on a report so a reviewing doctor gets fields for exactly the
+// tests in that report (glucose + HbA1c on a diabetes panel, follicle sizes on a scan, etc.).
+// Values are copied as printed, never interpreted; the doctor checks them against the original.
+const EXTRACT_PROMPT = `You are reading a medical report (lab test, scan, semen analysis, embryology or similar).
+List EVERY result row printed on it. Copy names, values, units and reference ranges exactly as printed. Do not interpret, diagnose, convert units or guess missing values.
+Return ONLY a JSON object, no markdown, in this exact shape:
+{"reportType":"short name of the report, e.g. Diabetes panel, Thyroid profile, Follicle scan","tests":[{"name":"test name as printed","value":"result as printed","unit":"unit or empty","refRange":"reference range as printed or empty","flag":"high|low|abnormal|normal or empty"}]}
+Rules: one entry per result (not per heading); skip patient details, method lines and comments; for scans include each measurement (e.g. "Left ovary follicles", "Lead follicle", "Endometrial thickness"); "flag" only if the report marks it or the value is clearly outside the printed range; at most 40 tests. If nothing readable, return {"reportType":"","tests":[]}.`;
+
+function parseExtractJson(text) {
+  const t = String(text || '');
+  const start = t.indexOf('{'), end = t.lastIndexOf('}');
+  if (start < 0 || end <= start) return null;
+  try {
+    const j = JSON.parse(t.slice(start, end + 1));
+    const clip = (v, n) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
+    const tests = (Array.isArray(j.tests) ? j.tests : []).slice(0, 40).map(x => ({
+      name: clip(x.name, 100), value: clip(x.value, 60), unit: clip(x.unit, 30), refRange: clip(x.refRange, 120),
+      flag: ['high', 'low', 'abnormal', 'normal'].includes(String(x.flag || '').toLowerCase()) ? String(x.flag).toLowerCase() : ''
+    })).filter(x => x.name && x.value);
+    return { reportType: clip(j.reportType, 80), tests };
+  } catch { return null; }
+}
+
+async function extractReportResults(files) {
+  if (GEMINI_API_KEY) {
+    const parts = [{ text: EXTRACT_PROMPT }, ...files.map(f => ({ inline_data: { mime_type: f.fileType, data: f.fileData } }))];
+    for (let i = 0; i < GEMINI_MODELS.length; i++) {
+      try {
+        const r = await callGeminiModel(GEMINI_MODELS[i], parts, i === GEMINI_MODELS.length - 1 ? 2 : 1);
+        const parsed = r.ok && parseExtractJson(r.analysis);
+        if (parsed) return { ok: true, ...parsed };
+      } catch (err) { console.log(`⚠️ ${GEMINI_MODELS[i]} extraction error:`, err.message); }
+    }
+  }
+  if (ANTHROPIC_API_KEY) {
+    try {
+      const content = files.map(f => f.fileType === 'application/pdf'
+        ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: f.fileData } }
+        : { type: 'image', source: { type: 'base64', media_type: f.fileType, data: f.fileData } });
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+        body: JSON.stringify({ model: 'claude-sonnet-5', max_tokens: 2000, messages: [{ role: 'user', content: [...content, { type: 'text', text: EXTRACT_PROMPT }] }] }),
+        signal: AbortSignal.timeout(70000)
+      });
+      const data = await res.json();
+      const parsed = res.ok && parseExtractJson(data.content?.find(b => b.type === 'text')?.text);
+      if (parsed) return { ok: true, ...parsed };
+    } catch (err) { console.log('⚠️ Claude extraction error:', err.message); }
+  }
+  return { ok: false, reason: GEMINI_API_KEY || ANTHROPIC_API_KEY ? 'failed' : 'not_configured' };
+}
+
 // ========== CLINICAL REFERENCE IMAGE ANALYSIS (admin-curated teaching examples) ==========
 // Lets an admin upload a REFERENCE image (e.g. a labeled example X-ray) with their own note on
 // what it demonstrates. The AI describes the visual findings in plain language; that description,
@@ -5551,7 +5606,7 @@ ivfCare.mount(app, {
   phoneVariants, localDateStr, SITE_URL,
   sendWhatsAppFree, sendDoseReminderTemplate, sendRiskAlertTemplate, sendDoctorAlertMessage,
   sendIvfUpdateTemplate, sendReportAnalysisTemplate, whatsappWindowOpen,
-  analyzeDocument, ALLOWED_DOCUMENT_TYPES, MAX_FILES_PER_UPLOAD, MAX_DOCUMENT_BASE64_LENGTH,
+  analyzeDocument, extractReportResults, ALLOWED_DOCUMENT_TYPES, MAX_FILES_PER_UPLOAD, MAX_DOCUMENT_BASE64_LENGTH,
   disableScheduler: process.env.IVF_SCHEDULER_DISABLED === 'true'
 });
 

@@ -538,6 +538,55 @@ function renderDetail() {
     ${c.doctorSummary ? `<div class="small mt"><b>Your notes:</b> <span class="pre">${IVF.esc(c.doctorSummary)}</span></div>` : ''}</div>`).join('') : '<div class="empty">No follow-ups yet.</div>';
 }
 
+// ---------- report results editor (rows follow whatever tests the report contains) ----------
+const GRAPH_LABEL = { amh: 'AMH', fsh: 'FSH', lh: 'LH', estradiol: 'Estradiol', progesterone: 'Progesterone', betaHcg: 'Beta-hCG', follicleCountLeft: 'Follicles left', follicleCountRight: 'Follicles right', leadFollicleMm: 'Lead follicle', endometriumMm: 'Endometrium' };
+function startingRows(r) {
+  if (r.results && r.results.length) return r.results;
+  const legacy = Object.entries(r.values || {}).filter(([, v]) => v !== null && v !== undefined);
+  if (legacy.length) return legacy.map(([k, v]) => { const [, name, unit] = (vLabels[k] || k).match(/^(.*?)(?: \((.*)\))?$/); return { name, value: String(v), unit: unit || '', refRange: '', flag: '', key: k }; });
+  const t = (IVF.meta.reportTemplates || {})[r.category] || [];
+  return t.length ? t : [{ name: '', value: '', unit: '', refRange: '', flag: '', key: '' }];
+}
+function resultRow(x) {
+  const e = v => IVF.esc(v || '');
+  return `<tr class="res-row ${x.flag ? 'flag-' + x.flag : ''}" data-key="${e(x.key)}">
+    <td><input data-f="name" value="${e(x.name)}" placeholder="Test name" aria-label="Test name">${x.key ? `<span class="graph-chip" title="This value is added to the patient's ${e(GRAPH_LABEL[x.key] || x.key)} graph">📈 ${e(GRAPH_LABEL[x.key] || x.key)} graph</span>` : ''}</td>
+    <td><input data-f="value" value="${e(x.value)}" placeholder="Result" aria-label="Result"></td>
+    <td><input data-f="unit" value="${e(x.unit)}" placeholder="Unit" aria-label="Unit"></td>
+    <td><input data-f="refRange" value="${e(x.refRange)}" placeholder="Normal range" aria-label="Normal range"></td>
+    <td><select data-f="flag" aria-label="Flag" onchange="this.closest('tr').className='res-row '+(this.value?'flag-'+this.value:'')">
+      ${['', 'normal', 'high', 'low', 'abnormal'].map(f => `<option value="${f}" ${x.flag === f ? 'selected' : ''}>${f ? f[0].toUpperCase() + f.slice(1) : '—'}</option>`).join('')}</select></td>
+    <td><button type="button" class="btn btn-ghost btn-sm" aria-label="Remove row" onclick="this.closest('tr').remove()">✕</button></td></tr>`;
+}
+function resultsEditor(r) {
+  const rows = startingRows(r);
+  const src = r.extractStatus === 'pending' && !(r.results || []).length ? '⏳ AI is reading the report… tap "Re-read" in a moment.'
+    : r.resultsSource === 'ai' ? '🤖 Read from the report by AI. Check each value against the original before saving.'
+    : r.resultsSource === 'doctor' ? '✅ Checked and saved by you.'
+    : r.extractStatus === 'failed' ? 'AI could not read this file. Standard fields for this report type are shown. Edit or add rows.'
+    : 'Standard fields for this report type. Edit, remove or add rows to match the report.';
+  return `<div class="res-box">
+    <div class="spread"><div><b>Results in this report</b>${r.detectedType ? ` <span class="badge b-navy">${IVF.esc(r.detectedType)}</span>` : ''}<div class="small muted">${src}</div></div>
+      <button type="button" class="btn btn-ghost btn-sm" onclick="rereadReport('${r._id}', this)">🤖 Re-read with AI</button></div>
+    <div class="table-wrap mt"><table class="res-table"><thead><tr><th>Test</th><th>Result</th><th>Unit</th><th>Normal range</th><th>Flag</th><th></th></tr></thead>
+      <tbody id="rows-${r._id}">${rows.map(resultRow).join('')}</tbody></table></div>
+    <button type="button" class="btn btn-ghost btn-sm mt" onclick="document.getElementById('rows-${r._id}').insertAdjacentHTML('beforeend', resultRow({}))">+ Add test</button>
+  </div>`;
+}
+function collectRows(id) {
+  return [...document.querySelectorAll(`#rows-${id} tr`)].map(tr => {
+    const o = { key: tr.dataset.key || '' }; tr.querySelectorAll('[data-f]').forEach(i => { o[i.dataset.f] = i.value.trim(); });
+    return o;
+  }).filter(o => o.name && o.value);
+}
+async function rereadReport(id, btn) {
+  btn.disabled = true; const t = btn.textContent; btn.textContent = 'Reading…';
+  try {
+    const r = await call(`/api/ivf/doctor/reports/${id}/extract`, { method: 'POST' });
+    IVF.toast(r.message);
+    const el = document.getElementById('rep-' + id); if (el && r.report) el.outerHTML = reportHtml(r.report);
+  } catch (err) { IVF.toast(err.message, true); btn.disabled = false; btn.textContent = t; }
+}
 function reportHtml(r) {
   const vals = r.values || {};
   return `<div class="item" id="rep-${r._id}"><div class="spread"><div><div class="title">${IVF.esc(r.title)}</div>
@@ -547,7 +596,7 @@ function reportHtml(r) {
     ${r.patientNote ? `<p class="small mt"><b>Patient note:</b> ${IVF.esc(r.patientNote)}</p>` : ''}
     ${r.aiSummary ? `<details class="mt"><summary class="small muted">AI draft reading (unverified — check against the original)</summary><div class="small pre mt">${IVF.rich(r.aiSummary)}</div></details>` : ''}
     <form class="mt" onsubmit="reviewReport(event,'${r._id}')">
-      <div class="grid grid-4">${Object.entries(vLabels).map(([k, l]) => `<div class="field"><label>${l}</label><input type="number" step="any" name="${k}" value="${vals[k] ?? ''}"></div>`).join('')}</div>
+      ${resultsEditor(r)}
       <div class="field"><label>Findings (shared with patient)</label><textarea name="findings" required>${IVF.esc(r.doctorFindings || '')}</textarea></div>
       <div class="field"><label>Advice / next steps</label><textarea name="advice">${IVF.esc(r.doctorAdvice || '')}</textarea></div>
       <label class="check"><input type="checkbox" name="followup" ${r.needsFollowUp ? 'checked' : ''}> Ask the patient to book a follow-up</label>
@@ -557,9 +606,9 @@ function reportHtml(r) {
 async function viewFile(id, i) { try { IVF.showFile(await call(`/api/ivf/doctor/reports/${id}/file/${i}`)); } catch (err) { IVF.toast(err.message, true); } }
 async function reviewReport(e, id) {
   e.preventDefault(); const f = e.target;
-  const values = {}; Object.keys(vLabels).forEach(k => { if (f[k].value !== '') values[k] = f[k].value; });
+  const results = collectRows(id);
   try {
-    const r = await call(`/api/ivf/doctor/reports/${id}/review`, { method: 'PATCH', body: { doctorFindings: f.findings.value, doctorAdvice: f.advice.value, needsFollowUp: f.followup.checked, values } });
+    const r = await call(`/api/ivf/doctor/reports/${id}/review`, { method: 'PATCH', body: { doctorFindings: f.findings.value, doctorAdvice: f.advice.value, needsFollowUp: f.followup.checked, results } });
     IVF.toast(r.message); openPatient(current.cycle._id, 'preports');
   } catch (err) { IVF.toast(err.message, true); }
 }

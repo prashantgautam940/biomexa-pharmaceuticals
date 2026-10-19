@@ -483,6 +483,62 @@ function stageInfo(stage) {
 const reportListFields = '-files.fileData';
 
 // =====================================================================================
+// ---------- report results ----------
+// Graph-linked values and their sane limits (anything outside is ignored for graphs).
+const VALUE_LIMITS = { amh: [0, 50], fsh: [0, 200], lh: [0, 200], estradiol: [0, 20000], progesterone: [0, 500], betaHcg: [0, 500000], follicleCountLeft: [0, 60], follicleCountRight: [0, 60], leadFollicleMm: [0, 40], endometriumMm: [0, 30] };
+const RESULT_KEYS = [
+  ['fsh', /\bfsh\b|follicle[\s-]*stimulating/i],
+  ['amh', /anti[\s-]*m[uü]ll|\bamh\b/i],
+  ['lh', /\blh\b|luteini[sz]ing/i],
+  ['estradiol', /estradiol|oestradiol|\be2\b/i],
+  ['progesterone', /progesterone|\bp4\b/i],
+  ['betaHcg', /\bhcg\b|chorionic/i],
+  ['endometriumMm', /endometri/i],
+  ['leadFollicleMm', /(lead|leading|dominant|largest)\s+follicle/i],
+  ['follicleCountLeft', /\bleft\b.*\b(follicles?|afc)\b|\b(follicles?|afc)\b.*\bleft\b/i],
+  ['follicleCountRight', /\bright\b.*\b(follicles?|afc)\b|\b(follicles?|afc)\b.*\bright\b/i]
+];
+const keyForTest = name => (RESULT_KEYS.find(([, re]) => re.test(name || '')) || [''])[0];
+// Starting rows when the AI could not read the report (or for a blank report of that type).
+const REPORT_TEMPLATES = {
+  hormone_blood_test: [['AMH', 'ng/mL'], ['FSH', 'IU/L'], ['LH', 'IU/L'], ['Estradiol (E2)', 'pg/mL'], ['Progesterone (P4)', 'ng/mL'], ['TSH', 'µIU/mL'], ['Prolactin', 'ng/mL']],
+  ultrasound_scan: [['Follicles - left ovary', 'count'], ['Follicles - right ovary', 'count'], ['Lead follicle', 'mm'], ['Endometrial thickness', 'mm']],
+  semen_analysis: [['Volume', 'mL'], ['Sperm concentration', 'million/mL'], ['Total motility', '%'], ['Progressive motility', '%'], ['Normal morphology', '%']],
+  embryology_report: [['Eggs retrieved', ''], ['Mature eggs (MII)', ''], ['Fertilised (2PN)', ''], ['Day-3 embryos', ''], ['Blastocysts', ''], ['Embryos frozen', '']],
+  beta_hcg: [['Beta-hCG', 'mIU/mL']],
+  infection_screening: [['HIV I & II', ''], ['HBsAg', ''], ['Anti-HCV', ''], ['VDRL', ''], ['Rubella IgG', 'IU/mL']],
+  prescription: [], other: []
+};
+const templateRows = cat => (REPORT_TEMPLATES[cat] || []).map(([name, unit]) => ({ name, value: '', unit, refRange: '', flag: '', key: keyForTest(name) }));
+function cleanResults(list) {
+  const clip = (v, n) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
+  return (Array.isArray(list) ? list : []).slice(0, 60).map(x => {
+    const name = clip(x && x.name, 100);
+    const key = keyForTest(name); // always from the name, so renaming a row re-links it correctly
+    return { name, value: clip(x && x.value, 60), unit: clip(x && x.unit, 30), refRange: clip(x && x.refRange, 120),
+      flag: ['high', 'low', 'abnormal', 'normal'].includes(x && x.flag) ? x.flag : '', key };
+  }).filter(x => x.name && x.value);
+}
+function valuesFromResults(results) {
+  const out = {};
+  for (const r of results) {
+    if (!r.key || out[r.key] !== undefined) continue;
+    const m = String(r.value).replace(/,/g, '').match(/-?\d+(\.\d+)?/);
+    const n = m ? Number(m[0]) : NaN; const [lo, hi] = VALUE_LIMITS[r.key];
+    if (Number.isFinite(n) && n >= lo && n <= hi && (!/Count/.test(r.key) || Number.isInteger(n))) out[r.key] = n;
+  }
+  return out;
+}
+const resultLine = r => `${r.flag === 'high' ? '⬆️ ' : r.flag === 'low' ? '⬇️ ' : r.flag === 'abnormal' ? '⚠️ ' : '• '}${r.name}: ${r.value}${r.unit ? ' ' + r.unit : ''}${r.refRange ? ` (normal ${r.refRange})` : ''}`;
+async function extractInto(reportId, files) {
+  const ex = D.extractReportResults ? await D.extractReportResults(files).catch(() => ({ ok: false, reason: 'failed' })) : { ok: false, reason: 'not_configured' };
+  const update = ex.ok && ex.tests && ex.tests.length
+    ? { results: cleanResults(ex.tests.map(t => ({ ...t, key: undefined }))), detectedType: ex.reportType || '', resultsSource: 'ai', extractStatus: 'done' }
+    : { extractStatus: ex.ok ? 'done' : (ex.reason === 'not_configured' ? 'not_configured' : 'failed') };
+  await IvfReport.updateOne({ _id: reportId }, update);
+  return update;
+}
+
 // ---------- WhatsApp delivery ----------
 // Free text only reaches someone who messaged the Biomexa number in the last 24 hours; outside
 // that window Meta silently drops it. So: free text inside the window, the approved IVF update
@@ -518,7 +574,7 @@ function mount(app, deps) {
   const R = '/api/ivf';
 
   // ---------- public ----------
-  app.get(`${R}/meta`, (req, res) => res.json({ stages: IVF_STAGES, protocols: PROTOCOLS, reportCategories: REPORT_CATEGORIES, consentText: CONSENT_TEXT }));
+  app.get(`${R}/meta`, (req, res) => res.json({ stages: IVF_STAGES, protocols: PROTOCOLS, reportCategories: REPORT_CATEGORIES, consentText: CONSENT_TEXT, reportTemplates: Object.fromEntries(Object.keys(REPORT_TEMPLATES).map(k => [k, templateRows(k)])), graphKeys: Object.keys(VALUE_LIMITS) }));
 
   app.get(`${R}/centers`, wrap(async (req, res) => {
     const centers = await IvfCenter.find({ acceptingPatients: true }).lean();
@@ -667,7 +723,7 @@ function mount(app, deps) {
     // starting point for the doctor and is labelled "unverified" everywhere it is shown.
     fire((async () => {
       const patient = await D.Patient.findOne({ phone: { $in: D.phoneVariants(cycle.patientPhone) } });
-      const result = await D.analyzeDocument(files, 'English', 'prescription', 'patient', patient);
+      const [result] = await Promise.all([D.analyzeDocument(files, 'English', 'prescription', 'patient', patient), extractInto(report._id, files)]);
       await IvfReport.updateOne({ _id: report._id }, result.ok
         ? { aiSummary: result.analysis, aiStatus: 'done' }
         : { aiStatus: result.reason === 'not_configured' ? 'not_configured' : 'failed' });
@@ -1043,6 +1099,15 @@ function mount(app, deps) {
     if (!f) return res.status(404).json({ message: 'File not found.' });
     res.json({ fileName: f.fileName, fileType: f.fileType, fileData: f.fileData });
   }));
+  // Doctor: (re)read the result rows from the original file with AI.
+  app.post(`${DR}/reports/:rid/extract`, doctorAuth, wrap(async (req, res) => {
+    if (!isId(req.params.rid)) return res.status(404).json({ message: 'Not found.' });
+    const report = await IvfReport.findOne({ _id: req.params.rid, doctorId: String(req.doctor.id) });
+    if (!report) return res.status(404).json({ message: 'Report not found.' });
+    const u = await extractInto(report._id, report.files);
+    const fresh = await IvfReport.findById(report._id).select(reportListFields);
+    res.json({ message: u.resultsSource === 'ai' ? `Read ${u.results.length} result(s) from the report — please check them against the original.` : (u.extractStatus === 'not_configured' ? 'AI reading is not set up on the server yet — please enter the results yourself.' : 'Could not read results from this file — please enter them yourself.'), report: fresh });
+  }));
   app.patch(`${DR}/reports/:rid/review`, doctorAuth, wrap(async (req, res) => {
     if (!isId(req.params.rid)) return res.status(404).json({ message: 'Not found.' });
     const report = await IvfReport.findOne({ _id: req.params.rid, doctorId: String(req.doctor.id) });
@@ -1050,17 +1115,18 @@ function mount(app, deps) {
     const findings = str(req.body.doctorFindings, 4000);
     if (!findings) return res.status(400).json({ message: 'Please write your findings before saving.' });
     const v = req.body.values || {};
-    const lim = { amh: [0, 50], fsh: [0, 200], lh: [0, 200], estradiol: [0, 20000], progesterone: [0, 500], betaHcg: [0, 500000], follicleCountLeft: [0, 60], follicleCountRight: [0, 60], leadFollicleMm: [0, 40], endometriumMm: [0, 30] };
-    const values = {};
-    for (const [k, [lo, hi]] of Object.entries(lim)) { const n = num(v[k], lo, hi); if (n !== undefined) values[k] = n; }
+    const results = Array.isArray(req.body.results) ? cleanResults(req.body.results) : (report.results || []);
+    const values = valuesFromResults(results);
+    for (const [k, [lo, hi]] of Object.entries(VALUE_LIMITS)) { const n = num(v[k], lo, hi); if (n !== undefined) values[k] = n; }
     const doctor = await D.Doctor.findById(req.doctor.id).select('name');
     const rCycle = isId(report.cycleId) ? await IvfCycle.findById(report.cycleId).select('patientName').lean() : null;
     Object.assign(report, {
-      doctorFindings: findings, doctorAdvice: str(req.body.doctorAdvice, 2000), values,
+      doctorFindings: findings, doctorAdvice: str(req.body.doctorAdvice, 2000), values, results,
+      resultsSource: Array.isArray(req.body.results) ? 'doctor' : report.resultsSource,
       needsFollowUp: req.body.needsFollowUp === true, reviewStatus: 'reviewed', reviewedBy: doctor?.name, reviewedAt: new Date()
     });
     await report.save();
-    fire(D.sendWhatsAppFree(report.patientPhone, `🩺 *Your IVF report has been reviewed*\n\n${report.title}\n\n*Findings:* ${findings.slice(0, 500)}${report.doctorAdvice ? `\n\n*Advice:* ${report.doctorAdvice.slice(0, 400)}` : ''}${report.needsFollowUp ? '\n\n📅 Your doctor would like a follow-up — please book one in the app.' : ''}${Object.keys(values).length ? '\n\n📈 Your graphs are updated with these values.' : ''}\n\n${ivfUrl('ivf.html')}\n- ${doctor?.name || 'Your IVF centre'}`,
+    fire(D.sendWhatsAppFree(report.patientPhone, `🩺 *Your IVF report has been reviewed*\n\n${report.title}${results.length ? `\n\n*Results:*\n${results.slice(0, 12).map(resultLine).join('\n')}${results.length > 12 ? `\n…and ${results.length - 12} more in the app` : ''}` : ''}\n\n*Findings:* ${findings.slice(0, 500)}${report.doctorAdvice ? `\n\n*Advice:* ${report.doctorAdvice.slice(0, 400)}` : ''}${report.needsFollowUp ? '\n\n📅 Your doctor would like a follow-up — please book one in the app.' : ''}${Object.keys(values).length ? '\n\n📈 Your graphs are updated with these values.' : ''}\n\n${ivfUrl('ivf.html')}\n- ${doctor?.name || 'Your IVF centre'}`,
       { title: `Your IVF report has been reviewed: ${report.title}`, details: `Findings: ${findings}${report.doctorAdvice ? ` Advice: ${report.doctorAdvice}` : ''}${report.needsFollowUp ? ' Your doctor would like a follow-up, please book one in the app.' : ''} - ${doctor?.name || 'Your IVF centre'}`,
         report: { name: rCycle?.patientName || 'IVF patient', fileName: report.title, summary: `Reviewed by ${doctor?.name || 'your doctor'}. Findings: ${findings}${report.doctorAdvice ? ` Advice: ${report.doctorAdvice}` : ''}` } }));
     const out = report.toObject(); out.files = out.files.map(f => ({ fileName: f.fileName, fileType: f.fileType }));
