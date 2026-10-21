@@ -466,3 +466,59 @@ html.big-text .msg, html.big-text .guide-text { font-size: 1.05rem; }
 .actionbar a.primary { color: #11663a; background: var(--green-soft); }
 .actionbar a:active { background: var(--bg); }
 @media (max-width: 420px) { .topbar .logo img { height: 28px; } .guide-meta { width: 100%; margin-left: 0; } }
+
+/* ======================= Drug adherence: revolving orbit ======================= */
+/* Same motion as the IVF Care page (benefits circling a glowing core on a tilted ring),
+   in Biomexa navy + green. Positions are set by ai-pharmacist.js. */
+.adh { overflow: hidden; padding: 26px; }
+.adh-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; align-items: center; }
+@media (min-width: 900px) { .adh-grid { grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr); gap: 28px; } }
+.adh-orbit { position: relative; height: 440px; perspective: 900px; }
+.adh-core {
+  position: absolute; left: 50%; top: 50%; width: 150px; height: 150px; margin: -75px 0 0 -75px; border-radius: 50%; z-index: 5;
+  display: grid; place-content: center; text-align: center; padding: 10px;
+  background: radial-gradient(circle at 35% 30%, #4fd18b 0%, #1c9a55 38%, #16336b 82%);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, .3) inset, 0 0 46px rgba(28, 154, 85, .35), 0 0 110px rgba(31, 68, 148, .25);
+  animation: adhCore 4s ease-in-out infinite;
+}
+.adh-core b { color: #fff; font-size: 1.12rem; font-weight: 800; line-height: 1.15; letter-spacing: -0.01em; }
+.adh-core span { color: #d6f7e4; font-size: .72rem; font-weight: 700; margin-top: 4px; }
+@keyframes adhCore { 50% { box-shadow: 0 0 0 1px rgba(255, 255, 255, .4) inset, 0 0 66px rgba(28, 154, 85, .5), 0 0 150px rgba(31, 68, 148, .35); } }
+.adh-ring { position: absolute; left: 50%; top: 50%; border-radius: 50%; transform: translate(-50%, -50%) rotateX(72deg); pointer-events: none; }
+.adh-ring-a { width: 420px; height: 420px; border: 1px solid rgba(31, 68, 148, .35); box-shadow: 0 0 18px rgba(31, 68, 148, .12); }
+.adh-ring-b { width: 290px; height: 290px; border: 1px dashed rgba(28, 154, 85, .5); animation: adhSpin 30s linear infinite; }
+@keyframes adhSpin { to { transform: translate(-50%, -50%) rotateX(72deg) rotateZ(360deg); } }
+.adh-node {
+  position: absolute; left: 50%; top: 50%; width: 172px; padding: 10px 11px; border-radius: 15px;
+  display: grid; grid-template-columns: auto 1fr; column-gap: 9px; align-items: center;
+  background: rgba(255, 255, 255, .94); border: 1px solid #d6e0f3; box-shadow: 0 14px 30px rgba(19, 33, 61, .12);
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); will-change: transform, opacity;
+}
+.adh-node i { grid-row: span 2; width: 38px; height: 38px; border-radius: 11px; display: grid; place-items: center; background: var(--green-soft); color: var(--green); font-size: 1.05rem; }
+.adh-node b { font-size: .84rem; line-height: 1.2; color: var(--text); }
+.adh-node small { font-size: .7rem; line-height: 1.3; color: var(--muted); }
+.adh-node.front { border-color: var(--green); box-shadow: 0 0 0 1px rgba(28, 154, 85, .2) inset, 0 16px 34px rgba(28, 154, 85, .22); }
+.adh-kicker { display: inline-flex; gap: 8px; align-items: center; font-size: .78rem; font-weight: 700; color: var(--green); background: var(--green-soft); padding: 5px 11px; border-radius: 999px; }
+.adh-copy h2 { font-size: clamp(1.3rem, 3vw, 1.6rem); font-weight: 800; letter-spacing: -0.02em; line-height: 1.2; margin: 12px 0 8px; display: block; }
+.adh-copy > p { color: var(--muted); font-size: .94rem; }
+.adh-steps { list-style: none; counter-reset: s; display: grid; gap: 10px; margin: 16px 0 18px; }
+.adh-steps li { counter-increment: s; position: relative; padding: 3px 0 0 40px; font-size: .9rem; min-height: 28px; line-height: 1.45; }
+.adh-steps li::before {
+  content: counter(s); position: absolute; left: 0; top: 0; width: 28px; height: 28px; border-radius: 50%;
+  display: grid; place-items: center; font-weight: 800; font-size: .8rem; color: #fff; background: linear-gradient(135deg, var(--green), var(--navy-2));
+}
+.adh-steps b { color: var(--navy); margin-right: 4px; }
+@media (max-width: 600px) {
+  .adh { padding: 16px; }
+  .adh-orbit { height: 330px; }
+  .adh-ring-a { width: 210px; height: 210px; }
+  .adh-ring-b { width: 150px; height: 150px; }
+  .adh-core { width: 108px; height: 108px; margin: -54px 0 0 -54px; }
+  .adh-core b { font-size: .86rem; }
+  .adh-core span { font-size: .6rem; }
+  .adh-node { width: 118px; padding: 7px 8px; column-gap: 6px; border-radius: 12px; }
+  .adh-node i { width: 28px; height: 28px; font-size: .85rem; border-radius: 9px; }
+  .adh-node b { font-size: .72rem; }
+  .adh-node small { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { .adh-core, .adh-ring-b { animation: none !important; } }

@@ -58,7 +58,7 @@
     <a class="promise" href="#guide"><span class="ico navy"><i class="fas fa-volume-high"></i></span><div><strong>AI Medicine Guide</strong><span>Listen or read</span></div></a>
     <a class="promise" href="#reminders"><span class="ico green"><i class="fas fa-bell"></i></span><div><strong>Dose Reminders</strong><span>On WhatsApp</span></div></a>
     <a class="promise" href="#tips"><span class="ico amber"><i class="fas fa-lightbulb"></i></span><div><strong>Health Tips</strong><span>Do's &amp; don'ts</span></div></a>
-    <a class="promise" href="#progress"><span class="ico navy"><i class="fas fa-chart-line"></i></span><div><strong>Track Progress</strong><span>Log your blood sugar</span></div></a>
+    <a class="promise" href="#adherence"><span class="ico navy"><i class="fas fa-arrows-spin"></i></span><div><strong>Stay on Track</strong><span>Never miss a dose</span></div></a>
   </nav>
 
   <!-- At-a-glance -->
@@ -116,43 +116,34 @@
     </section>
   </div>
 
-  <div class="grid-2 section">
-    <!-- WhatsApp dose reminders (with treatment duration) -->
-    <section class="card" id="reminders">
-      <h2><span class="ico green"><i class="fab fa-whatsapp"></i></span>Free WhatsApp dose reminders</h2>
-      <p class="lead">Never miss a dose. Create your free account and choose your reminder times.</p>
-      <ul class="benefits">
-        <li><i class="fas fa-circle-check"></i><span>A reminder at your dose time — tap <strong>Taken</strong> or <strong>Not taken</strong></span></li>
-        <li><i class="fas fa-circle-check"></i><span>Reminders stop automatically when your course ends</span></li>
-        <li><i class="fas fa-circle-check"></i><span>Your own dashboard — adherence, vitals and treatment report</span></li>
-      </ul>
-      <a class="btn btn-wa btn-block" href="../../reminders.html?product=diabmexa-m-500" id="remSignup"><i class="fab fa-whatsapp"></i> Sign up free — start my reminders</a>
-      <p class="hint" style="text-align:center;margin-top:10px">Takes 30 seconds. Already have an account? <a href="../../login.html?next=patient.html%23add-medicine">Log in</a></p>
-    </section>
-
-    <!-- Track progress -->
-    <section class="card" id="progress">
-      <h2><span class="ico navy"><i class="fas fa-chart-line"></i></span>Track your progress</h2>
-      <p class="lead">Log your blood sugar — it's saved to your Biomexa record so your doctor can see how Diabmexa M 500 is working.</p>
-      <form id="vitalsForm">
-        <div class="field"><label class="fl" for="vPhone">WhatsApp number</label>
-          <div class="phone"><span class="cc">+91</span><input type="tel" id="vPhone" data-fill="phone" inputmode="numeric" placeholder="98765 43210" autocomplete="tel-national" maxlength="14" required></div>
-        </div>
-        <div class="row-2">
-                <div class="field"><label class="fl" for="vFasting">Fasting sugar (mg/dL)</label><input type="number" id="vFasting" inputmode="numeric" placeholder="100" min="30" max="600" required></div>
-                <div class="field"><label class="fl" for="vPp">After meal (optional)</label><input type="number" id="vPp" inputmode="numeric" placeholder="140" min="30" max="600"></div>
-              </div>
-              <div class="field"><label class="fl" for="vHr">Pulse (optional)</label><input type="number" id="vHr" inputmode="numeric" placeholder="72" min="30" max="220"></div>
-        <button class="btn btn-primary btn-block" id="vBtn"><i class="fas fa-check"></i> Save reading</button>
-      </form>
-      <div class="readings">
-        <h3>Your recent readings on this phone</h3>
-        <div class="trend" id="trend" hidden></div>
-        <div id="readingList"></div>
+  <!-- How Biomexa helps you take Diabmexa M 500 every day (revolving orbit) -->
+  <section class="section card adh" id="adherence" aria-labelledby="adhTitle">
+    <div class="adh-grid">
+      <div class="adh-orbit" role="list" aria-label="How Biomexa helps you take Diabmexa M 500 on time">
+        <div class="adh-ring adh-ring-a" aria-hidden="true"></div>
+        <div class="adh-ring adh-ring-b" aria-hidden="true"></div>
+        <div class="adh-core" aria-hidden="true"><b>Diabmexa M 500</b><span>Every dose, on time</span></div>
+        <div class="adh-node" role="listitem"><i class="fab fa-whatsapp"></i><b>Dose reminder</b><small>On WhatsApp at your exact dose time</small></div>
+        <div class="adh-node" role="listitem"><i class="fas fa-hand-pointer"></i><b>Taken / Not taken</b><small>One tap — or "Remind me later"</small></div>
+        <div class="adh-node" role="listitem"><i class="fas fa-user-doctor"></i><b>AI Pharmacist</b><small>Clears the doubts that make people stop</small></div>
+        <div class="adh-node" role="listitem"><i class="fas fa-chart-pie"></i><b>Adherence score</b><small>Your streak and treatment report</small></div>
+        <div class="adh-node" role="listitem"><i class="fas fa-bell"></i><b>Doctor alert</b><small>Missed doses or risky readings flagged</small></div>
+        <div class="adh-node" role="listitem"><i class="fas fa-rotate"></i><b>Refill nudge</b><small>Before your strip runs out</small></div>
       </div>
-      <a class="btn btn-ghost btn-block" href="../../patient.html#treatment-report" style="margin-top:6px"><i class="fas fa-file-medical"></i> See full treatment report</a>
-    </section>
-  </div>
+      <div class="adh-copy" id="reminders">
+        <span class="adh-kicker"><i class="fas fa-arrows-spin"></i> Drug adherence</span>
+        <h2 id="adhTitle">Medicine only works when it's taken — every day</h2>
+        <p>Missed and forgotten doses are among the most common reasons treatment for blood sugar doesn't work as well as it should. Biomexa builds the habit for you, right on WhatsApp — no app to install.</p>
+        <ol class="adh-steps">
+          <li><b>Remind</b> — a WhatsApp message at your dose time</li>
+          <li><b>Confirm</b> — tap Taken, so every dose is recorded</li>
+          <li><b>Follow up</b> — missed a dose? We nudge you, and your doctor can see it</li>
+        </ol>
+        <a class="btn btn-wa btn-block" href="../../reminders.html?product=diabmexa-m-500" id="remSignup"><i class="fab fa-whatsapp"></i> Sign up free — start my reminders</a>
+        <p class="hint" style="text-align:center;margin-top:10px">Takes 30 seconds. Already have an account? <a href="../../login.html?next=patient.html%23add-medicine">Log in</a></p>
+      </div>
+    </div>
+  </section>
 
   <!-- Health tips -->
   <section class="section card" id="tips">
@@ -189,7 +180,7 @@
   <a href="#guide"><i class="fas fa-volume-high"></i>Guide</a>
   <a href="#ask"><i class="fas fa-comments"></i>Ask AI</a>
   <a href="#reminders" class="primary"><i class="fab fa-whatsapp"></i>Remind me</a>
-  <a href="#progress"><i class="fas fa-chart-line"></i>Track</a>
+  <a href="#adherence"><i class="fas fa-arrows-spin"></i>On track</a>
 </nav>
 <div class="toast" id="toast" role="status"></div>
 

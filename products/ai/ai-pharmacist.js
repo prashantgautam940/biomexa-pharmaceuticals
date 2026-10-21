@@ -375,7 +375,7 @@
       return `<div class="reading"><div><div class="val">${val}</div><div class="hint" style="margin:0">${new Date(r.at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}${r.hr ? ` · ${r.hr} bpm` : ''}</div></div><span class="pill ${cls}">${label}</span></div>`;
     }).join('') : '<div class="empty">No readings yet — log your first one above.</div>';
   }
-  $('vitalsForm').addEventListener('submit', async (e) => {
+  if ($('vitalsForm')) $('vitalsForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     const phone10 = tenDigits($('vPhone').value);
     if (phone10.length !== 10) { toast('Enter your 10-digit WhatsApp number so this saves to your record'); return; }
@@ -410,6 +410,38 @@
     document.querySelectorAll('.wrap > .section, .wrap > .grid-2 > .card').forEach(el => { el.classList.add('reveal'); io.observe(el); });
   }
 
+  // ---------- Adherence orbit: benefits revolve around the medicine (same motion as IVF Care) ----------
+  document.querySelectorAll('.adh-orbit').forEach(orbit => {
+    const nodes = Array.from(orbit.querySelectorAll('.adh-node'));
+    const ring = orbit.querySelector('.adh-ring-a');
+    const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const tilt = Math.cos(72 * Math.PI / 180); // matches the ring's rotateX(72deg)
+    let base = 90, paused = false, last = performance.now(), visible = true;
+    function place() {
+      const rx = ring.offsetWidth / 2, ry = Math.max(rx * tilt, 60) + (rx < 130 ? 30 : 46);
+      nodes.forEach((n, i) => {
+        const a = (base + i * (360 / nodes.length)) * Math.PI / 180;
+        const depth = (Math.sin(a) + 1) / 2;            // 0 = behind the medicine, 1 = closest
+        const scale = 0.74 + depth * 0.3;
+        n.style.transform = `translate(-50%, -50%) translate(${(Math.cos(a) * rx).toFixed(1)}px, ${(Math.sin(a) * ry).toFixed(1)}px) scale(${scale.toFixed(3)})`;
+        n.style.opacity = (0.45 + depth * 0.55).toFixed(2);
+        n.style.zIndex = depth > 0.5 ? 10 : 1;
+        n.classList.toggle('front', depth > 0.92);
+      });
+    }
+    function tick(now) {
+      const dt = Math.min(0.05, (now - last) / 1000); last = now;
+      if (!paused && !reduce && visible && !document.hidden) { base += 12 * dt; place(); }
+      requestAnimationFrame(tick);
+    }
+    orbit.addEventListener('mouseenter', () => { paused = true; });
+    orbit.addEventListener('mouseleave', () => { paused = false; });
+    orbit.addEventListener('touchstart', () => { paused = !paused; }, { passive: true }); // tap to pause/resume
+    if ('IntersectionObserver' in window) new IntersectionObserver(([e]) => { visible = e.isIntersecting; }).observe(orbit);
+    window.addEventListener('resize', place);
+    place(); requestAnimationFrame(tick);
+  });
+
   // ---------- start ----------
-  renderGuide(); renderChat(); renderReadings(); prefill();
+  renderGuide(); renderChat(); if ($('readingList')) renderReadings(); prefill();
 })();
