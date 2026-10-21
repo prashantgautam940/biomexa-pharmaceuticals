@@ -258,22 +258,6 @@ tbody tr:hover { background: #f6f8fc !important; }
     <div id="doctorList"><div class="loading">Loading doctors…</div></div>
   </div>
 
-  <div class="ai-panel" id="centreApprovalsPanel">
-    <div class="ai-panel-head">
-      <div>
-        <h2><i class="fas fa-hospital"></i> Hospital &amp; IVF Centre Approvals <span id="pendingCentreBadge" class="doc-badge" style="display:none"></span></h2>
-        <p style="color:var(--text-muted);font-size:0.88rem;margin-top:4px;max-width:720px;">Centres can't log in or invite patients until approved. Check the Clinical Establishment registration (hospitals) or ART clinic registration under the ART Act, 2021 (IVF centres) before approving. Approval sends the centre its login link and patient join code on WhatsApp.</p>
-      </div>
-      <button class="btn" onclick="loadCentres()" style="padding:9px 16px;"><i class="fas fa-rotate"></i> Refresh</button>
-    </div>
-    <div class="doc-tabs">
-      <button class="doc-tab centre-tab active" data-status="pending" onclick="setCentreTab('pending')">Awaiting approval</button>
-      <button class="doc-tab centre-tab" data-status="verified" onclick="setCentreTab('verified')">Approved</button>
-      <button class="doc-tab centre-tab" data-status="other" onclick="setCentreTab('other')">Rejected / suspended</button>
-    </div>
-    <div id="centreList"><div class="loading">Loading centres…</div></div>
-  </div>
-
   <div class="ai-panel" id="changePasswordPanel" style="border-color: var(--border);">
     <div class="ai-panel-head">
       <div>
@@ -496,7 +480,7 @@ let allDoctors = [], docTab = 'pending';
 function escDoc(t) { return String(t ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 function setDocTab(tab) {
   docTab = tab;
-  document.querySelectorAll('.doc-tab:not(.centre-tab)').forEach(b => b.classList.toggle('active', b.dataset.status === tab));
+  document.querySelectorAll('.doc-tab').forEach(b => b.classList.toggle('active', b.dataset.status === tab));
   renderDoctors();
 }
 function loadDoctors() {
@@ -555,75 +539,6 @@ function reviewDoctor(id, action) {
     .catch(e => alert(e.message));
 }
 
-
-// ========== HOSPITAL & IVF CENTRE APPROVALS ==========
-let allCentres = [], centreTab = 'pending';
-function setCentreTab(tab) {
-  centreTab = tab;
-  document.querySelectorAll('.centre-tab').forEach(b => b.classList.toggle('active', b.dataset.status === tab));
-  renderCentres();
-}
-function loadCentres() {
-  authFetch('/api/admin/centres').then(r => r.json()).then(list => {
-    allCentres = Array.isArray(list) ? list : [];
-    const pending = allCentres.filter(c => c.status === 'pending').length;
-    const badge = document.getElementById('pendingCentreBadge');
-    badge.textContent = pending ? `${pending} waiting` : ''; badge.style.display = pending ? 'inline-block' : 'none';
-    renderCentres();
-  }).catch(e => { document.getElementById('centreList').innerHTML = `<div class="empty">${escDoc(e.message)}</div>`; });
-}
-function renderCentres() {
-  const list = allCentres.filter(c => centreTab === 'other' ? ['rejected', 'suspended'].includes(c.status) : c.status === centreTab);
-  const el = document.getElementById('centreList');
-  if (!list.length) { el.innerHTML = `<div class="empty">${centreTab === 'pending' ? 'No centres waiting for approval. 🎉' : 'Nobody here yet.'}</div>`; return; }
-  const when = d => d ? new Date(d).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—';
-  el.innerHTML = list.map(c => {
-    const s = c.status;
-    const actions = s === 'pending'
-      ? `<button class="doc-approve" onclick="reviewCentre('${c._id}','approve')"><i class="fas fa-check"></i> Approve</button><button class="doc-reject" onclick="reviewCentre('${c._id}','reject')">Reject</button>`
-      : s === 'verified'
-        ? `<button class="doc-reject" onclick="reviewCentre('${c._id}','suspend')">Suspend</button>`
-        : `<button class="doc-approve" onclick="reviewCentre('${c._id}','approve')">Approve</button>`;
-    return `<div class="doc-card">
-      <div>
-        <h3>${escDoc(c.name)} <span class="doc-status ${s}">${s === 'verified' ? 'approved' : s}</span></h3>
-        <div class="doc-meta">
-          <span><b>Type</b>${escDoc(c.typeLabel)}</span>
-          <span><b>${c.type === 'ivf' ? 'ART reg. no.' : 'Registration no.'}</b>${escDoc(c.registrationNumber) || '—'}</span>
-          <span><b>Location</b>${escDoc([c.city, c.state].filter(Boolean).join(', '))}</span>
-          <span><b>Contact</b>${escDoc(c.contactName)}${c.contactRole ? ' (' + escDoc(c.contactRole) + ')' : ''}</span>
-          <span><b>WhatsApp</b>${escDoc(c.phone)}</span>
-          <span><b>Email</b>${escDoc(c.email) || '—'}</span>
-          <span><b>Doctors (stated / added)</b>${c.doctorCount || '—'} / ${c.doctorsAdded}</span>
-          <span><b>Patients joined</b>${c.patientCount}</span>
-          <span><b>Applied</b>${when(c.createdAt)}</span>
-          ${s === 'verified' ? `<span><b>Join code</b>${escDoc(c.joinCode)}</span>` : ''}
-        </div>
-        ${c.address ? `<div class="doc-bio">${escDoc(c.address)}</div>` : ''}
-        ${(c.specialties || []).length ? `<div class="doc-bio">Specialities: ${c.specialties.map(escDoc).join(', ')}</div>` : ''}
-        ${c.reviewNote && s !== 'verified' ? `<div class="doc-note">Reason: ${escDoc(c.reviewNote)}</div>` : ''}
-        ${c.reviewedAt ? `<div class="doc-bio">Last reviewed ${new Date(c.reviewedAt).toLocaleDateString('en-IN')} by ${escDoc(c.reviewedBy || 'admin')}</div>` : ''}
-      </div>
-      <div class="doc-actions">${actions}</div>
-    </div>`;
-  }).join('');
-}
-function reviewCentre(id, action) {
-  const c = allCentres.find(x => x._id === id); const name = c ? c.name : 'this centre';
-  let note = '';
-  if (action === 'approve') {
-    if (!confirm(`Approve ${name}?\n\nThey will be able to log in, add doctors and see patients who join with their code. Only approve after checking registration ${c?.registrationNumber || ''}.`)) return;
-  } else {
-    note = prompt(`${action === 'reject' ? 'Reject' : 'Suspend'} ${name} — reason (sent to the centre on WhatsApp):`);
-    if (note === null) return;
-    if (!note.trim()) { alert('Please enter a short reason.'); return; }
-  }
-  authFetch(`/api/admin/centres/${id}/${action}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ note }) })
-    .then(r => r.json().then(data => ({ ok: r.ok, data })))
-    .then(({ ok, data }) => { if (!ok) throw new Error(data.message); alert(data.message + (data.whatsappSent ? '\nThe centre has been notified on WhatsApp.' : '\n(WhatsApp notice could not be sent — please tell the centre yourself.)')); loadCentres(); })
-    .catch(e => alert(e.message));
-}
-
 function enterDashboard() {
   document.getElementById('loginSection').classList.add('hidden');
   document.getElementById('dashboardSection').classList.remove('hidden');
@@ -634,7 +549,6 @@ function enterDashboard() {
   loadClinicalData();
   loadOrders();
   loadDoctors();
-  loadCentres();
   loadCare();
   loadTickets();
 }

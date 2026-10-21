@@ -276,7 +276,6 @@
     // arbitrary URL, so ?next= can't be abused as an open redirect.
     function postLoginTarget() {
       const next = new URLSearchParams(location.search).get('next') || '';
-      if (/^join-centre\.html\?code=[A-Za-z0-9]{4,12}$/.test(next)) return next;
       return /^(patient|subscribe)\.html(#[A-Za-z0-9_-]+)?(\?plan=[a-z]+)?$/.test(next) ? next : 'patient.html';
     }
     // IVF Care has its own sign-in page and session now; send any old IVF links there.

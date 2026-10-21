@@ -234,7 +234,7 @@ input[type="time"] { color-scheme: dark; }
 @media (min-width: 1000px) {
   .container { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; }
   .pc-hero, .pc-upload, .pc-report, .pc-profile { grid-column: 1 / -1; }
-  .pc-hero { order: 0 } .pc-stats { order: 1 } .pc-doses { order: 2 } .pc-doctor { order: 3 } .pc-centres { order: 3 } .pc-vitals { order: 4 }
+  .pc-hero { order: 0 } .pc-stats { order: 1 } .pc-doses { order: 2 } .pc-doctor { order: 3 } .pc-vitals { order: 4 }
   .pc-report { order: 5 } .pc-upload { order: 6 } .pc-addmed { order: 7 } .pc-wa { order: 8 } .pc-profile { order: 9 }
 }
 .card { background: #fff !important; border: 1px solid #e2e8f2 !important; border-radius: 18px !important; box-shadow: 0 1px 2px rgba(19,33,61,.05), 0 8px 24px rgba(19,33,61,.07) !important; padding: 22px !important; }
@@ -335,20 +335,6 @@ html { scroll-padding-top: 80px; }
       <div id="doctorConnectList">
         <div class="empty-state">Loading available doctors...</div>
       </div>
-    </div>
-
-    <!-- My hospital / IVF centre (centres the patient chose to share with) -->
-    <div class="card pc-centres" id="centres">
-      <div class="card-header">
-        <span class="card-title">🏥 My Hospital</span>
-        <span style="color:#64748b;font-size:12px;">Shares your progress with your doctors</span>
-      </div>
-      <div id="centreList"><div class="empty-state">Loading…</div></div>
-      <form id="centreJoinForm" style="display:flex;gap:8px;margin-top:12px;">
-        <input id="centreCodeIn" maxlength="10" placeholder="Hospital code, e.g. ABC123" autocomplete="off" aria-label="Hospital code"
-          style="flex:1;min-width:0;padding:10px 12px;border:1px solid #cfd8e6;border-radius:12px;font:inherit;font-size:16px;text-transform:uppercase;letter-spacing:.1em;">
-        <button type="submit" style="border:none;background:#16336b;color:#fff;border-radius:12px;padding:0 16px;font-weight:650;cursor:pointer;">Join</button>
-      </form>
     </div>
 
     <!-- Today's Doses -->
@@ -954,38 +940,6 @@ html { scroll-padding-top: 80px; }
         if (btn) { btn.disabled = false; btn.textContent = 'Connect'; }
       }
     }
-
-    // ===== My hospital / IVF centre =====
-    function escC(t) { return String(t ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
-    function loadCentres() {
-      fetch(`${API_URL}/api/patient/centres`, { headers: { 'Authorization': `Bearer ${token}` } })
-        .then(r => r.ok ? r.json() : Promise.reject()).then(list => {
-          const el = document.getElementById('centreList');
-          el.innerHTML = list.length ? list.map(c => `
-            <div style="display:flex;align-items:center;gap:12px;padding:12px;border:1px solid #e2e8f2;border-radius:14px;margin-bottom:8px;">
-              <span style="width:40px;height:40px;border-radius:12px;display:grid;place-items:center;background:#e8f6ee;font-size:1.2rem;">${c.type === 'ivf' ? '👶' : '🏥'}</span>
-              <div style="flex:1;min-width:0"><strong style="display:block">${escC(c.name)}</strong><span style="font-size:12px;color:#64748b">${escC(c.typeLabel)}${c.city ? ' · ' + escC(c.city) : ''} · since ${new Date(c.joinedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</span></div>
-              <button type="button" onclick="leaveCentre('${escC(c.id)}', '${escC(c.name).replace(/'/g, '')}')" style="border:1px solid #f5c7c9;background:#fff;color:#c0262d;border-radius:10px;padding:7px 10px;font-size:12px;font-weight:650;cursor:pointer;">Leave</button>
-            </div>`).join('')
-            : '<div class="empty-state">Not connected to a hospital yet. Enter the code your hospital or IVF centre gave you to let your doctors follow your progress.</div>';
-        }).catch(() => { document.getElementById('centreList').innerHTML = '<div class="empty-state">Could not load — please refresh.</div>'; });
-    }
-    async function leaveCentre(id, name) {
-      if (!confirm(`Leave ${name}?\n\nThe centre will no longer see your medicines, doses or readings.`)) return;
-      try {
-        const r = await fetch(`${API_URL}/api/patient/centres/${encodeURIComponent(id)}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } });
-        const d = await r.json().catch(() => ({}));
-        if (!r.ok) throw new Error(d.message || 'Could not leave — please try again.');
-        loadCentres();
-      } catch (e) { alert(e.message); }
-    }
-    document.getElementById('centreJoinForm').addEventListener('submit', (e) => {
-      e.preventDefault();
-      const code = document.getElementById('centreCodeIn').value.toUpperCase().replace(/[^A-Z0-9]/g, '');
-      if (code.length < 4) { alert('Please enter the full code from your hospital.'); return; }
-      location.href = `join-centre.html?code=${code}`;
-    });
-    loadCentres();
 
     loadDoctors();
     checkVitalsAlert();
