@@ -21,6 +21,7 @@
       <a href="../../index.html" class="hide-sm">Home</a>
       <a href="../index.html" class="hide-sm">Products</a>
       <a href="../diabmexa-m-500.html" class="hide-sm">About Diabmexa M 500</a>
+      <button type="button" class="size-btn" id="sizeBtn" aria-pressed="false" title="Bigger text">A<span>A</span></button>
       <a href="../../patient.html" class="nav-cta"><i class="fas fa-user"></i> My Dashboard</a>
     </nav>
   </div>
@@ -41,6 +42,12 @@
           <span class="chip"><i class="fab fa-whatsapp"></i> Free reminders</span>
         </div>
         <p class="greeting" id="greeting">Hi! I'm your Biomexa AI Pharmacist. I'll help you take Diabmexa M 500 the right way — and stay on track with your diabetes care.</p>
+        <form class="hero-ask" id="heroAsk">
+          <i class="fas fa-wand-magic-sparkles" aria-hidden="true"></i>
+          <input type="text" id="heroAskInput" placeholder="Ask me anything about Diabmexa M 500…" autocomplete="off" aria-label="Ask the AI pharmacist">
+          <button type="button" class="mic" data-mic="heroAskInput" aria-label="Ask by voice"><i class="fas fa-microphone"></i></button>
+          <button type="submit" class="go" aria-label="Ask"><i class="fas fa-arrow-right"></i></button>
+        </form>
       </div>
       <div class="pack"><img src="../../images/products/diabmexa-m-box.jpg" alt="Diabmexa M 500 pack" width="702" height="423"></div>
     </div>
@@ -76,24 +83,33 @@
         </div>
       </div>
       <div class="tabs" id="guideTabs" role="tablist"></div>
+      <div class="guide-progress"><span id="guideBar"></span></div>
       <div class="guide-text" id="guideText" aria-live="polite"></div>
       <div class="guide-actions">
         <button class="btn btn-primary" id="playBtn"><i class="fas fa-volume-high"></i> Listen</button>
-        <a class="btn btn-ghost" href="#ask"><i class="fas fa-comments"></i> Ask a question</a>
+        <div class="speed" id="speed" role="group" aria-label="Listening speed">
+          <button type="button" data-rate="slow">Slow</button><button type="button" data-rate="normal">Normal</button><button type="button" data-rate="fast">Fast</button>
+        </div>
+        <span class="guide-meta" id="guideMeta"></span>
       </div>
     </section>
 
     <!-- Ask the AI pharmacist -->
     <section class="card" id="ask">
-      <h2><span class="ico green"><i class="fas fa-comments"></i></span>Ask the AI Pharmacist</h2>
-      <p class="lead">Any question about Diabmexa M 500 — answered in seconds.</p>
-      <div class="chat-box">
-        <div class="chat-msgs" id="chatMsgs">
-          <div class="msg ai">Namaste! 🙏 I can help with how to take Diabmexa M 500, food, side effects, missed doses and more. What would you like to know?</div>
+      <div class="chat-head">
+        <span class="bot-lg"><i class="fas fa-user-doctor"></i><i class="online" aria-hidden="true"></i></span>
+        <div style="flex:1;min-width:0">
+          <h2 style="gap:0">Ask the AI Pharmacist</h2>
+          <p class="status">Online · replies in seconds · English or हिंदी</p>
         </div>
+        <button type="button" class="icon-btn" id="chatClear" title="New conversation" aria-label="Start a new conversation"><i class="fas fa-rotate-right"></i></button>
+      </div>
+      <div class="chat-box">
+        <div class="chat-msgs" id="chatMsgs" aria-live="polite"></div>
         <div class="suggest" id="chatSuggest"></div>
         <form class="chat-input" id="chatForm">
-          <input type="text" id="chatInput" placeholder="Type your question…" autocomplete="off" aria-label="Your question">
+          <input type="text" id="chatInput" placeholder="Type or tap the mic…" autocomplete="off" aria-label="Your question">
+          <button type="button" class="btn btn-ghost mic" data-mic="chatInput" aria-label="Ask by voice"><i class="fas fa-microphone"></i></button>
           <button class="btn btn-primary" id="chatSend" aria-label="Send"><i class="fas fa-paper-plane"></i></button>
         </form>
       </div>
@@ -131,6 +147,7 @@
       </form>
       <div class="readings">
         <h3>Your recent readings on this phone</h3>
+        <div class="trend" id="trend" hidden></div>
         <div id="readingList"></div>
       </div>
       <a class="btn btn-ghost btn-block" href="../../patient.html#treatment-report" style="margin-top:6px"><i class="fas fa-file-medical"></i> See full treatment report</a>

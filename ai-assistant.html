@@ -1,295 +1,284 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Adaptive Adherence Intelligence Engine — AI Hub | Biomexa</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>AI Pharmacist | Biomexa</title>
+<meta name="description" content="Ask Biomexa's AI Pharmacist anything about Telmexa AM or Diabmexa M 500 — how to take it, food, side effects and missed doses. In English or Hindi, by text or voice.">
+<meta name="theme-color" content="#16336b">
 <link rel="icon" type="image/svg+xml" href="logo.svg">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <style>
-        :root {
-            --primary: #16336b;
-            --primary-dark: #0f2552;
-            --primary-light: #1c9a55;
-            --accent: #d97706;
-            --danger: #c0262d;
-            --success: #1c9a55;
-            --bg-dark: #f3f6fb;
-            --bg-card: #ffffff;
-            --bg-light: #f6f8fc;
-            --text: #13213d;
-            --text-muted: #5b6b86;
-            --border: #e2e8f2;
-        }
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: 'Inter', sans-serif;
-            background: var(--bg-dark);
-            color: var(--text);
-            line-height: 1.6;
-        }
-        header {
-            background: rgba(255,255,255,0.95);
-            backdrop-filter: blur(10px);
-            border-bottom: 1px solid var(--border);
-            padding: 1rem 2rem;
-            position: sticky;
-            top: 0;
-            z-index: 100;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        .logo { display: flex; align-items: center; gap: 0.75rem; font-weight: 800; font-size: 1.25rem; color: var(--primary-light); }
-        .logo i { font-size: 1.5rem; }
-        .engine-badge {
-            display: flex; align-items: center; gap: 0.5rem;
-            background: linear-gradient(135deg, rgba(28,154,85,0.2), rgba(28,154,85,0.1));
-            border: 1px solid var(--primary);
-            padding: 0.5rem 1rem;
-            border-radius: 50px;
-            font-size: 0.8rem;
-            color: var(--primary-light);
-        }
-        .engine-badge .pulse {
-            width: 8px; height: 8px; border-radius: 50%;
-            background: var(--success);
-            animation: pulse-dot 2s infinite;
-        }
-        @keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
-        nav { display: flex; gap: 2rem; }
-        nav a { color: var(--text-muted); text-decoration: none; font-weight: 500; transition: color 0.3s; }
-        nav a:hover { color: var(--primary-light); }
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<link rel="stylesheet" href="products/ai/ai-pharmacist.css">
+<style>
+  .hub-hero { margin-top: 16px; }
+  .hub-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 22px; padding: 24px; position: relative; z-index: 1; }
+  @media (min-width: 940px) { .hub-grid { grid-template-columns: 0.9fr 1.1fr; padding: 40px; gap: 36px; align-items: center; } }
+  .hub-hero h1 { font-size: clamp(1.9rem, 5.5vw, 2.9rem); }
+  .hub-hero h1 em { font-style: normal; background: linear-gradient(90deg, #7ef0ac, #c9f5da); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .hub-points { list-style: none; display: grid; gap: 10px; margin-top: 18px; }
+  .hub-points li { display: flex; gap: 10px; align-items: center; color: #e3ebfb; font-size: 0.95rem; }
+  .hub-points li i { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; background: rgba(255,255,255,.12); color: #9ff0c0; flex-shrink: 0; }
 
-        .hero {
-            background: linear-gradient(135deg, var(--bg-dark) 0%, #f3f6fb 50%, var(--bg-dark) 100%);
-            padding: 5rem 2rem;
-            text-align: center;
-            border-bottom: 1px solid var(--border);
-        }
-        .hero h1 { font-size: 3.5rem; font-weight: 800; margin-bottom: 1rem; }
-        .hero h1 span { background: linear-gradient(90deg, var(--primary-light), #27b566); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-        .hero p { color: var(--text-muted); font-size: 1.2rem; max-width: 700px; margin: 0 auto 2rem; }
-        .hero .subtitle {
-            display: inline-flex; align-items: center; gap: 0.5rem;
-            background: rgba(28,154,85,0.15);
-            border: 1px solid var(--primary);
-            padding: 0.75rem 1.5rem;
-            border-radius: 50px;
-            font-size: 0.9rem;
-            color: var(--primary-light);
-        }
+  /* The chat lives in the hero, on a white card */
+  .hub-chat { background: #fff; color: var(--text); border-radius: 20px; padding: 16px; box-shadow: 0 18px 44px rgba(0,0,0,.28); }
+  .med-pick { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
+  .med-pick button {
+    display: flex; align-items: center; gap: 10px; text-align: left; border: 2px solid var(--line); background: #fff;
+    border-radius: 14px; padding: 10px; cursor: pointer; font: inherit; color: var(--text); transition: border-color .15s, background .15s;
+  }
+  .med-pick button .ico { width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; flex-shrink: 0; }
+  .med-pick button strong { display: block; font-size: 0.9rem; line-height: 1.2; }
+  .med-pick button span { font-size: 0.74rem; color: var(--muted); }
+  .med-pick button.on { border-color: var(--green); background: var(--green-soft); }
+  .hub-chat .chat-box { height: 380px; }
+  @media (min-width: 940px) { .hub-chat .chat-box { height: 420px; } }
+  .chat-foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 10px; font-size: 0.78rem; color: var(--muted); }
+  .chat-foot a { font-weight: 650; text-decoration: none; }
 
-        .container { max-width: 1200px; margin: 0 auto; padding: 3rem 2rem; }
+  .feat { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-top: 14px; }
+  @media (min-width: 820px) { .feat { grid-template-columns: repeat(3, 1fr); } }
+  .feat div { border: 1px solid var(--line); border-radius: 14px; padding: 14px; background: #fff; }
+  .feat .ico { width: 38px; height: 38px; border-radius: 11px; display: grid; place-items: center; margin-bottom: 8px; }
+  .feat strong { display: block; font-size: 0.93rem; }
+  .feat span { font-size: 0.82rem; color: var(--muted); }
 
-        .features-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 1.5rem;
-            margin-bottom: 3rem;
-        }
-        .feature-card {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: 16px;
-            padding: 1.5rem;
-            text-align: center;
-            transition: transform 0.3s, border-color 0.3s;
-        }
-        .feature-card:hover { transform: translateY(-3px); border-color: var(--primary); }
-        .feature-card i { font-size: 2rem; color: var(--primary-light); margin-bottom: 1rem; }
-        .feature-card h3 { margin-bottom: 0.5rem; }
-        .feature-card p { color: var(--text-muted); font-size: 0.9rem; }
+  .steps { list-style: none; display: grid; grid-template-columns: 1fr; gap: 12px; margin-top: 14px; counter-reset: s; }
+  @media (min-width: 820px) { .steps { grid-template-columns: repeat(4, 1fr); } }
+  .steps li { counter-increment: s; position: relative; padding: 14px 14px 14px 56px; border: 1px solid var(--line); border-radius: 14px; background: var(--bg); }
+  .steps li::before { content: counter(s); position: absolute; left: 14px; top: 14px; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-weight: 800; color: #fff; background: linear-gradient(135deg, var(--green), var(--navy-2)); }
+  .steps strong { display: block; font-size: 0.93rem; }
+  .steps span { font-size: 0.83rem; color: var(--muted); }
 
-        .drug-selector { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem; }
-        .drug-card {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: 20px;
-            padding: 2rem;
-            text-decoration: none;
-            color: var(--text);
-            transition: transform 0.3s, border-color 0.3s;
-            display: flex;
-            flex-direction: column;
-            gap: 1rem;
-        }
-        .drug-card:hover { transform: translateY(-5px); border-color: var(--primary); }
-        .drug-card .icon {
-            width: 60px; height: 60px;
-            border-radius: 16px;
-            background: linear-gradient(135deg, var(--primary), var(--primary-light));
-            display: flex; align-items: center; justify-content: center;
-            font-size: 1.5rem;
-            color: white;
-        }
-        .drug-card h3 { color: var(--primary-light); }
-        .drug-card p { color: var(--text-muted); font-size: 0.95rem; }
-        .drug-card .meta { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: auto; }
-        .drug-card .meta span {
-            font-size: 0.75rem;
-            padding: 0.25rem 0.75rem;
-            background: rgba(28,154,85,0.15);
-            border-radius: 50px;
-            color: var(--primary-light);
-        }
-
-        .how-it-works {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: 20px;
-            padding: 3rem;
-            margin-bottom: 3rem;
-        }
-        .how-it-works h2 { text-align: center; margin-bottom: 2rem; color: var(--primary-light); }
-        .steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 2rem; }
-        .step { text-align: center; }
-        .step-number {
-            width: 50px; height: 50px;
-            border-radius: 50%;
-            background: linear-gradient(135deg, var(--primary), var(--primary-light));
-            display: flex; align-items: center; justify-content: center;
-            margin: 0 auto 1rem;
-            font-weight: 800; font-size: 1.25rem;
-            color: white;
-        }
-        .step h4 { margin-bottom: 0.5rem; }
-        .step p { color: var(--text-muted); font-size: 0.9rem; }
-
-        footer {
-            border-top: 1px solid var(--border);
-            padding: 2rem;
-            text-align: center;
-            color: var(--text-muted);
-            font-size: 0.875rem;
-        }
-
-        @media (max-width: 768px) {
-            .hero h1 { font-size: 2rem; }
-            .hero p { font-size: 1rem; }
-        }
-    </style>
-<link rel="stylesheet" href="css/biomexa-ui.css">
-<script src="js/biomexa-ui.js" defer></script>
+  .med-cards { display: grid; grid-template-columns: 1fr; gap: 14px; margin-top: 14px; }
+  @media (min-width: 820px) { .med-cards { grid-template-columns: 1fr 1fr; } }
+  .med-card { display: flex; gap: 14px; align-items: center; padding: 14px; border: 1px solid var(--line); border-radius: 16px; text-decoration: none; color: var(--text); background: #fff; transition: transform .15s, border-color .15s; }
+  .med-card:hover { transform: translateY(-2px); border-color: #b9c8e6; }
+  .med-card img { width: 120px; height: auto; border-radius: 10px; flex-shrink: 0; }
+  .med-card strong { font-size: 1.05rem; display: block; }
+  .med-card span { font-size: 0.85rem; color: var(--muted); display: block; margin: 2px 0 8px; }
+  .med-card em { font-style: normal; font-weight: 700; color: var(--green); font-size: 0.85rem; }
+  @media (max-width: 420px) { .med-card img { width: 90px; } }
+</style>
 </head>
 <body>
-    <header>
-        <div class="logo"><img src="images/logo-full.png" alt="Biomexa Pharmaceuticals" style="height:28px;width:auto;"></div>
-        <div class="engine-badge">
-            <div class="pulse"></div>
-            Adaptive Adherence Intelligence Engine
+
+<header class="topbar">
+  <div class="topbar-inner">
+    <a class="logo" href="index.html"><img src="images/logo-full.png" alt="Biomexa Pharmaceuticals"></a>
+    <nav>
+      <a href="index.html" class="hide-sm">Home</a>
+      <a href="products/index.html" class="hide-sm">Products</a>
+      <a href="doctor.html" class="hide-sm">For doctors</a>
+      <button type="button" class="size-btn" id="sizeBtn" aria-pressed="false" title="Bigger text">A<span>A</span></button>
+      <a href="patient.html" class="nav-cta"><i class="fas fa-user"></i> My Dashboard</a>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+  <section class="hero hub-hero">
+    <div class="hub-grid">
+      <div>
+        <span class="verified"><i class="fas fa-robot"></i> Biomexa AI Pharmacist</span>
+        <h1>Your medicine questions, <em>answered in seconds</em></h1>
+        <p class="greeting" id="greeting">Pick your medicine and ask anything — how to take it, what to eat, side effects or a missed dose. Type, or just speak.</p>
+        <ul class="hub-points">
+          <li><i class="fas fa-language"></i>English, Hindi or Hinglish — reply in your language</li>
+          <li><i class="fas fa-microphone"></i>Ask by voice and listen to every answer</li>
+          <li><i class="fas fa-user-doctor"></i>Urgent symptoms? It tells you to get care right away</li>
+        </ul>
+      </div>
+
+      <div class="hub-chat" id="ask">
+        <div class="med-pick" id="medPick" role="radiogroup" aria-label="Choose your medicine">
+          <button type="button" data-med="telmexa" role="radio"><span class="ico navy"><i class="fas fa-heart-pulse"></i></span><div><strong>Telmexa AM</strong><span>Blood pressure</span></div></button>
+          <button type="button" data-med="diabmexa" role="radio"><span class="ico green"><i class="fas fa-droplet"></i></span><div><strong>Diabmexa M 500</strong><span>Diabetes</span></div></button>
         </div>
-        <nav>
-            <a href="index.html">Home</a>
-            <a href="products/index.html">Products</a>
-            <a href="ai-assistant.html">AI Assistant</a>
-            <a href="doctor.html">Doctor Portal</a>
-            <a href="patient.html">Patient Portal</a>
-            <a href="login.html">Login</a>
-        </nav>
-    </header>
-
-    <section class="hero">
-        <div class="subtitle"><i class="fas fa-robot"></i> AI-Powered Medication Adherence</div>
-        <h1><span>Adaptive Adherence</span><br>Intelligence Engine</h1>
-        <p>Your personal AI pharmacist that guides you through every Biomexa therapy — from QR scan to daily dosing, food alerts, and vitals tracking.</p>
-    </section>
-
-    <div class="container">
-        <div class="features-grid">
-            <div class="feature-card">
-                <i class="fas fa-qrcode"></i>
-                <h3>QR Code Activation</h3>
-                <p>Scan your Biomexa packaging to instantly load your personalized AI guide and dosing plan.</p>
-            </div>
-            <div class="feature-card">
-                <i class="fas fa-volume-up"></i>
-                <h3>AI Voice Guide</h3>
-                <p>Listen to detailed instructions on dosing, food interactions, and side effects in your language.</p>
-            </div>
-            <div class="feature-card">
-                <i class="fab fa-whatsapp"></i>
-                <h3>WhatsApp Reminders</h3>
-                <p>Get daily dose reminders, confirmation requests, and weekly adherence reports on WhatsApp.</p>
-            </div>
-            <div class="feature-card">
-                <i class="fas fa-heartbeat"></i>
-                <h3>Daily Vitals Tracking</h3>
-                <p>Log BP, glucose, weight, and mood. Track trends and share reports with your doctor.</p>
-            </div>
-            <div class="feature-card">
-                <i class="fas fa-file-medical"></i>
-                <h3>Prescription Upload</h3>
-                <p>Store all your prescriptions and medication lists securely in one place.</p>
-            </div>
-            <div class="feature-card">
-                <i class="fas fa-chart-line"></i>
-                <h3>Adherence Scoring</h3>
-                <p>Track your medication adherence with a visual score based on dose logging and vitals.</p>
-            </div>
+        <div class="chat-head" style="margin-bottom:10px">
+          <span class="bot-lg"><i class="fas fa-user-doctor"></i><i class="online" aria-hidden="true"></i></span>
+          <div style="flex:1;min-width:0">
+            <h2 style="font-size:1.05rem;font-weight:750">AI Pharmacist</h2>
+            <p class="status" id="chatStatus">Online · English or हिंदी</p>
+          </div>
+          <button type="button" class="icon-btn" id="chatClear" title="New conversation" aria-label="Start a new conversation"><i class="fas fa-rotate-right"></i></button>
         </div>
-
-        <div class="how-it-works">
-            <h2><i class="fas fa-route"></i> How It Works</h2>
-            <div class="steps">
-                <div class="step">
-                    <div class="step-number">1</div>
-                    <h4>Buy Biomexa</h4>
-                    <p>Purchase any Biomexa product from your pharmacy. Each package has a unique QR code.</p>
-                </div>
-                <div class="step">
-                    <div class="step-number">2</div>
-                    <h4>Scan QR Code</h4>
-                    <p>Use your phone to scan the QR code on the packaging. The AI guide loads instantly.</p>
-                </div>
-                <div class="step">
-                    <div class="step-number">3</div>
-                    <h4>AI Voice Guide</h4>
-                    <p>Listen to personalized instructions on dosing, food interactions, and side effects.</p>
-                </div>
-                <div class="step">
-                    <div class="step-number">4</div>
-                    <h4>Set Reminders</h4>
-                    <p>Activate WhatsApp reminders for dose alerts, confirmations, and refill alerts.</p>
-                </div>
-                <div class="step">
-                    <div class="step-number">5</div>
-                    <h4>Track Vitals</h4>
-                    <p>Log daily vitals and prescriptions. Monitor your adherence score over time.</p>
-                </div>
-            </div>
+        <div class="chat-box">
+          <div class="chat-msgs" id="chatMsgs" aria-live="polite"></div>
+          <div class="suggest" id="chatSuggest"></div>
+          <form class="chat-input" id="chatForm">
+            <input type="text" id="chatInput" placeholder="Type or tap the mic…" autocomplete="off" aria-label="Your question">
+            <button type="button" class="btn btn-ghost mic" id="micBtn" aria-label="Ask by voice"><i class="fas fa-microphone"></i></button>
+            <button class="btn btn-primary" id="chatSend" aria-label="Send"><i class="fas fa-paper-plane"></i></button>
+          </form>
         </div>
-
-        <h2 style="text-align: center; margin-bottom: 2rem; color: var(--primary-light);"><i class="fas fa-pills"></i> Select Your Medication</h2>
-        <div class="drug-selector">
-            <a href="products/ai/telmexa-am-ai.html" class="drug-card">
-                <div class="icon"><i class="fas fa-shield-alt"></i></div>
-                <h3>Telmexa AM</h3>
-                <p>Telmisartan 40mg & Amlodipine 5mg — Blood pressure management with circadian-optimized morning dosing.</p>
-                <div class="meta">
-                    <span><i class="fas fa-clock"></i> Once Daily</span>
-                    <span><i class="fas fa-apple-alt"></i> Food Alerts</span>
-                    <span><i class="fas fa-heartbeat"></i> BP Tracking</span>
-                </div>
-            </a>
-
-            <a href="products/ai/diabmexa-m-500-ai.html" class="drug-card">
-                <div class="icon"><i class="fas fa-tint"></i></div>
-                <h3>Diabmexa M 500</h3>
-                <p>Metformin Hydrochloride IP 500mg — Type 2 Diabetes care with dawn-phenomenon targeted dosing.</p>
-                <div class="meta">
-                    <span><i class="fas fa-sun"></i> Twice Daily</span>
-                    <span><i class="fas fa-apple-alt"></i> Food Alerts</span>
-                    <span><i class="fas fa-tint"></i> Glucose Tracking</span>
-                </div>
-            </a>
-        </div>
+        <div class="chat-foot"><span>General guidance — not a replacement for your doctor.</span><a id="fullGuide" href="products/ai/telmexa-am-ai.html">Full guide <i class="fas fa-arrow-right"></i></a></div>
+      </div>
     </div>
+  </section>
 
-    <footer>
-        <p><img src="images/logo-full.png" alt="Biomexa" style="height:14px;width:auto;vertical-align:middle;margin-right:6px;opacity:0.8;">Biomexa Pharmaceuticals — Adaptive Adherence Intelligence Engine</p>
-        <p style="margin-top: 0.5rem; font-size: 0.75rem;">This platform is for informational purposes. Always follow your physician's advice.</p>
-    </footer>
+  <section class="section card">
+    <h2><span class="ico green"><i class="fas fa-hand-holding-medical"></i></span>Everything that comes with every Biomexa pack</h2>
+    <div class="feat">
+      <div><span class="ico navy"><i class="fas fa-qrcode"></i></span><strong>Scan the QR</strong><span>Opens your medicine's own guide instantly</span></div>
+      <div><span class="ico green"><i class="fas fa-volume-high"></i></span><strong>Voice guide</strong><span>Listen to dosing, food and side-effect advice</span></div>
+      <div><span class="ico green"><i class="fab fa-whatsapp"></i></span><strong>WhatsApp reminders</strong><span>Tap Taken / Not taken on each dose</span></div>
+      <div><span class="ico navy"><i class="fas fa-chart-line"></i></span><strong>Track vitals</strong><span>BP and sugar trends your doctor can see</span></div>
+      <div><span class="ico amber"><i class="fas fa-file-arrow-up"></i></span><strong>Upload reports</strong><span>AI explains prescriptions and lab reports simply</span></div>
+      <div><span class="ico navy"><i class="fas fa-user-doctor"></i></span><strong>Talk to a doctor</strong><span>Connect with a Biomexa doctor on WhatsApp</span></div>
+    </div>
+  </section>
+
+  <section class="section card">
+    <h2><span class="ico navy"><i class="fas fa-route"></i></span>How it works</h2>
+    <ol class="steps">
+      <li><strong>Buy Biomexa</strong><span>Every pack has its own QR code</span></li>
+      <li><strong>Scan or ask here</strong><span>Your medicine guide opens in seconds</span></li>
+      <li><strong>Turn on reminders</strong><span>Free WhatsApp dose reminders</span></li>
+      <li><strong>Track & share</strong><span>Log vitals; your doctor sees progress</span></li>
+    </ol>
+  </section>
+
+  <section class="section card">
+    <h2><span class="ico green"><i class="fas fa-capsules"></i></span>Open your medicine's full guide</h2>
+    <div class="med-cards">
+      <a class="med-card" href="products/ai/telmexa-am-ai.html"><img src="images/products/telmexa-am-box.jpg" alt="Telmexa AM pack" loading="lazy"><div><strong>Telmexa AM</strong><span>Telmisartan 40 mg + Amlodipine 5 mg · Blood pressure</span><em>Open guide <i class="fas fa-arrow-right"></i></em></div></a>
+      <a class="med-card" href="products/ai/diabmexa-m-500-ai.html"><img src="images/products/diabmexa-m-box.jpg" alt="Diabmexa M 500 pack" loading="lazy"><div><strong>Diabmexa M 500</strong><span>Metformin 500 mg · Type 2 diabetes</span><em>Open guide <i class="fas fa-arrow-right"></i></em></div></a>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="links"><a href="index.html">Home</a><a href="products/index.html">All products</a><a href="patient.html">My dashboard</a><a href="support.html">Support</a></div>
+  <p class="disclaimer">The AI Pharmacist gives general information and doesn't replace your doctor's advice. Don't start, stop or change a medicine without talking to your doctor. In an emergency, call 112.</p>
+  <p style="margin-top:10px">© Biomexa Pharmaceuticals · Care Beyond the Pill</p>
+</footer>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+(function () {
+  const API_URL = (location.hostname === 'localhost' || location.hostname === '127.0.0.1') ? 'http://localhost:3000' : 'https://biomexa-api-f9f6.onrender.com';
+  const $ = (id) => document.getElementById(id);
+  const MEDS = {
+    telmexa: { apiName: 'Telmexa AM', slug: 'telmexa-am', guide: 'products/ai/telmexa-am-ai.html',
+      suggestions: ['How should I take it?', 'Can I take it at night?', 'I feel dizzy — is that normal?', 'Can I eat bananas?', 'I missed my dose'] },
+    diabmexa: { apiName: 'Diabmexa M 500', slug: 'diabmexa-m-500', guide: 'products/ai/diabmexa-m-500-ai.html',
+      suggestions: ['How should I take it?', 'Can I take it empty stomach?', 'My stomach is upset', 'Can I drink alcohol?', 'I missed my dose'] }
+  };
+  const store = {
+    get(k, f) { try { const v = localStorage.getItem(k); return v === null ? f : JSON.parse(v); } catch { return f; } },
+    set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+    del(k) { try { localStorage.removeItem(k); } catch {} }
+  };
+  const esc = (t) => { const d = document.createElement('div'); d.textContent = t; return d.innerHTML; };
+  let toastTimer;
+  function toast(m) { const t = $('toast'); t.textContent = m; t.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 3000); }
+  function formatAnswer(text) {
+    const lines = esc(String(text || '').trim()).split(/\n/); let html = '', inList = false;
+    for (const raw of lines) {
+      const line = raw.replace(/\*\*?([^*\n]+?)\*\*?/g, '<strong>$1</strong>');
+      const b = line.match(/^\s*(?:[-•]|\d+[.)])\s+(.*)$/);
+      if (b) { if (!inList) { html += '<ul>'; inList = true; } html += `<li>${b[1]}</li>`; continue; }
+      if (inList) { html += '</ul>'; inList = false; }
+      if (line.trim()) html += `<p>${line}</p>`;
+    }
+    return html + (inList ? '</ul>' : '');
+  }
+
+  // Bigger text
+  function applySize(big) { document.documentElement.classList.toggle('big-text', big); $('sizeBtn').setAttribute('aria-pressed', String(big)); }
+  applySize(store.get('biomexa_big_text', false));
+  $('sizeBtn').addEventListener('click', () => { const b = !document.documentElement.classList.contains('big-text'); store.set('biomexa_big_text', b); applySize(b); });
+
+  // Voice out
+  const synth = window.speechSynthesis; let speakToken = 0, onStop = null;
+  function speak(text, onState) {
+    stop(); if (!synth) { toast('Voice is not supported in this browser'); return; }
+    const token = ++speakToken; const parts = (text.replace(/\*/g, '').match(/[^.!?\n]+[.!?]*/g) || [text]).map(s => s.trim()).filter(Boolean); let i = 0;
+    onStop = () => onState(false);
+    const next = () => {
+      if (token !== speakToken) return;
+      if (i >= parts.length) { const f = onStop; onStop = null; f && f(); return; }
+      const u = new SpeechSynthesisUtterance(parts[i++]); u.lang = /[ऀ-ॿ]/.test(text) ? 'hi-IN' : 'en-IN'; u.rate = 0.9;
+      u.onstart = () => onState(true); u.onend = u.onerror = () => { if (token === speakToken) setTimeout(next, 120); };
+      synth.speak(u);
+    };
+    next();
+  }
+  function stop() { speakToken++; if (synth) synth.cancel(); const f = onStop; onStop = null; f && f(); }
+  window.addEventListener('pagehide', stop);
+
+  // Chat
+  let medKey = store.get('biomexa_hub_med', 'telmexa'); if (!MEDS[medKey]) medKey = 'telmexa';
+  let history = [], busy = false;
+  const chatKey = () => `biomexa_chat_${MEDS[medKey].slug}`; // shared with the product page's chat
+  function addMsg(role, text, opts = {}) {
+    const row = document.createElement('div'); row.className = `msg-row ${role}`;
+    if (role === 'ai') row.innerHTML = '<span class="bot" aria-hidden="true"><i class="fas fa-user-doctor"></i></span>';
+    const el = document.createElement('div'); el.className = `msg ${role}`;
+    if (opts.typing) { el.classList.add('typing'); el.innerHTML = '<span class="dots" aria-label="Thinking"><i></i><i></i><i></i></span>'; }
+    else if (role === 'ai') {
+      el.innerHTML = formatAnswer(text);
+      if (!opts.noTools) {
+        const tools = document.createElement('div'); tools.className = 'msg-tools';
+        tools.innerHTML = '<button type="button"><i class="fas fa-volume-high"></i> Listen</button>';
+        const btn = tools.firstChild; let playing = false;
+        btn.addEventListener('click', () => playing ? stop() : speak(text, (on) => { playing = on; btn.innerHTML = on ? '<i class="fas fa-stop"></i> Stop' : '<i class="fas fa-volume-high"></i> Listen'; }));
+        el.appendChild(tools);
+      }
+    } else el.textContent = text;
+    row.appendChild(el); $('chatMsgs').appendChild(row); $('chatMsgs').scrollTop = $('chatMsgs').scrollHeight; return row;
+  }
+  function renderChat() {
+    const m = MEDS[medKey];
+    document.querySelectorAll('#medPick button').forEach(b => { const on = b.dataset.med === medKey; b.classList.toggle('on', on); b.setAttribute('aria-checked', String(on)); });
+    $('fullGuide').href = m.guide;
+    history = store.get(chatKey(), []);
+    $('chatMsgs').innerHTML = '';
+    addMsg('ai', `Namaste! 🙏 Ask me anything about *${m.apiName}* — how to take it, food, side effects or a missed dose.`, { noTools: true });
+    history.forEach(h => addMsg(h.role === 'user' ? 'user' : 'ai', h.content));
+    $('chatSuggest').innerHTML = m.suggestions.map(s => `<button type="button">${esc(s)}</button>`).join('');
+    $('chatSuggest').hidden = history.length > 0;
+  }
+  async function ask(q) {
+    q = (q || '').trim(); if (!q || busy) return;
+    busy = true; $('chatSend').disabled = true; $('chatInput').value = ''; $('chatSuggest').hidden = true;
+    addMsg('user', q); const typing = addMsg('ai', '', { typing: true });
+    try {
+      const res = await fetch(API_URL + '/api/product-chat', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ productName: MEDS[medKey].apiName, question: q, history }) });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || 'Could not get an answer right now — please try again.');
+      typing.remove(); const a = data.answer || 'Sorry, I could not answer that right now.'; addMsg('ai', a);
+      history.push({ role: 'user', content: q }, { role: 'assistant', content: a }); history = history.slice(-20); store.set(chatKey(), history);
+    } catch (err) {
+      typing.remove();
+      addMsg('ai', /fetch|network/i.test(err.message) ? 'I couldn\'t reach the AI pharmacist — please check your internet and try again.' : err.message, { noTools: true });
+    } finally { busy = false; $('chatSend').disabled = false; }
+  }
+  $('medPick').addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b || b.dataset.med === medKey) return; stop(); medKey = b.dataset.med; store.set('biomexa_hub_med', medKey); renderChat(); });
+  $('chatForm').addEventListener('submit', (e) => { e.preventDefault(); ask($('chatInput').value); });
+  $('chatSuggest').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) ask(b.textContent); });
+  $('chatClear').addEventListener('click', () => { store.del(chatKey()); stop(); renderChat(); toast('Started a new conversation'); });
+
+  // Voice in
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition; let rec = null;
+  if (!SR) $('micBtn').hidden = true;
+  else $('micBtn').addEventListener('click', () => {
+    if (rec) { rec.stop(); return; }
+    rec = new SR(); rec.lang = 'en-IN'; rec.interimResults = true;
+    $('micBtn').classList.add('listening'); $('chatInput').placeholder = 'Listening… speak now';
+    rec.onresult = (ev) => { $('chatInput').value = Array.from(ev.results).map(r => r[0].transcript).join(''); if (ev.results[ev.results.length - 1].isFinal) $('chatForm').requestSubmit(); };
+    rec.onerror = (ev) => { if (ev.error === 'not-allowed') toast('Allow microphone access to ask by voice'); };
+    rec.onend = () => { $('micBtn').classList.remove('listening'); $('chatInput').placeholder = 'Type or tap the mic…'; rec = null; };
+    rec.start();
+  });
+
+  // ?med=diabmexa deep link
+  const qm = new URLSearchParams(location.search).get('med'); if (qm && MEDS[qm]) medKey = qm;
+  renderChat();
+})();
+</script>
 </body>
 </html>
