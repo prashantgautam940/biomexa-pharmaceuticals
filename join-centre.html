@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Join your hospital on Biomexa</title>
+<meta name="description" content="Connect with your hospital or IVF centre on Biomexa so your doctors can follow your medicines and readings between visits.">
+<meta name="theme-color" content="#16336b">
+<link rel="icon" type="image/svg+xml" href="logo.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<link rel="stylesheet" href="products/ai/ai-pharmacist.css">
+<link rel="stylesheet" href="css/centre.css">
+<style>
+  .join { max-width: 520px; margin: 28px auto 0; }
+  .centre-card { text-align: center; }
+  .centre-card .logo-c { width: 76px; height: 76px; border-radius: 22px; margin: 0 auto 12px; display: grid; place-items: center; font-size: 2rem; color: #fff; background: linear-gradient(135deg, var(--green), var(--navy-2)); }
+  .centre-card h1 { font-size: 1.5rem; font-weight: 800; letter-spacing: -0.01em; }
+  .centre-card .where { color: var(--muted); font-size: 0.9rem; margin-top: 4px; }
+  .gets { list-style: none; display: grid; gap: 10px; margin: 18px 0; text-align: left; }
+  .gets li { display: flex; gap: 10px; align-items: flex-start; font-size: 0.92rem; }
+  .gets li i { color: var(--green); margin-top: 4px; }
+  .consent { text-align: left; background: var(--bg); border: 1px solid var(--line); border-radius: 14px; padding: 12px; }
+  .code-in { text-transform: uppercase; letter-spacing: 0.2em; font-weight: 800; font-size: 1.4rem; text-align: center; }
+</style>
+</head>
+<body style="padding-bottom:0">
+
+<header class="topbar">
+  <div class="topbar-inner">
+    <a class="logo" href="index.html"><img src="images/logo-full.png" alt="Biomexa Pharmaceuticals"></a>
+    <nav><a href="patient.html" class="nav-cta"><i class="fas fa-user"></i> My Dashboard</a></nav>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="join">
+    <!-- Enter a code (when opened without one) -->
+    <section class="card" id="codeView" hidden>
+      <h2><span class="ico green"><i class="fas fa-hospital"></i></span>Join your hospital</h2>
+      <p class="lead">Enter the code your hospital or IVF centre gave you.</p>
+      <form id="codeForm">
+        <div class="field"><input id="codeIn" class="code-in" maxlength="10" autocomplete="off" placeholder="ABC123" aria-label="Centre code" required></div>
+        <button class="btn btn-primary btn-block"><i class="fas fa-arrow-right"></i> Continue</button>
+        <div class="form-msg" id="codeMsg" role="alert"></div>
+      </form>
+    </section>
+
+    <!-- Centre found -->
+    <section class="card centre-card" id="centreView" hidden>
+      <div class="logo-c" id="cIcon"><i class="fas fa-hospital"></i></div>
+      <h1 id="cName"></h1>
+      <div class="where" id="cWhere"></div>
+      <ul class="gets">
+        <li><i class="fas fa-circle-check"></i><span>Your doctors at this centre see how you're doing between visits</span></li>
+        <li><i class="fas fa-circle-check"></i><span>Free WhatsApp reminders for your medicines</span></li>
+        <li><i class="fas fa-circle-check"></i><span>If a reading looks risky, your centre can call you sooner</span></li>
+      </ul>
+      <div id="needLogin" hidden>
+        <p class="hint" style="margin-bottom:12px">Log in or create your free Biomexa account to continue.</p>
+        <a class="btn btn-primary btn-block" id="loginLink"><i class="fas fa-right-to-bracket"></i> Log in</a>
+        <a class="btn btn-ghost btn-block" id="signupLink" style="margin-top:10px"><i class="fas fa-user-plus"></i> Create free account</a>
+      </div>
+      <form id="joinForm" hidden>
+        <label class="check consent"><input type="checkbox" id="agree"><div class="s" style="color:#34425e" id="consentText"></div></label>
+        <button class="btn btn-green btn-block" id="joinBtn"><i class="fas fa-link"></i> Join <span id="joinName"></span></button>
+        <div class="form-msg" id="joinMsg" role="alert"></div>
+        <p class="hint" style="margin-top:10px">Logged in as <strong id="who"></strong> · <a href="#" id="switchUser">not you?</a></p>
+      </form>
+    </section>
+
+    <!-- Done -->
+    <section class="card" id="doneView" hidden>
+      <div class="success-box">
+        <div class="big"><i class="fas fa-circle-check"></i></div>
+        <h2 id="doneTitle">You're connected</h2>
+        <p>Your doctors can now follow your progress. Add your medicines to start reminders, and log your readings regularly.</p>
+        <a class="btn btn-primary btn-block" href="patient.html#add-medicine" style="margin-top:18px"><i class="fas fa-pills"></i> Add my medicines</a>
+        <a class="btn btn-ghost btn-block" href="patient.html" style="margin-top:10px">Go to my dashboard</a>
+      </div>
+    </section>
+  </div>
+</main>
+
+<footer><p>You can leave a centre any time from your dashboard, which stops sharing. · © Biomexa Pharmaceuticals</p></footer>
+
+<script>
+(function () {
+  const API_URL = (location.hostname === 'localhost' || location.hostname === '127.0.0.1') ? 'http://localhost:3000' : 'https://biomexa-api-f9f6.onrender.com';
+  const $ = (id) => document.getElementById(id);
+  const get = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
+  const token = get('token');
+  let user = {}; try { user = JSON.parse(get('user') || '{}'); } catch {}
+  let code = (new URLSearchParams(location.search).get('code') || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+  function show(id) { ['codeView', 'centreView', 'doneView'].forEach(v => { $(v).hidden = v !== id; }); }
+
+  async function lookup() {
+    const res = await fetch(`${API_URL}/api/centres/join/${encodeURIComponent(code)}`);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.message || 'Could not find this centre.');
+    return data;
+  }
+
+  async function open() {
+    if (!code) { show('codeView'); return; }
+    try {
+      const { centre, consentText } = await lookup();
+      $('cName').textContent = centre.name; $('joinName').textContent = centre.name;
+      $('cWhere').textContent = [centre.typeLabel, [centre.city, centre.state].filter(Boolean).join(', ')].filter(Boolean).join(' · ');
+      if (centre.type === 'ivf') $('cIcon').innerHTML = '<i class="fas fa-baby"></i>';
+      $('consentText').textContent = consentText;
+      document.title = `Join ${centre.name} on Biomexa`;
+      const next = encodeURIComponent(`join-centre.html?code=${code}`);
+      if (!token) {
+        $('needLogin').hidden = false; $('joinForm').hidden = true;
+        $('loginLink').href = `login.html?next=${next}`;
+        $('signupLink').href = `signup.html?next=${next}`;
+      } else {
+        $('needLogin').hidden = true; $('joinForm').hidden = false;
+        $('who').textContent = user.name ? `${user.name}${user.phone ? ' (' + user.phone + ')' : ''}` : (user.phone || 'your account');
+      }
+      show('centreView');
+    } catch (err) {
+      show('codeView'); $('codeIn').value = code;
+      $('codeMsg').className = 'form-msg err';
+      $('codeMsg').textContent = /fetch|network/i.test(err.message) ? 'Could not reach Biomexa — check your internet.' : err.message;
+    }
+  }
+
+  $('codeForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    code = $('codeIn').value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (code.length < 4) { $('codeMsg').className = 'form-msg err'; $('codeMsg').textContent = 'Please enter the full code.'; return; }
+    history.replaceState(null, '', `?code=${code}`);
+    open();
+  });
+
+  $('switchUser').addEventListener('click', (e) => {
+    e.preventDefault();
+    try { localStorage.removeItem('token'); localStorage.removeItem('user'); } catch {}
+    location.href = `login.html?next=${encodeURIComponent(`join-centre.html?code=${code}`)}`;
+  });
+
+  $('joinForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const m = $('joinMsg'); m.className = 'form-msg'; m.textContent = '';
+    if (!$('agree').checked) { m.className = 'form-msg err'; m.textContent = 'Please tick the box to agree to share with this centre.'; return; }
+    const btn = $('joinBtn'); btn.disabled = true;
+    try {
+      const res = await fetch(`${API_URL}/api/centres/join`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token }, body: JSON.stringify({ code, consent: true }) });
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 401) { location.href = `login.html?next=${encodeURIComponent(`join-centre.html?code=${code}`)}`; return; }
+      if (!res.ok) throw new Error(data.message || 'Could not join — please try again.');
+      $('doneTitle').textContent = data.message;
+      show('doneView');
+    } catch (err) {
+      m.className = 'form-msg err'; m.textContent = /fetch|network/i.test(err.message) ? 'Could not reach Biomexa — check your internet.' : err.message;
+    } finally { btn.disabled = false; }
+  });
+
+  open();
+})();
+</script>
+</body>
+</html>

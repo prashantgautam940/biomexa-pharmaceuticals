@@ -8,7 +8,8 @@ const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
-const ivfCare = require('./ivf/routes'); // Biomexa IVF Care — separate module, mounted near the end of this file
+const ivfCare = require('./ivf/routes');
+const centres = require('./centres/routes'); // Hospitals & IVF centres onboarding — mounted near the end of this file // Biomexa IVF Care — separate module, mounted near the end of this file
 
 const app = express();
 app.set('trust proxy', 1); // Render sits behind a reverse proxy — without this, req.ip returns
@@ -5609,6 +5610,15 @@ ivfCare.mount(app, {
   sendIvfUpdateTemplate, sendReportAnalysisTemplate, whatsappWindowOpen,
   analyzeDocument, extractReportResults, ALLOWED_DOCUMENT_TYPES, MAX_FILES_PER_UPLOAD, MAX_DOCUMENT_BASE64_LENGTH,
   disableScheduler: process.env.IVF_SCHEDULER_DISABLED === 'true'
+});
+
+// ========== HOSPITALS & IVF CENTRES ==========
+// Centre sign-up -> admin approval -> centre dashboard (doctors + patients who joined with the
+// centre's code). Own collections and /api/centres routes; see centres/routes.js.
+centres.mount(app, {
+  JWT_SECRET, auth, adminAuth, signupLimiter, loginLimiter, rateLimit,
+  Patient, Doctor, Dose, VitalsLog, RiskAlert,
+  normalizePhone, phoneVariants, localDateStr, sendWhatsAppFree, SITE_URL
 });
 
 // ========== START SERVER ==========

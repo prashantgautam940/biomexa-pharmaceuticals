@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Centre Dashboard | Biomexa</title>
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#16336b">
+<link rel="icon" type="image/svg+xml" href="logo.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<link rel="stylesheet" href="products/ai/ai-pharmacist.css">
+<link rel="stylesheet" href="css/centre.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" defer></script>
+</head>
+<body style="padding-bottom:0">
+
+<header class="topbar">
+  <div class="topbar-inner">
+    <a class="logo" href="index.html"><img src="images/logo-full.png" alt="Biomexa Pharmaceuticals"></a>
+    <nav>
+      <a href="support.html" class="hide-sm">Support</a>
+      <button type="button" class="btn btn-ghost btn-sm" id="logoutBtn" hidden><i class="fas fa-right-from-bracket"></i> Log out</button>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+  <!-- ===== Login ===== -->
+  <section id="loginView" class="auth-wrap" hidden>
+    <div class="card">
+      <h2><span class="ico navy"><i class="fas fa-hospital"></i></span>Centre login</h2>
+      <p class="lead">For approved hospitals and IVF centres.</p>
+      <form id="loginForm">
+        <div class="field"><label class="fl" for="lPhone">WhatsApp number</label>
+          <div class="phone"><span class="cc">+91</span><input id="lPhone" type="tel" inputmode="numeric" maxlength="14" required autocomplete="tel-national" placeholder="98765 43210"></div></div>
+        <div class="field"><label class="fl" for="lPass">Password</label><input id="lPass" type="password" required autocomplete="current-password"></div>
+        <button class="btn btn-primary btn-block" id="loginBtn"><i class="fas fa-right-to-bracket"></i> Log in</button>
+        <div class="form-msg" id="loginMsg" role="alert"></div>
+      </form>
+      <p class="hint" style="text-align:center;margin-top:14px">New centre? <a href="centre-signup.html">Register here</a> · Forgot password? <a href="support.html">Contact support</a></p>
+    </div>
+  </section>
+
+  <!-- ===== Dashboard ===== -->
+  <section id="dashView" hidden>
+    <div class="dash-head">
+      <div>
+        <h1 id="cName">—</h1>
+        <div class="meta"><span class="badge" id="cType"></span><span id="cCity"></span><span class="badge green"><i class="fas fa-circle-check"></i> Verified</span></div>
+      </div>
+      <button type="button" class="btn btn-green" data-go="invite"><i class="fas fa-user-plus"></i> Invite patients</button>
+    </div>
+
+    <nav class="dtabs" role="tablist" id="tabs">
+      <button data-tab="patients" class="on" role="tab"><i class="fas fa-users"></i> Patients <span class="count" id="pCount">0</span></button>
+      <button data-tab="doctors" role="tab"><i class="fas fa-user-doctor"></i> Doctors <span class="count" id="dCount">0</span></button>
+      <button data-tab="invite" role="tab"><i class="fas fa-qrcode"></i> Invite patients</button>
+      <button data-tab="profile" role="tab"><i class="fas fa-gear"></i> Centre profile</button>
+    </nav>
+
+    <!-- Patients -->
+    <div data-pane="patients">
+      <div class="stats">
+        <div class="stat"><div class="k"><i class="fas fa-users"></i> Patients connected</div><div class="v" id="sTotal">—</div><div class="s">who joined with your code</div></div>
+        <div class="stat alert"><div class="k"><i class="fas fa-triangle-exclamation"></i> Need attention</div><div class="v" id="sAttn">—</div><div class="s">open alert or adherence under 70%</div></div>
+        <div class="stat"><div class="k"><i class="fas fa-pills"></i> Avg. adherence</div><div class="v" id="sAdh">—</div><div class="s">doses taken, last 7 days</div></div>
+        <div class="stat"><div class="k"><i class="fas fa-user-doctor"></i> Doctors</div><div class="v" id="sDocs">—</div><div class="s">in your team</div></div>
+      </div>
+      <div class="section card">
+        <div class="toolbar">
+          <div class="search"><i class="fas fa-magnifying-glass"></i><input id="pSearch" type="search" placeholder="Search by name or number" aria-label="Search patients"></div>
+          <div class="chips-f" id="pFilter">
+            <button data-f="all" class="on">All</button><button data-f="attn">Needs attention</button><button data-f="nodata">No recent doses</button>
+          </div>
+          <button type="button" class="icon-btn" id="pRefresh" title="Refresh" aria-label="Refresh"><i class="fas fa-rotate"></i></button>
+        </div>
+        <div id="pList"><div class="empty">Loading patients…</div></div>
+      </div>
+    </div>
+
+    <!-- Doctors -->
+    <div data-pane="doctors" hidden>
+      <div class="section card">
+        <h2><span class="ico navy"><i class="fas fa-user-plus"></i></span>Add a doctor</h2>
+        <p class="lead">Add doctors by WhatsApp number. Doctors without a Biomexa account get an invite to create one (Biomexa verifies each doctor's licence).</p>
+        <form class="add-doc" id="docForm">
+          <div class="field"><label class="fl" for="dPhone">WhatsApp number</label><div class="phone"><span class="cc">+91</span><input id="dPhone" type="tel" inputmode="numeric" maxlength="14" required placeholder="98765 43210"></div></div>
+          <div class="field"><label class="fl" for="dName">Name</label><input id="dName" maxlength="100" placeholder="Dr. Meera Iyer"></div>
+          <div class="field"><label class="fl" for="dRole">Role</label><input id="dRole" maxlength="60" placeholder="Cardiologist"></div>
+          <button class="btn btn-primary" id="docBtn"><i class="fas fa-plus"></i> Add</button>
+        </form>
+      </div>
+      <div class="section card">
+        <h2><span class="ico green"><i class="fas fa-user-doctor"></i></span>Your doctors</h2>
+        <div id="dList" style="margin-top:14px"><div class="empty">Loading…</div></div>
+      </div>
+    </div>
+
+    <!-- Invite -->
+    <div data-pane="invite" hidden>
+      <div class="section card">
+        <h2><span class="ico green"><i class="fas fa-qrcode"></i></span>Invite your patients</h2>
+        <p class="lead">Print the QR at your reception, or send the link. Patients log in (or sign up free), agree to share, and appear in your Patients list.</p>
+        <div class="share-grid">
+          <div class="qr-box"><div id="qr" aria-label="QR code to join your centre"></div><small>Scan to join</small></div>
+          <div>
+            <div class="lbl" style="font-size:.8rem;color:var(--muted);font-weight:650">Your centre code</div>
+            <div class="code-big" id="joinCode">——</div>
+            <div class="link-row"><input id="joinLink" readonly aria-label="Join link"><button type="button" class="btn btn-ghost" id="copyLink"><i class="fas fa-copy"></i> Copy</button></div>
+            <div class="share-actions">
+              <a class="btn btn-wa" id="waShare" target="_blank" rel="noopener"><i class="fab fa-whatsapp"></i> Share on WhatsApp</a>
+              <button type="button" class="btn btn-ghost" id="printQr"><i class="fas fa-print"></i> Print poster</button>
+              <button type="button" class="btn btn-ghost" id="newCode"><i class="fas fa-arrows-rotate"></i> New code</button>
+            </div>
+            <p class="hint" style="margin-top:12px">A new code stops the old one working for new patients. Patients already connected stay connected.</p>
+          </div>
+        </div>
+      </div>
+      <div class="section card">
+        <h2><span class="ico amber"><i class="fas fa-shield-heart"></i></span>What patients agree to</h2>
+        <p class="lead" id="consentText" style="margin-bottom:0"></p>
+      </div>
+    </div>
+
+    <!-- Profile -->
+    <div data-pane="profile" hidden>
+      <div class="grid-2 section">
+        <form class="card" id="profileForm">
+          <h2><span class="ico navy"><i class="fas fa-hospital"></i></span>Centre details</h2>
+          <p class="lead">Name, registration number and city are verified by Biomexa — contact support to change them.</p>
+          <div class="field"><label class="fl" for="pfContact">Contact person</label><input id="pfContact" maxlength="100"></div>
+          <div class="field"><label class="fl" for="pfRole">Role</label><input id="pfRole" maxlength="80"></div>
+          <div class="field"><label class="fl" for="pfEmail">Email</label><input id="pfEmail" type="email" maxlength="120"></div>
+          <div class="field"><label class="fl" for="pfAddress">Address</label><input id="pfAddress" maxlength="300"></div>
+          <div class="row-2">
+            <div class="field"><label class="fl" for="pfState">State</label><input id="pfState" maxlength="60"></div>
+            <div class="field"><label class="fl" for="pfPin">Pincode</label><input id="pfPin" maxlength="10" inputmode="numeric"></div>
+          </div>
+          <div class="field"><label class="fl" for="pfSpec">Specialities (comma separated)</label><input id="pfSpec" maxlength="300"></div>
+          <div class="field"><label class="fl" for="pfWeb">Website</label><input id="pfWeb" maxlength="150"></div>
+          <button class="btn btn-primary btn-block"><i class="fas fa-check"></i> Save</button>
+        </form>
+        <div>
+          <div class="card">
+            <h2><span class="ico green"><i class="fas fa-id-card"></i></span>Verified details</h2>
+            <div class="facts" style="grid-template-columns:1fr;margin-top:14px" id="verifiedFacts"></div>
+          </div>
+          <form class="card section" id="pwForm">
+            <h2><span class="ico amber"><i class="fas fa-key"></i></span>Change password</h2>
+            <div class="field" style="margin-top:14px"><label class="fl" for="pwCur">Current password</label><input id="pwCur" type="password" autocomplete="current-password" required></div>
+            <div class="field"><label class="fl" for="pwNew">New password</label><input id="pwNew" type="password" minlength="8" autocomplete="new-password" required placeholder="At least 8 characters"></div>
+            <button class="btn btn-ghost btn-block"><i class="fas fa-key"></i> Change password</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <p class="disclaimer">Patient information shown here is shared by patients who joined your centre, for their care only. Biomexa alerts support — but do not replace — clinical judgement and emergency services.</p>
+  <p style="margin-top:10px">© Biomexa Pharmaceuticals · Care Beyond the Pill</p>
+</footer>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+(function () {
+  const API_URL = (location.hostname === 'localhost' || location.hostname === '127.0.0.1') ? 'http://localhost:3000' : 'https://biomexa-api-f9f6.onrender.com';
+  const SITE = location.origin + location.pathname.replace(/[^/]*$/, '');
+  const $ = (id) => document.getElementById(id);
+  const esc = (t) => String(t ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const store = { get(k) { try { return localStorage.getItem(k); } catch { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch {} }, del(k) { try { localStorage.removeItem(k); } catch {} } };
+  let token = store.get('centreToken'), centre = null, patients = [], doctors = [], filter = 'all';
+  let toastTimer;
+  function toast(m) { const t = $('toast'); t.textContent = m; t.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 3200); }
+
+  async function api(path, opts = {}) {
+    const res = await fetch(API_URL + path, { ...opts, headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: 'Bearer ' + token } : {}), ...(opts.headers || {}) } });
+    const data = await res.json().catch(() => ({}));
+    if (res.status === 401 || (res.status === 403 && data.code === 'not_approved')) { logout(data.message); throw new Error(data.message || 'Please log in again.'); }
+    if (!res.ok) throw new Error(data.message || 'Something went wrong — please try again.');
+    return data;
+  }
+
+  // ---------- auth ----------
+  function showLogin(msg) {
+    $('dashView').hidden = true; $('loginView').hidden = false; $('logoutBtn').hidden = true;
+    if (msg) { $('loginMsg').className = 'form-msg err'; $('loginMsg').textContent = msg; }
+  }
+  function logout(msg) { token = null; store.del('centreToken'); showLogin(msg); }
+  $('logoutBtn').addEventListener('click', () => logout());
+  $('loginForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const m = $('loginMsg'); m.className = 'form-msg'; m.textContent = '';
+    const digits = $('lPhone').value.replace(/\D/g, '').slice(-10);
+    if (digits.length !== 10) { m.className = 'form-msg err'; m.textContent = 'Please enter your 10-digit WhatsApp number.'; return; }
+    const btn = $('loginBtn'); btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Logging in…';
+    try {
+      const res = await fetch(API_URL + '/api/centres/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone: '+91' + digits, password: $('lPass').value }) });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || 'Could not log in.');
+      token = data.token; store.set('centreToken', token); $('lPass').value = '';
+      start();
+    } catch (err) {
+      m.className = 'form-msg err'; m.textContent = /fetch|network/i.test(err.message) ? 'Could not reach Biomexa — check your internet.' : err.message;
+    } finally { btn.disabled = false; btn.innerHTML = '<i class="fas fa-right-to-bracket"></i> Log in'; }
+  });
+
+  // ---------- tabs ----------
+  function go(tab) {
+    document.querySelectorAll('#tabs button').forEach(b => { const on = b.dataset.tab === tab; b.classList.toggle('on', on); b.setAttribute('aria-selected', String(on)); });
+    document.querySelectorAll('[data-pane]').forEach(p => { p.hidden = p.dataset.pane !== tab; });
+    history.replaceState(null, '', '#' + tab);
+    if (tab === 'invite') renderInvite();
+  }
+  $('tabs').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) go(b.dataset.tab); });
+  document.querySelectorAll('[data-go]').forEach(b => b.addEventListener('click', () => go(b.dataset.go)));
+
+  // ---------- patients ----------
+  const adhColor = (a) => a === null ? '#cfd8e6' : a >= 85 ? 'var(--green)' : a >= 70 ? '#d97706' : 'var(--danger)';
+  const ago = (d) => { const s = (Date.now() - new Date(d)) / 1000; return s < 3600 ? `${Math.max(1, Math.round(s / 60))} min ago` : s < 86400 ? `${Math.round(s / 3600)} h ago` : `${Math.round(s / 86400)} d ago`; };
+  async function loadPatients() {
+    try {
+      const data = await api('/api/centres/me/patients');
+      patients = data.patients; const s = data.summary;
+      $('sTotal').textContent = s.total; $('sAttn').textContent = s.needsAttention; $('sAdh').textContent = s.avgAdherence === null ? '—' : s.avgAdherence + '%';
+      $('pCount').textContent = s.total;
+      renderPatients();
+    } catch (err) { $('pList').innerHTML = `<div class="empty">${esc(err.message)}</div>`; }
+  }
+  function renderPatients() {
+    const q = $('pSearch').value.trim().toLowerCase();
+    const attn = (p) => p.openAlerts > 0 || (p.adherence !== null && p.adherence < 70);
+    let list = patients.filter(p => !q || p.name.toLowerCase().includes(q) || p.phone.replace(/\D/g, '').includes(q.replace(/\D/g, '') || '§'));
+    if (filter === 'attn') list = list.filter(attn);
+    if (filter === 'nodata') list = list.filter(p => p.adherence === null);
+    // Most urgent first: open alerts, then lowest adherence.
+    list.sort((a, b) => (b.openAlerts - a.openAlerts) || ((a.adherence ?? 101) - (b.adherence ?? 101)));
+    if (!patients.length) {
+      $('pList').innerHTML = `<div class="empty-big"><i class="fas fa-user-plus"></i><strong>No patients yet</strong>Share your centre code or QR — patients appear here as soon as they join.<div style="margin-top:14px"><button class="btn btn-green" type="button" onclick="document.querySelector('[data-tab=invite]').click()"><i class="fas fa-qrcode"></i> Invite patients</button></div></div>`;
+      return;
+    }
+    if (!list.length) { $('pList').innerHTML = '<div class="empty">No patients match.</div>'; return; }
+    $('pList').innerHTML = list.map(p => {
+      const v = p.lastVitals;
+      const vit = v ? [v.bp && `BP ${esc(v.bp)}`, v.glucose != null && `Sugar ${esc(v.glucose)}`, v.heartRate != null && `${esc(v.heartRate)} bpm`].filter(Boolean).join(' · ') : '';
+      const digits = p.phone.replace(/\D/g, '');
+      return `<div class="prow ${attn(p) ? 'attn' : ''}">
+        <div class="who"><strong>${esc(p.name)} ${p.openAlerts ? `<span class="badge red"><i class="fas fa-triangle-exclamation"></i> ${p.openAlerts} alert${p.openAlerts > 1 ? 's' : ''}</span>` : ''}</strong>
+          <span>${esc(p.phone)} · joined ${new Date(p.joinedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</span>
+          <div class="meds">${p.medicines.length ? '<i class="fas fa-pills"></i> ' + p.medicines.map(esc).join(', ') : '<span style="color:var(--muted)">No medicines on reminders yet</span>'}</div>
+          ${p.latestAlert ? `<div class="meds" style="color:var(--danger)">${esc(p.latestAlert.reason)} · ${ago(p.latestAlert.at)}</div>` : ''}</div>
+        <div><div class="lbl">Adherence (7 days)</div><div class="adh"><div class="bar"><span style="width:${p.adherence ?? 0}%;background:${adhColor(p.adherence)}"></span></div><b>${p.adherence === null ? '—' : p.adherence + '%'}</b></div>
+          <div class="lbl">${p.taken + p.missed ? `${p.taken} taken · ${p.missed} missed` : 'No doses yet'}</div></div>
+        <div><div class="lbl">Latest reading</div><div style="font-weight:650;font-size:.9rem">${vit || '—'}</div>${v ? `<div class="lbl">${ago(v.at)}</div>` : ''}</div>
+        <div class="act">
+          <a class="btn btn-wa btn-sm" href="https://wa.me/${digits}" target="_blank" rel="noopener" title="Message on WhatsApp" aria-label="Message ${esc(p.name)} on WhatsApp"><i class="fab fa-whatsapp"></i></a>
+          <button class="btn btn-danger-ghost btn-sm" data-remove="${esc(p.phone)}" data-name="${esc(p.name)}" title="Remove from centre" aria-label="Remove ${esc(p.name)}"><i class="fas fa-user-minus"></i></button>
+        </div>
+      </div>`;
+    }).join('');
+  }
+  $('pSearch').addEventListener('input', renderPatients);
+  $('pFilter').addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; filter = b.dataset.f; document.querySelectorAll('#pFilter button').forEach(x => x.classList.toggle('on', x === b)); renderPatients(); });
+  $('pRefresh').addEventListener('click', () => { loadPatients(); toast('Refreshed'); });
+  $('pList').addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-remove]'); if (!b) return;
+    if (!confirm(`Remove ${b.dataset.name} from your centre?\n\nYou will no longer see their data. They can join again with your code.`)) return;
+    try { const d = await api('/api/centres/me/patients/' + encodeURIComponent(b.dataset.remove), { method: 'DELETE' }); toast(d.message); loadPatients(); } catch (err) { toast(err.message); }
+  });
+
+  // ---------- doctors ----------
+  const ACC = { verified: ['green', 'Active on Biomexa'], awaiting_approval: ['amber', 'Awaiting Biomexa verification'], invited: ['grey', 'Invited — no account yet'] };
+  function renderDoctors() {
+    $('dCount').textContent = doctors.length; $('sDocs').textContent = doctors.length;
+    if (!doctors.length) { $('dList').innerHTML = '<div class="empty">No doctors added yet.</div>'; return; }
+    $('dList').innerHTML = doctors.map(d => {
+      const [cls, label] = ACC[d.account] || ACC.invited;
+      const initials = String(d.name || '?').replace(/^dr\.?\s+/i, '').split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase();
+      return `<div class="drow"><span class="av">${esc(initials)}</span>
+        <div class="who"><strong>${esc(d.name || 'Doctor')}</strong><span>${[d.role, d.specialty].filter(Boolean).map(esc).join(' · ') || '&nbsp;'}${d.role || d.specialty ? ' · ' : ''}${esc(d.phone)}</span></div>
+        <span class="badge ${cls}">${label}</span>
+        <button class="btn btn-danger-ghost btn-sm" data-docdel="${esc(d.phone)}" aria-label="Remove ${esc(d.name)}"><i class="fas fa-trash"></i></button></div>`;
+    }).join('');
+  }
+  async function loadDoctors() { try { doctors = await api('/api/centres/me/doctors'); renderDoctors(); } catch (err) { $('dList').innerHTML = `<div class="empty">${esc(err.message)}</div>`; } }
+  $('docForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const digits = $('dPhone').value.replace(/\D/g, '').slice(-10);
+    if (digits.length !== 10) { toast('Enter the doctor\'s 10-digit WhatsApp number'); return; }
+    const btn = $('docBtn'); btn.disabled = true;
+    try {
+      const d = await api('/api/centres/me/doctors', { method: 'POST', body: JSON.stringify({ phone: '+91' + digits, name: $('dName').value.trim(), role: $('dRole').value.trim() }) });
+      doctors = d.doctors; renderDoctors(); e.target.reset(); toast(d.message);
+    } catch (err) { toast(err.message); } finally { btn.disabled = false; }
+  });
+  $('dList').addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-docdel]'); if (!b) return;
+    if (!confirm('Remove this doctor from your centre?')) return;
+    try { const d = await api('/api/centres/me/doctors/' + encodeURIComponent(b.dataset.docdel), { method: 'DELETE' }); doctors = d.doctors; renderDoctors(); toast(d.message); } catch (err) { toast(err.message); }
+  });
+
+  // ---------- invite ----------
+  const joinUrl = () => `${SITE}join-centre.html?code=${centre.joinCode}`;
+  function renderInvite() {
+    if (!centre) return;
+    $('joinCode').textContent = centre.joinCode; $('joinLink').value = joinUrl();
+    const msg = `Hello! ${centre.name} now uses Biomexa to follow your treatment between visits — free WhatsApp medicine reminders and your readings shared with our doctors.\n\nJoin here: ${joinUrl()}\n(or enter code ${centre.joinCode})`;
+    $('waShare').href = 'https://wa.me/?text=' + encodeURIComponent(msg);
+    const box = $('qr'); box.innerHTML = '';
+    if (window.QRCode) new QRCode(box, { text: joinUrl(), width: 400, height: 400, colorDark: '#16336b', correctLevel: QRCode.CorrectLevel.M });
+    else box.innerHTML = '<span class="hint">QR loading…</span>';
+  }
+  window.addEventListener('load', () => { if (!$('dashView').hidden && !document.querySelector('[data-pane=invite]').hidden) renderInvite(); });
+  $('copyLink').addEventListener('click', async () => {
+    try { await navigator.clipboard.writeText(joinUrl()); } catch { $('joinLink').select(); document.execCommand('copy'); }
+    toast('Link copied');
+  });
+  $('newCode').addEventListener('click', async () => {
+    if (!confirm('Make a new code?\n\nThe old code and QR will stop working for new patients. Patients already connected stay connected.')) return;
+    try { const d = await api('/api/centres/me/join-code', { method: 'POST' }); centre.joinCode = d.joinCode; renderInvite(); toast('New code ready — reprint your QR poster'); } catch (err) { toast(err.message); }
+  });
+  $('printQr').addEventListener('click', () => {
+    const img = $('qr').querySelector('img')?.src || $('qr').querySelector('canvas')?.toDataURL();
+    const w = window.open('', '_blank'); if (!w) { toast('Allow pop-ups to print the poster'); return; }
+    w.document.write(`<!doctype html><title>${esc(centre.name)} — Biomexa</title><style>body{font-family:Inter,system-ui,sans-serif;text-align:center;color:#13213d;padding:40px}h1{font-size:30px;margin:0 0 6px}p{font-size:18px;color:#5b6b86}img{width:320px;height:320px;margin:24px auto}.c{font-size:40px;font-weight:800;letter-spacing:.2em;color:#16336b}</style>
+      <h1>${esc(centre.name)}</h1><p>Get free WhatsApp medicine reminders and let our doctors follow your progress.</p>
+      ${img ? `<img src="${img}" alt="QR code">` : ''}<p>Scan with your phone camera, or visit<br><b>${esc(joinUrl())}</b></p><p>Centre code</p><div class="c">${esc(centre.joinCode)}</div><p style="margin-top:30px;font-size:13px">Powered by Biomexa Pharmaceuticals</p>
+      <script>onload=()=>setTimeout(()=>print(),300)<\/script>`);
+    w.document.close();
+  });
+
+  // ---------- profile ----------
+  function renderProfile() {
+    const c = centre;
+    $('pfContact').value = c.contactName || ''; $('pfRole').value = c.contactRole || ''; $('pfEmail').value = c.email || '';
+    $('pfAddress').value = c.address || ''; $('pfState').value = c.state || ''; $('pfPin').value = c.pincode || '';
+    $('pfSpec').value = (c.specialties || []).join(', '); $('pfWeb').value = c.website || '';
+    $('verifiedFacts').innerHTML = [['Centre', c.name], ['Type', c.typeLabel], ['Registration no.', c.registrationNumber], ['City', c.city], ['Login WhatsApp', c.phone]]
+      .map(([k, v]) => `<div class="fact"><div class="k">${k}</div><div class="v">${esc(v || '—')}</div></div>`).join('');
+  }
+  $('profileForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    try {
+      const d = await api('/api/centres/me', { method: 'PATCH', body: JSON.stringify({ contactName: $('pfContact').value, contactRole: $('pfRole').value, email: $('pfEmail').value, address: $('pfAddress').value, state: $('pfState').value, pincode: $('pfPin').value, specialties: $('pfSpec').value, website: $('pfWeb').value }) });
+      centre = d.centre; renderHeader(); renderProfile(); toast(d.message);
+    } catch (err) { toast(err.message); }
+  });
+  $('pwForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    try { const d = await api('/api/centres/me/password', { method: 'POST', body: JSON.stringify({ currentPassword: $('pwCur').value, newPassword: $('pwNew').value }) }); e.target.reset(); toast(d.message); } catch (err) { toast(err.message); }
+  });
+
+  // ---------- start ----------
+  function renderHeader() {
+    $('cName').textContent = centre.name; document.title = `${centre.name} — Biomexa`;
+    $('cType').textContent = centre.typeLabel; $('cType').className = 'badge ' + (centre.type === 'ivf' ? 'green' : 'navy');
+    $('cCity').innerHTML = `<i class="fas fa-location-dot"></i> ${esc([centre.city, centre.state].filter(Boolean).join(', '))}`;
+  }
+  async function start() {
+    if (!token) return showLogin();
+    try {
+      const d = await api('/api/centres/me');
+      centre = d.centre; $('consentText').textContent = d.consentText;
+      $('loginView').hidden = true; $('dashView').hidden = false; $('logoutBtn').hidden = false;
+      renderHeader(); renderProfile();
+      const tab = location.hash.slice(1);
+      go(['patients', 'doctors', 'invite', 'profile'].includes(tab) ? tab : 'patients');
+      loadPatients(); loadDoctors();
+    } catch (err) {
+      if (!$('loginView').hidden) return;
+      showLogin(/fetch|network/i.test(err.message) ? 'Could not reach Biomexa — check your internet.' : err.message);
+    }
+  }
+  start();
+})();
+</script>
+</body>
+</html>

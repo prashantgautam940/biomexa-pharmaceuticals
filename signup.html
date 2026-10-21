@@ -158,8 +158,11 @@
       ? 'http://localhost:3000'
       : 'https://biomexa-api-f9f6.onrender.com';
 
+    // Return to a centre's join page after sign-up when that's where the patient came from
+    // (only that one page — never an arbitrary URL).
+    const NEXT = (() => { const n = new URLSearchParams(location.search).get('next') || ''; return /^join-centre\.html\?code=[A-Za-z0-9]{4,12}$/.test(n) ? n : 'patient.html'; })();
     if (localStorage.getItem('token')) {
-      window.location.href = 'patient.html';
+      window.location.href = NEXT;
     }
 
     document.getElementById('signupForm').addEventListener('submit', async (e) => {
@@ -205,7 +208,9 @@
 
         const continueLink = document.createElement('p');
         continueLink.style.cssText = 'text-align:center;margin-top:16px;';
-        continueLink.innerHTML = '<a href="patient.html" style="color: #13804a;font-size:14px;">Continue to dashboard →</a>';
+        continueLink.innerHTML = NEXT === 'patient.html'
+          ? '<a href="patient.html" style="color: #13804a;font-size:14px;">Continue to dashboard →</a>'
+          : `<a href="${NEXT}" style="color: #13804a;font-size:14px;font-weight:600;">Continue to join your hospital →</a>`;
         document.getElementById('waActivateBox').after(continueLink);
       } catch (err) {
         errorText.textContent = err.message;
