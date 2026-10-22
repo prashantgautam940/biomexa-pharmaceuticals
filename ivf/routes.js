@@ -271,7 +271,13 @@ const CHECKIN_ADVICE = {
 //   "61.5 kg, pain 3, bloating mild, temp 98.6"  or  "W 61.5 P3 BP 118/76"  or  "fine"
 // Returns { vitals, symptoms } with only the fields the patient actually mentioned.
 function parseCheckinText(raw) {
-  const t = ' ' + String(raw || '').toLowerCase().replace(/[,;]+/g, ' ').replace(/\s+/g, ' ') + ' ';
+  // Hinglish words patients commonly type are mapped to English first (vajan 62, dard 4, bukhar 100, ulti...).
+  const HI = [[/\b(?:vajan|wajan|vazan|wazan)\b/g, 'weight'], [/\bsir\s*(?:me\s*)?dard\b/g, 'headache'], [/\b(?:dard|dared)\b/g, 'pain'], [/\b(?:bukhar|bukhaar)\b/g, 'temp'],
+    [/\b(?:ulti|ultee|vomting)\b/g, 'vomit'], [/\b(?:ji machal\w*|matli|ghabrahat)\b/g, 'nausea'], [/\bpet\s*(?:phool\w*|fool\w*)|\bpet me gas\b|\bgas\b/g, 'bloating'],
+    [/\b(?:saans|sans)\s*(?:phool\w*|fool\w*|lene me (?:dikkat|taklif)|ki (?:dikkat|taklif))/g, 'breathless'], [/\b(?:peshab|pesab|urine)\s*(?:kam|kum)\b/g, 'less urine'],
+    [/\bkhoon\b/g, 'bleeding'], [/\bthoda\b/g, 'mild'], [/\bbahut\b|\bjyada\b|\bzyada\b/g, 'severe'], [/\b(?:kamar|pet)\s*(?:ka|ki|ko|me)?\s*naap\b/g, 'waist'], [/\bnahi\b|\bnahin\b/g, 'no']];
+  let src = String(raw || '').toLowerCase(); for (const [re, en] of HI) src = src.replace(re, en);
+  const t = ' ' + src.replace(/[,;]+/g, ' ').replace(/\s+/g, ' ') + ' ';
   const n = (re, min, max) => { const m = t.match(re); if (!m) return undefined; const v = parseFloat(m[1]); return v >= min && v <= max ? v : undefined; };
   const vitals = {}, symptoms = {};
   vitals.weightKg = n(/\b(?:w|wt|weight)\s*[:=-]?\s*(\d{2,3}(?:\.\d+)?)/, 30, 200) ?? n(/(\d{2,3}(?:\.\d+)?)\s*kgs?\b/, 30, 200);
@@ -293,6 +299,7 @@ function parseCheckinText(raw) {
   if (/breath/.test(t) && !/\bno (?:short(?:ness)? of )?breath/.test(t)) symptoms.breathlessness = true;
   if (/(?:less|low|reduced|little|no) urine|not passing urine|urine (?:less|low|reduced)/.test(t)) symptoms.reducedUrine = true;
   if (/headache/.test(t) && !/no headache/.test(t)) symptoms.headache = true;
+  if (/(?:injection|inj|shot)\s*(?:site|place|area|jagah)?\s*(?:is\s*)?(?:red|redness|swell|swollen|swelling|rash|lump|itch)|(?:red|redness|swelling|swollen|rash|lump)\s*(?:at|on|near)?\s*(?:the\s*)?(?:injection|inj)/.test(t)) symptoms.injectionSiteReaction = true;
   const mood = t.match(/\bmood\s*[:=-]?\s*(very low|good|okay|ok|low)\b/) || t.match(/\bfeeling\s+(very low|good|okay|ok|low)\b/);
   if (mood) symptoms.mood = { 'very low': 'very_low', good: 'good', okay: 'okay', ok: 'okay', low: 'low' }[mood[1]];
   // "fine" / "all good" / "no symptoms" on its own = nothing to report today
@@ -309,10 +316,10 @@ function checkinSummaryLine(vitals, symptoms) {
     vitals.abdominalGirthCm && `Girth ${vitals.abdominalGirthCm} cm`, Number.isFinite(symptoms.painScore) && `Pain ${symptoms.painScore}/10`,
     symptoms.bloating && `Bloating ${symptoms.bloating}`, symptoms.nausea && symptoms.nausea !== 'none' && `Nausea: ${symptoms.nausea}`,
     symptoms.bleeding && symptoms.bleeding !== 'none' && `Bleeding: ${symptoms.bleeding}`, symptoms.breathlessness && 'Breathless',
-    symptoms.reducedUrine && 'Less urine', symptoms.headache && 'Headache', symptoms.mood && `Mood ${symptoms.mood.replace('_', ' ')}`
+    symptoms.reducedUrine && 'Less urine', symptoms.headache && 'Headache', symptoms.injectionSiteReaction && 'Injection-site reaction', symptoms.mood && `Mood ${symptoms.mood.replace('_', ' ')}`
   ].filter(Boolean).join(', ');
 }
-const CHECKIN_PROMPT = `📋 *IVF daily check-in*\n\nReply in one message with whatever you have, for example:\n\n*61.5 kg, pain 3, bloating mild, temp 98.6*\n\nYou can also add BP (118/76), waist (cm), bleeding, vomiting, breathless or less urine.\nNo symptoms today? Reply *FINE*. Reply *SKIP* to do it later.`;
+const CHECKIN_PROMPT = `📋 *IVF daily check-in*\n\nReply in one message with whatever you have, for example:\n\n*61.5 kg, pain 3, bloating mild, temp 98.6*\n\nYou can also add BP 118/76, pulse 80, waist 82 cm, nausea, vomiting, bleeding, breathless, less urine, headache, injection-site swelling, mood good/low.\nHindi bhi chalega: *vajan 61.5, dard 3, pet phoola*\nNo symptoms today? Reply *FINE*. Reply *SKIP* to do it later.`;
 async function sendCheckinPrompt(cycle) {
   await D.ConversationState.findOneAndUpdate({ patientPhone: cycle.patientPhone }, { state: 'ivf_awaiting_checkin', doseId: null, updatedAt: new Date() }, { upsert: true });
   return D.sendWhatsAppFree(cycle.patientPhone, CHECKIN_PROMPT);
