@@ -1519,7 +1519,7 @@ async function whatsappWindowOpen(phone) {
 }
 
 // Setup: create + get Meta approval for a UTILITY template in MSG91 named e.g. ivf_care_update:
-//   Body: "Biomexa IVF Care: {{1}}\n\n{{2}}\n\nOpen your IVF Care app for full details."
+//   Body: "Biomexa IVF Care update: {{1}}\n\n{{2}}\n\nOpen your IVF Care app for the full details: biomexapharmaceuticals.com/ivf.html"
 //   Variables: {{1}} = title, {{2}} = details. No buttons.
 // then set MSG91_IVF_UPDATE_TEMPLATE_NAME (and MSG91_IVF_UPDATE_TEMPLATE_NAMESPACE if different).
 const MSG91_IVF_UPDATE_TEMPLATE_NAME = process.env.MSG91_IVF_UPDATE_TEMPLATE_NAME || null;
@@ -1542,8 +1542,9 @@ async function sendIvfUpdateTemplate(phone, title, details) {
             to_and_components: [{
               to: [phone.replace(/\D/g, '')],
               components: {
-                body_1: { type: 'text', value: sanitizeTemplateParam(title, 80) || 'Update', parameter_name: 'title' },
-                body_2: { type: 'text', value: sanitizeTemplateParam(details, 700) || '-', parameter_name: 'details' }
+                // ivf_care_update uses numbered variables: {{1}} = title, {{2}} = details
+                body_1: { type: 'text', value: sanitizeTemplateParam(title, 80) || 'Update' },
+                body_2: { type: 'text', value: sanitizeTemplateParam(details, 700) || '-' }
               }
             }]
           }
