@@ -273,7 +273,8 @@ const CHECKIN_ADVICE = {
 function parseCheckinText(raw) {
   // Hinglish words patients commonly type are mapped to English first (vajan 62, dard 4, bukhar 100, ulti...).
   const HI = [[/\b(?:vajan|wajan|vazan|wazan)\b/g, 'weight'], [/\bsir\s*(?:me\s*)?dard\b/g, 'headache'], [/\b(?:dard|dared)\b/g, 'pain'], [/\b(?:bukhar|bukhaar)\b/g, 'temp'],
-    [/\b(?:ulti|ultee|vomting)\b/g, 'vomit'], [/\b(?:ji machal\w*|matli|ghabrahat)\b/g, 'nausea'], [/\bpet\s*(?:phool\w*|fool\w*)|\bpet me gas\b|\bgas\b/g, 'bloating'],
+    [/\b(?:ulti|ultee|vomting)\b/g, 'vomit'], [/\b(?:ji machal\w*|matli|ghabrahat)\b/g, 'nausea'],
+    [/\bpet\s+(bahut|jyada|zyada|thoda)\s+(?:phool\w*|fool\w*)/g, '$1 bloating'], [/\bpet\s*(?:phool\w*|fool\w*)|\bpet me gas\b|\bgas\b/g, 'bloating'],
     [/\b(?:saans|sans)\s*(?:phool\w*|fool\w*|lene me (?:dikkat|taklif)|ki (?:dikkat|taklif))/g, 'breathless'], [/\b(?:peshab|pesab|urine)\s*(?:kam|kum)\b/g, 'less urine'],
     [/\bkhoon\b/g, 'bleeding'], [/\bthoda\b/g, 'mild'], [/\bbahut\b|\bjyada\b|\bzyada\b/g, 'severe'], [/\b(?:kamar|pet)\s*(?:ka|ki|ko|me)?\s*naap\b/g, 'waist'], [/\bnahi\b|\bnahin\b/g, 'no']];
   let src = String(raw || '').toLowerCase(); for (const [re, en] of HI) src = src.replace(re, en);
@@ -292,13 +293,18 @@ function parseCheckinText(raw) {
   const bl = t.match(/\b(no|none|mild|moderate|severe|bad|heavy)\s+bloat/) || t.match(/\bbloat\w*\s*[:=-]?\s*(no|none|mild|moderate|severe|bad|heavy)\b/);
   if (bl) symptoms.bloating = { no: 'none', none: 'none', mild: 'mild', moderate: 'moderate', severe: 'severe', bad: 'severe', heavy: 'severe' }[bl[1]];
   else if (/\bbloat/.test(t)) symptoms.bloating = 'mild';
-  if (/vomit/.test(t)) symptoms.nausea = 'vomiting'; else if (/\bnause|\bnausea/.test(t) && !/\bno nausea/.test(t)) symptoms.nausea = 'mild';
-  if (/heavy (?:bleed|blood)|bleeding heavy/.test(t)) symptoms.bleeding = 'heavy';
-  else if (/spotting/.test(t) && !/no spotting/.test(t)) symptoms.bleeding = 'spotting';
-  else if (/(?:light )?bleed/.test(t) && !/no bleed/.test(t)) symptoms.bleeding = 'light';
-  if (/breath/.test(t) && !/\bno (?:short(?:ness)? of )?breath/.test(t)) symptoms.breathlessness = true;
+  // Negation is checked within one clause (commas split clauses), so "breathless, no fever" still
+  // counts as breathless. "no X" / "not X" before the symptom, or "X no" (Hindi "X nahi") right after.
+  const clauses = ' ' + src.replace(/[,;.!?\n]+/g, ' | ').replace(/\s+/g, ' ') + ' ';
+  const negated = stem => new RegExp(`\\b(?:no|not|without|never)\\s+(?:(?!but\\b|and\\b|lekin\\b|par\\b|magar\\b)[a-z]+\\s+){0,2}${stem}|${stem}\\w*\\s+(?:no|not)\\b`).test(clauses);
+  const has = stem => new RegExp(stem).test(t) && !negated(stem);
+  if (has('vomit')) symptoms.nausea = 'vomiting'; else if (has('nause')) symptoms.nausea = 'mild';
+  if (/heavy (?:bleed|blood)|bleeding heavy|bleed\w*\s+(?:[a-z]+\s+){0,1}severe|severe\s+(?:[a-z]+\s+){0,1}bleed/.test(t) && !negated('bleed')) symptoms.bleeding = 'heavy';
+  else if (has('spotting')) symptoms.bleeding = 'spotting';
+  else if (has('bleed')) symptoms.bleeding = 'light';
+  if (has('breath')) symptoms.breathlessness = true;
   if (/(?:less|low|reduced|little|no) urine|not passing urine|urine (?:less|low|reduced)/.test(t)) symptoms.reducedUrine = true;
-  if (/headache/.test(t) && !/no headache/.test(t)) symptoms.headache = true;
+  if (has('headache')) symptoms.headache = true;
   if (/(?:injection|inj|shot)\s*(?:site|place|area|jagah)?\s*(?:is\s*)?(?:red|redness|swell|swollen|swelling|rash|lump|itch)|(?:red|redness|swelling|swollen|rash|lump)\s*(?:at|on|near)?\s*(?:the\s*)?(?:injection|inj)/.test(t)) symptoms.injectionSiteReaction = true;
   const mood = t.match(/\bmood\s*[:=-]?\s*(very low|good|okay|ok|low)\b/) || t.match(/\bfeeling\s+(very low|good|okay|ok|low)\b/);
   if (mood) symptoms.mood = { 'very low': 'very_low', good: 'good', okay: 'okay', ok: 'okay', low: 'low' }[mood[1]];
@@ -605,7 +611,7 @@ function mount(app, deps) {
       IvfDailyLog.findOne({ cycleId: id, logDate: today }).sort({ createdAt: -1 }),
       IvfConsult.find({ cycleId: id, status: { $in: ['requested', 'scheduled'] } }).sort({ scheduledAt: 1, createdAt: -1 }),
       IvfMessage.countDocuments({ cycleId: id, from: 'doctor', readByOther: false }),
-      IvfAlert.find({ cycleId: id }).sort({ createdAt: -1 }).limit(3),
+      IvfAlert.find({ cycleId: id, source: { $ne: 'pregnancy_scan' } }).sort({ createdAt: -1 }).limit(3), // scan verdicts are doctor-only
       IvfReport.countDocuments({ cycleId: id, reviewStatus: 'awaiting_review' })
     ]);
     const doctor = await doctorOf(cycle);
@@ -807,7 +813,8 @@ function mount(app, deps) {
   }));
 
   app.get(`${R}/alerts`, auth, withCycle(async (req, res, cycle) => {
-    res.json(await IvfAlert.find({ cycleId: String(cycle._id) }).sort({ createdAt: -1 }).limit(20));
+    // Early-pregnancy scan alerts are doctor-only: the doctor decides what the patient hears about viability.
+    res.json(await IvfAlert.find({ cycleId: String(cycle._id), source: { $ne: 'pregnancy_scan' } }).sort({ createdAt: -1 }).limit(20));
   }));
 
   // ---------- doctor / IVF centre ----------
