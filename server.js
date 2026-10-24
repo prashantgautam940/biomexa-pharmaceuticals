@@ -1562,6 +1562,53 @@ async function sendIvfUpdateTemplate(phone, title, details) {
   }
 }
 
+// Setup: create + get Meta approval for a UTILITY template in MSG91 named e.g. biomexa_care_renewal:
+//   Body: "Hi {{1}}, {{2}}\n\nYour treatment: {{3}}\n\nRenew Biomexa Care to keep Talk to a Doctor, treatment reports,
+//          AI report analysis and reminders for all your medicines. Plans from ₹99/month: biomexapharmaceuticals.com/subscribe.html"
+//   Variables: {{1}} = first name, {{2}} = status line, {{3}} = treatment summary. No buttons.
+// then set MSG91_RENEWAL_TEMPLATE_NAME (and MSG91_RENEWAL_TEMPLATE_NAMESPACE if different).
+// Trial/plan notices go to every patient, most of whom haven't messaged Biomexa in the last 24 h,
+// so without this template Meta drops them.
+const MSG91_RENEWAL_TEMPLATE_NAME = process.env.MSG91_RENEWAL_TEMPLATE_NAME || null;
+const MSG91_RENEWAL_TEMPLATE_NAMESPACE = process.env.MSG91_RENEWAL_TEMPLATE_NAMESPACE || MSG91_TEMPLATE_NAMESPACE;
+async function sendRenewalTemplate(phone, firstName, statusLine, treatmentLine) {
+  if (!MSG91_CONFIGURED || !MSG91_RENEWAL_TEMPLATE_NAME) return { success: false, provider: 'msg91_renewal_template_not_configured' };
+  try {
+    const res = await fetch('https://api.msg91.com/api/v5/whatsapp/whatsapp-outbound-message/bulk/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'authkey': MSG91_AUTH_KEY },
+      body: JSON.stringify({
+        integrated_number: MSG91_INTEGRATED_NUMBER,
+        content_type: 'template',
+        payload: {
+          messaging_product: 'whatsapp', type: 'template',
+          template: {
+            name: MSG91_RENEWAL_TEMPLATE_NAME,
+            language: { code: MSG91_TEMPLATE_LANG, policy: 'deterministic' },
+            namespace: MSG91_RENEWAL_TEMPLATE_NAMESPACE,
+            to_and_components: [{
+              to: [phone.replace(/\D/g, '')],
+              components: {
+                body_1: { type: 'text', value: sanitizeTemplateParam(firstName, 40) || 'there' },
+                body_2: { type: 'text', value: sanitizeTemplateParam(statusLine, 200) || 'your Biomexa Care access has changed.' },
+                body_3: { type: 'text', value: sanitizeTemplateParam(treatmentLine, 300) || '-' }
+              }
+            }]
+          }
+        }
+      }),
+      signal: AbortSignal.timeout(10000)
+    });
+    const data = await res.json();
+    if (!res.ok) { console.log('⚠️ MSG91 renewal template send failed:', JSON.stringify(data).substring(0, 500)); return { success: false, provider: 'msg91', detail: data }; }
+    console.log('✅ MSG91 renewal template sent to', phone);
+    return { success: true, provider: 'msg91' };
+  } catch (err) {
+    console.log('⚠️ MSG91 renewal template send error:', err.message);
+    return { success: false, provider: 'msg91', detail: err.message };
+  }
+}
+
 // ========== MONGODB SETUP ==========
 mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/biomexa')
   .then(async () => {
@@ -5113,8 +5160,31 @@ app.get('/api/admin/subscriptions', adminAuth, async (req, res) => {
 //     at most SUB_REMINDER_MAX times. Stops as soon as they subscribe.
 //   • Paid plan: 3 days before it ends and on the last day; after it lapses, the same day-after
 //     reminders as the trial.
-// Each notice is sent once (lastSubNoticeKey).
+// Each notice is sent once (lastSubNoticeKey). If the server was asleep on a reminder day, the
+// latest due reminder goes out on the next day it runs instead of waiting for the next slot.
+// Every notice also tells the patient where their treatment stands (medicines + adherence).
 let lastSubNoticeRun = null;
+async function treatmentSummaryFor(twins) {
+  const meds = twins.flatMap(x => (x.medicines || []).filter(m => m.active !== false).map(m => m.name)).filter(Boolean);
+  const uniq = [...new Set(meds)];
+  const since = localDateStr(new Date(Date.now() - 30 * 86400000));
+  const phones = twins.map(x => x.phone);
+  const [taken, missed] = await Promise.all([
+    Dose.countDocuments({ patientPhone: { $in: phones }, scheduledDate: { $gte: since }, status: 'taken' }),
+    Dose.countDocuments({ patientPhone: { $in: phones }, scheduledDate: { $gte: since }, status: 'missed' })
+  ]);
+  const medPart = uniq.length ? `${uniq.length} active medicine${uniq.length > 1 ? 's' : ''} (${uniq.slice(0, 3).join(', ')}${uniq.length > 3 ? '…' : ''})` : 'no active medicines on reminders';
+  const adhPart = taken + missed ? `, ${Math.round(100 * taken / (taken + missed))}% of doses taken in the last 30 days` : '';
+  return medPart + adhPart;
+}
+// Template outside the 24-hour window (Meta drops free text there); free text inside it.
+async function sendSubscriptionNotice(phone, first, statusLine, treatment, fullText) {
+  if (await whatsappWindowOpen(phone)) return sendWhatsAppFree(phone, fullText);
+  const t = await sendRenewalTemplate(phone, first, statusLine, treatment);
+  if (t.success) return t;
+  if (!MSG91_RENEWAL_TEMPLATE_NAME) console.log(`⚠️ Subscription notice to ${phone} is outside the 24h window and MSG91_RENEWAL_TEMPLATE_NAME is not set — Meta will probably drop this free-text message`);
+  return sendWhatsAppFree(phone, fullText);
+}
 function dayDiff(fromDateStr, toDateStr) {
   return Math.round((new Date(toDateStr + 'T00:00:00Z') - new Date(fromDateStr + 'T00:00:00Z')) / 86400000);
 }
@@ -5123,7 +5193,7 @@ async function processSubscriptionNotices(now = new Date()) {
   if (lastSubNoticeRun === today || now.getHours() < 10 || now.getHours() >= 20) return;
   lastSubNoticeRun = today;
   try {
-    const patients = await Patient.find().select('name phone createdAt subscription lastSubNoticeKey');
+    const patients = await Patient.find().select('name phone createdAt subscription lastSubNoticeKey medicines');
     const seen = new Set();
     let sent = 0;
     for (const p of patients) {
@@ -5132,32 +5202,39 @@ async function processSubscriptionNotices(now = new Date()) {
       seen.add(k);
       const twins = patients.filter(x => last10(x.phone) === k);
       const a = accessFor(twins);
-      let key = null, msg = null;
+      let key = null, status = null, kind = null;
       const first = String(p.name || '').trim().split(/\s+/)[0] || 'there';
       const link = `${SITE_URL}/subscribe.html`;
 
       if (a.tier === 'subscribed') {
         const left = dayDiff(today, localDateStr(a.expiresAt));
-        if (left === 3 || left === 0) {
-          key = `plan-${left}d-${localDateStr(a.expiresAt)}`;
-          msg = `⏳ Hi ${first}, your Biomexa Care plan ends ${left === 0 ? '*today*' : 'in *3 days*'}.\n\nRenew to keep Talk to a Doctor, treatment reports, AI report analysis and reminders for all your medicines — from ₹99/month (₹899/year):\n${link}\n\n- Biomexa Team`;
+        // 3-day heads-up (sent on day 3, 2 or 1 if a day was missed) and a last-day notice.
+        const slot = left === 0 ? 0 : (left >= 1 && left <= 3 ? 3 : null);
+        if (slot !== null) {
+          key = `plan-${slot}d-${localDateStr(a.expiresAt)}`;
+          kind = 'plan-ending';
+          status = `your Biomexa Care plan ends ${left === 0 ? 'today' : left === 1 ? 'tomorrow' : `in ${left} days`}.`;
         }
       } else {
-        // Trial (or a lapsed plan) is over: day 26 onwards.
+        // Trial (or a lapsed plan) is over: day 26 onwards. n = the latest reminder that is due.
         const endedOn = localDateStr(a.lastExpiredAt || a.trialEndsAt);   // = day 26 for a trial
         const after = dayDiff(endedOn, today);                             // 0 on day 26
         const n = Math.floor(after / SUB_REMINDER_EVERY_DAYS);
-        if (after >= 0 && after % SUB_REMINDER_EVERY_DAYS === 0 && n < SUB_REMINDER_MAX) {
-          const kind = a.lastExpiredAt ? 'plan' : 'trial';
+        if (after >= 0 && n < SUB_REMINDER_MAX) {
+          kind = a.lastExpiredAt ? 'plan' : 'trial';
           key = `${kind}-ended-${endedOn}-${n}`;
-          msg = kind === 'trial'
-            ? `Hi ${first}, your *25-day free trial* of Biomexa Care has ended.\n\nTo keep using Talk to a Doctor, treatment reports, AI prescription & lab report analysis and reminders for all your medicines, please subscribe — otherwise these services will stop.\n\nPlans from ₹99/month (₹899/year):\n${link}\n\n- Biomexa Team`
-            : `Hi ${first}, your *Biomexa Care plan* has ended.\n\nRenew to keep Talk to a Doctor, treatment reports, AI report analysis and reminders for all your medicines — otherwise these services will stop.\n\nPlans from ₹99/month (₹899/year):\n${link}\n\n- Biomexa Team`;
+          status = kind === 'trial'
+            ? `your ${TRIAL_DAYS}-day free trial of Biomexa Care has ended. Please subscribe to keep these services.`
+            : 'your Biomexa Care plan has ended. Please renew to keep these services.';
         }
       }
       if (!key || twins.some(x => x.lastSubNoticeKey === key)) continue;
       const target = twins.find(x => !/\s/.test(x.phone)) || p;
-      const r = await sendWhatsAppFree(target.phone, msg);
+      const treatment = await treatmentSummaryFor(twins);
+      const msg = kind === 'plan-ending'
+        ? `⏳ Hi ${first}, ${status}\n\n💊 Your treatment: ${treatment}.\n\nRenew to keep Talk to a Doctor, treatment reports, AI report analysis and reminders for all your medicines — from ₹99/month (₹899/year):\n${link}\n\n- Biomexa Team`
+        : `Hi ${first}, ${kind === 'trial' ? `your *${TRIAL_DAYS}-day free trial* of Biomexa Care has ended` : 'your *Biomexa Care plan* has ended'}.\n\n💊 Your treatment: ${treatment}.\n\nTo keep using Talk to a Doctor, treatment reports, AI prescription & lab report analysis and reminders for all your medicines, please ${kind === 'trial' ? 'subscribe' : 'renew'} — otherwise these services will stop.\n\nPlans from ₹99/month (₹899/year):\n${link}\n\n- Biomexa Team`;
+      const r = await sendSubscriptionNotice(target.phone, first, status, treatment, msg);
       if (r?.success) {
         sent++;
         await Patient.updateMany({ _id: { $in: twins.map(x => x._id) } }, { lastSubNoticeKey: key });
