@@ -1419,6 +1419,7 @@ async function sendOrderNotificationEmail(order) {
         <p><strong>Phone:</strong> ${order.phone}</p>
         <p><strong>Address:</strong> ${order.address}</p>
         ${order.notes ? `<p><strong>Notes:</strong> ${order.notes}</p>` : ''}
+        <p><strong>Prescription:</strong> ${order.prescriptionFiles && order.prescriptionFiles.length ? `${order.prescriptionFiles.length} file(s) attached — open Admin → Orders to view` : 'customer will share it on the call'}</p>
         <p style="color:#888;font-size:13px;">View and manage this order in the admin portal.</p>
       </div>`
     });
@@ -1811,6 +1812,10 @@ const orderSchema = new mongoose.Schema({
   address: String,
   quantity: { type: Number, default: 1 },
   notes: String,
+  // Prescription uploaded with the order (up to 3 JPG/PNG/WEBP/PDF files, base64), or the customer
+  // chose to share it when the team calls.
+  prescriptionFiles: [{ fileName: String, fileType: String, fileData: String }],
+  prescriptionLater: { type: Boolean, default: false },
   promoCode: String,      // accepted discount code, e.g. BIOMEXA15
   discountPct: Number,    // discount the team applies when confirming the order on the call
   status: { type: String, default: 'new' }, // new | confirmed | shipped | cancelled
@@ -2271,16 +2276,17 @@ app.post('/api/quick-vitals', signupLimiter, async (req, res) => {
 // on the order and shown to the team, who apply the discount on the call.
 const PROMO_CODES = {
   // 10-day offer: 25 Oct – 3 Nov 2026 (inclusive, Indian time).
-  BIOMEXA15: { pct: 15, products: /telmexa|diabmexa/i, label: '15% off Telmexa AM and Diabmexa M 500', validUntil: new Date('2026-11-03T23:59:59+05:30') }
+  BIOMEXA15: { pct: 15, products: /telmexa|diabmexa/i, label: '15% off Telmexa AM and Diabmexa M 500', adLabel: '15% off Biomexa medicines', validUntil: new Date('2026-11-03T23:59:59+05:30') }
 };
 const promoActive = p => p && (!p.validUntil || new Date() <= p.validUntil);
 const promoEndLabel = p => p.validUntil.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'Asia/Kolkata' });
 // {{offer_line}} in the product message: the running offer, or a plain order line once it has ended.
 function adOfferLine() {
   const live = Object.entries(PROMO_CODES).find(([, p]) => promoActive(p));
-  if (!live) return 'Order Telmexa AM and Diabmexa M 500 for home delivery: biomexapharmaceuticals.com/products/';
+  // WhatsApp copy never names a medicine (keeps the marketing template approvable); the website does.
+  if (!live) return 'Order Biomexa medicines for home delivery: biomexapharmaceuticals.com/products/';
   const [code, p] = live;
-  return `🎁 Offer till ${p.validUntil ? promoEndLabel(p) : 'stock lasts'}: ${p.label} with code ${code}. Order: biomexapharmaceuticals.com/products/`;
+  return `🎁 Offer till ${p.validUntil ? promoEndLabel(p) : 'stock lasts'}: ${p.adLabel || p.label} with code ${code}. Order: biomexapharmaceuticals.com/products/`;
 }
 app.post('/api/orders', orderLimiter, async (req, res) => {
   try {
@@ -2295,6 +2301,17 @@ app.post('/api/orders', orderLimiter, async (req, res) => {
     if (promo && !promo.products.test(`${productName} ${productSlug || ''}`)) {
       return res.status(400).json({ message: `${code} works on ${promo.label.replace(/^\d+% off /, '')} only.` });
     }
+    // Prescription: required for these medicines — either uploaded now or shared on the call.
+    const rx = (Array.isArray(req.body.prescriptionFiles) ? req.body.prescriptionFiles : [])
+      .filter(f => f && f.fileName && f.fileType && f.fileData)
+      .map(f => ({ fileName: String(f.fileName).slice(0, 120), fileType: String(f.fileType), fileData: String(f.fileData).replace(/^data:[^,]*,/, '') }));
+    const rxLater = req.body.prescriptionLater === true;
+    if (rx.length > 3) return res.status(400).json({ message: 'Please upload up to 3 prescription files.' });
+    for (const f of rx) {
+      if (!['image/jpeg', 'image/png', 'image/webp', 'application/pdf'].includes(f.fileType)) return res.status(400).json({ message: `"${f.fileName}" — please upload a JPG, PNG, WEBP or PDF.` });
+      if (f.fileData.length * 0.75 > 5 * 1024 * 1024) return res.status(400).json({ message: `"${f.fileName}" is too large — please upload a file under 5 MB.` });
+    }
+    if (!rx.length && !rxLater) return res.status(400).json({ message: 'Please upload your prescription, or tick "I\'ll share it when the team calls".' });
 
     const order = await Order.create({
       productName,
@@ -2306,14 +2323,17 @@ app.post('/api/orders', orderLimiter, async (req, res) => {
       // Discount is also written into the notes so it shows in the existing admin orders list.
       notes: `${promo ? `[Discount ${code}: ${promo.pct}% off] ` : ''}${notes || ''}`.trim(),
       promoCode: promo ? code : undefined,
-      discountPct: promo ? promo.pct : undefined
+      discountPct: promo ? promo.pct : undefined,
+      prescriptionFiles: rx,
+      prescriptionLater: !rx.length && rxLater
     });
+    const rxText = rx.length ? `Prescription: ${rx.length} file${rx.length > 1 ? 's' : ''} attached (see Admin → Orders)` : 'Prescription: customer will share it on the call';
 
     sendOrderNotificationEmail(order).catch(() => {});
     if (process.env.ADMIN_NOTIFY_PHONE) {
       sendWhatsAppFree(
         process.env.ADMIN_NOTIFY_PHONE,
-        `🛒 *New Order*\n\n${order.productName} × ${order.quantity}\n${order.customerName} — ${order.phone}\n${order.address}${order.notes ? '\n\nNotes: ' + order.notes : ''}\n\n- Biomexa Team`
+        `🛒 *New Order*\n\n${order.productName} × ${order.quantity}\n${order.customerName} — ${order.phone}\n${order.address}${order.notes ? '\n\nNotes: ' + order.notes : ''}\n${rxText}\n\n- Biomexa Team`
       ).catch(() => {});
     }
 
@@ -2325,8 +2345,23 @@ app.post('/api/orders', orderLimiter, async (req, res) => {
 
 app.get('/api/admin/orders', adminAuth, async (req, res) => {
   try {
-    const orders = await Order.find().sort({ createdAt: -1 }).limit(200);
+    // File contents are left out of the list (they can be MBs each); fetch one via the route below.
+    const orders = await Order.find().select('-prescriptionFiles.fileData').sort({ createdAt: -1 }).limit(200);
     res.json(orders);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+app.get('/api/admin/orders/:id/prescription/:idx', adminAuth, async (req, res) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.id)) return res.status(404).json({ message: 'Order not found.' });
+    const order = await Order.findById(req.params.id).select('prescriptionFiles');
+    const f = order && order.prescriptionFiles[parseInt(req.params.idx, 10)];
+    if (!f) return res.status(404).json({ message: 'Prescription file not found.' });
+    res.set('Content-Type', f.fileType);
+    res.set('Content-Disposition', `inline; filename="${String(f.fileName).replace(/[^\w.\- ]/g, '_')}"`);
+    res.send(Buffer.from(f.fileData, 'base64'));
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

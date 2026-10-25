@@ -400,6 +400,8 @@ tbody tr:hover { background: #f6f8fc !important; }
             <th style="padding:8px 10px;border-bottom:1px solid var(--border);">Phone</th>
             <th style="padding:8px 10px;border-bottom:1px solid var(--border);">Address</th>
             <th style="padding:8px 10px;border-bottom:1px solid var(--border);">Qty</th>
+            <th style="padding:8px 10px;border-bottom:1px solid var(--border);">Prescription</th>
+            <th style="padding:8px 10px;border-bottom:1px solid var(--border);">Notes / discount</th>
             <th style="padding:8px 10px;border-bottom:1px solid var(--border);">Status</th>
           </tr>
         </thead>
@@ -951,7 +953,7 @@ function loadOrders() {
 function renderOrders(orders) {
   const tbody = document.getElementById('ordersTable');
   if (!orders || orders.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="7" style="padding:16px;color:var(--text-muted);font-size:0.85rem;">No orders yet.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="9" style="padding:16px;color:var(--text-muted);font-size:0.85rem;">No orders yet.</td></tr>';
     return;
   }
   tbody.innerHTML = orders.map(o => {
@@ -965,6 +967,10 @@ function renderOrders(orders) {
         <td style="padding:10px;white-space:nowrap;">${escapeHtml(o.phone)}</td>
         <td style="padding:10px;max-width:220px;">${escapeHtml(o.address)}</td>
         <td style="padding:10px;text-align:center;">${o.quantity}</td>
+        <td style="padding:10px;white-space:nowrap;">${(o.prescriptionFiles || []).length
+          ? o.prescriptionFiles.map((f, i) => `<button onclick="viewPrescription('${o._id}', ${i})" title="${escapeHtml(f.fileName)}" style="background:var(--bg-light);border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:0.78rem;cursor:pointer;margin:0 4px 4px 0;color:var(--text);">📄 View ${i + 1}</button>`).join('')
+          : `<span style="color:#f59e0b;font-weight:600;font-size:0.8rem;">${o.prescriptionLater ? 'Will share on call' : 'Not attached'}</span>`}</td>
+        <td style="padding:10px;max-width:200px;">${o.promoCode ? `<span style="color:var(--success);font-weight:700;">${escapeHtml(o.promoCode)} −${o.discountPct}%</span><br>` : ''}${escapeHtml((o.notes || '').replace(/^\[Discount [^\]]*\]\s*/, ''))}</td>
         <td style="padding:10px;">
           <select onchange="updateOrderStatus('${o._id}', this.value)" style="background:var(--bg-light);border:1px solid var(--border);border-radius:6px;color:${color};font-weight:600;padding:6px 8px;font-size:0.8rem;">
             <option value="new" ${o.status === 'new' ? 'selected' : ''}>New</option>
@@ -976,6 +982,15 @@ function renderOrders(orders) {
       </tr>
     `;
   }).join('');
+}
+
+// Prescription files need the admin login header, so fetch them and open the result in a new tab.
+function viewPrescription(id, idx) {
+  const win = window.open('', '_blank');
+  authFetch('/api/admin/orders/' + id + '/prescription/' + idx)
+    .then(r => { if (!r.ok) throw new Error('Could not open the prescription.'); return r.blob(); })
+    .then(b => { const url = URL.createObjectURL(b); if (win) win.location.href = url; else window.location.href = url; })
+    .catch(e => { if (win) win.close(); alert(e.message); });
 }
 
 function updateOrderStatus(id, status) {

@@ -70,7 +70,7 @@
     <section class="card" id="order">
       <h2><span class="ico navy"><i class="fas fa-cart-shopping"></i></span>Order Diabmexa M 500</h2>
       <p class="lead">Request home delivery — our team will call you to confirm.</p>
-      <div class="order-note"><i class="fas fa-circle-info"></i><span>No payment online. A valid prescription is required — please keep it ready when our team calls.</span></div>
+      <div class="order-note"><i class="fas fa-circle-info"></i><span>No payment online. A valid prescription is required — upload it below, or share it when our team calls.</span></div>
       <form id="orderForm" novalidate>
         <div class="field"><label class="fl" for="orderName">Your name</label><input type="text" id="orderName" data-fill="name" autocomplete="name" placeholder="e.g. Ramesh Gupta"></div>
         <div class="field"><label class="fl" for="orderPhone">Phone number</label>
@@ -79,6 +79,11 @@
         <div class="field"><label class="fl" for="orderAddress">Delivery address</label><textarea id="orderAddress" rows="3" autocomplete="street-address" placeholder="House no., street, area, city, PIN code"></textarea></div>
         <div class="field"><label class="fl" for="orderQuantity">Quantity (strips of 10)</label>
           <div class="qty"><button type="button" data-q="-1" aria-label="Less">−</button><input type="number" id="orderQuantity" min="1" max="50" value="1"><button type="button" data-q="1" aria-label="More">+</button></div>
+        </div>
+        <div class="field"><label class="fl" for="orderRx">Upload prescription</label>
+          <input type="file" id="orderRx" accept="image/jpeg,image/png,image/webp,application/pdf" multiple>
+          <small style="display:block;color:#64748b;font-size:.8rem;margin-top:4px">Photo or PDF, up to 3 files, 5 MB each.</small>
+          <label style="display:flex;gap:8px;align-items:center;margin-top:8px;font-size:.88rem;font-weight:400"><input type="checkbox" id="orderRxLater"> I'll share my prescription when the team calls</label>
         </div>
         <div class="field"><label class="fl" for="orderPromo">Discount code (optional)</label><input type="text" id="orderPromo" autocomplete="off" placeholder="e.g. BIOMEXA15" style="text-transform:uppercase"></div>
         <button class="btn btn-primary btn-block" id="orderBtn"><i class="fas fa-paper-plane"></i> Request delivery</button>

@@ -291,6 +291,10 @@
                 <textarea id="orderAddress" rows="2" required></textarea>
                 <label>Quantity</label>
                 <input type="number" id="orderQuantity" min="1" value="1" required>
+                <label>Upload prescription</label>
+                <input type="file" id="orderRx" accept="image/jpeg,image/png,image/webp,application/pdf" multiple>
+                <small style="display:block;opacity:.75;font-size:.8rem;margin:2px 0 6px">Photo or PDF, up to 3 files, 5 MB each.</small>
+                <label style="display:flex;gap:8px;align-items:center;font-weight:400"><input type="checkbox" id="orderRxLater" style="width:auto"> I'll share my prescription when the team calls</label>
                 <label>Discount code (optional)</label>
                 <input type="text" id="orderPromo" placeholder="e.g. BIOMEXA15" style="text-transform:uppercase">
                 <label>Notes (optional)</label>
@@ -332,7 +336,22 @@
             msg.style.color = '';
             msg.textContent = '';
 
+            const fail = t => { msg.style.color = 'var(--danger)'; msg.textContent = t; btn.disabled = false; btn.textContent = 'Submit Order'; };
+            const rxFiles = Array.from(document.getElementById('orderRx').files || []);
+            const rxLater = document.getElementById('orderRxLater').checked;
+            if (rxFiles.length > 3) return fail('Please choose up to 3 prescription files.');
+            const badType = rxFiles.find(f => !/^(image\/(jpeg|png|webp)|application\/pdf)$/.test(f.type));
+            if (badType) return fail(`"${badType.name}" — please upload a JPG, PNG, WEBP or PDF.`);
+            const tooBig = rxFiles.find(f => f.size > 5 * 1024 * 1024);
+            if (tooBig) return fail(`"${tooBig.name}" is over 5 MB — please choose a smaller file.`);
+            if (!rxFiles.length && !rxLater) return fail('Please upload your prescription, or tick "I\'ll share my prescription when the team calls".');
+            const toB64 = f => new Promise((ok, bad) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(',')[1]); r.onerror = () => bad(new Error('Could not read ' + f.name)); r.readAsDataURL(f); });
+            let prescriptionFiles;
+            try { prescriptionFiles = await Promise.all(rxFiles.map(async f => ({ fileName: f.name, fileType: f.type, fileData: await toB64(f) }))); }
+            catch (err) { return fail(err.message); }
+
             const payload = {
+                prescriptionFiles, prescriptionLater: rxLater,
                 productName: currentOrderProduct.name,
                 productSlug: currentOrderProduct.slug,
                 customerName: document.getElementById('orderName').value.trim(),
