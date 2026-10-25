@@ -80,6 +80,7 @@
         <div class="field"><label class="fl" for="orderQuantity">Quantity (strips of 10)</label>
           <div class="qty"><button type="button" data-q="-1" aria-label="Less">−</button><input type="number" id="orderQuantity" min="1" max="50" value="1"><button type="button" data-q="1" aria-label="More">+</button></div>
         </div>
+        <div class="field"><label class="fl" for="orderPromo">Discount code (optional)</label><input type="text" id="orderPromo" autocomplete="off" placeholder="e.g. BIOMEXA15" style="text-transform:uppercase"></div>
         <button class="btn btn-primary btn-block" id="orderBtn"><i class="fas fa-paper-plane"></i> Request delivery</button>
         <div class="form-msg" id="orderMsg" role="status"></div>
       </form>

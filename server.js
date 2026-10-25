@@ -1811,6 +1811,8 @@ const orderSchema = new mongoose.Schema({
   address: String,
   quantity: { type: Number, default: 1 },
   notes: String,
+  promoCode: String,      // accepted discount code, e.g. BIOMEXA15
+  discountPct: Number,    // discount the team applies when confirming the order on the call
   status: { type: String, default: 'new' }, // new | confirmed | shipped | cancelled
   createdAt: { type: Date, default: Date.now }
 });
@@ -2265,11 +2267,22 @@ app.post('/api/quick-vitals', signupLimiter, async (req, res) => {
 // order, then notifies the pharmacy by email and (if configured) WhatsApp so someone can follow
 // up manually. Both notifications are fire-and-forget: a notification failing never blocks the
 // order itself from being saved and confirmed to the customer.
+// Medicine discount codes. Orders are confirmed by phone (no online payment), so the code is saved
+// on the order and shown to the team, who apply the discount on the call.
+const PROMO_CODES = {
+  BIOMEXA15: { pct: 15, products: /telmexa|diabmexa/i, label: '15% off Telmexa AM and Diabmexa M 500' }
+};
 app.post('/api/orders', orderLimiter, async (req, res) => {
   try {
     const { productName, productSlug, customerName, phone, address, quantity, notes } = req.body;
     if (!productName || !customerName || !phone || !address) {
       return res.status(400).json({ message: 'Name, phone, and address are required.' });
+    }
+    const code = String(req.body.promoCode || '').trim().toUpperCase();
+    const promo = code ? PROMO_CODES[code] : null;
+    if (code && !promo) return res.status(400).json({ message: `The discount code "${code}" isn't valid. Please check it or leave it empty.` });
+    if (promo && !promo.products.test(`${productName} ${productSlug || ''}`)) {
+      return res.status(400).json({ message: `${code} works on ${promo.label.replace(/^\d+% off /, '')} only.` });
     }
 
     const order = await Order.create({
@@ -2279,7 +2292,10 @@ app.post('/api/orders', orderLimiter, async (req, res) => {
       phone: normalizePhone(phone) || phone,
       address,
       quantity: quantity ? Math.max(1, parseInt(quantity, 10) || 1) : 1,
-      notes: notes || ''
+      // Discount is also written into the notes so it shows in the existing admin orders list.
+      notes: `${promo ? `[Discount ${code}: ${promo.pct}% off] ` : ''}${notes || ''}`.trim(),
+      promoCode: promo ? code : undefined,
+      discountPct: promo ? promo.pct : undefined
     });
 
     sendOrderNotificationEmail(order).catch(() => {});
@@ -2290,7 +2306,7 @@ app.post('/api/orders', orderLimiter, async (req, res) => {
       ).catch(() => {});
     }
 
-    res.json({ message: 'Order received! Our team will contact you shortly to confirm and arrange delivery.', orderId: order._id });
+    res.json({ message: `Order received!${promo ? ` ${code} applied: ${promo.pct}% off.` : ''} Our team will contact you shortly to confirm and arrange delivery.`, orderId: order._id, discountPct: order.discountPct || 0 });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -3615,12 +3631,30 @@ async function processCompletedCourses() {
 const MSG91_AD_TEMPLATE_NAME = process.env.MSG91_AD_TEMPLATE_NAME || null;
 const MSG91_AD_TEMPLATE_NAMESPACE = process.env.MSG91_AD_TEMPLATE_NAMESPACE || MSG91_TEMPLATE_NAMESPACE;
 const AD_INTERVAL_DAYS = Math.max(1, parseInt(process.env.AD_INTERVAL_DAYS, 10) || 10);
+// New sign-ups wait this long before their first product message (keeps it away from the welcome message).
+const AD_NEW_PATIENT_WAIT_DAYS = Math.max(0, parseInt(process.env.AD_NEW_PATIENT_WAIT_DAYS, 10) || 1);
+// Set to 'false' only if the approved template has just {{patient_name}} (the older version).
+const AD_TEMPLATE_HAS_ACCESS_LINE = process.env.AD_TEMPLATE_HAS_ACCESS_LINE !== 'false';
 const AD_SEND_HOUR = 11;
 const AD_MAX_PER_RUN = 300;
 const AD_STOP_RE = /^\s*(stop|unsubscribe|stop ads|no ads)\s*[.!]?\s*$/i;
 const AD_START_RE = /^\s*(start|subscribe)\s*[.!]?\s*$/i;
 
-async function sendAdTemplate(phone, patientName) {
+// Per-patient line for {{access_line}}: trial end date / plan status, plus a nudge when every
+// medicine on reminders is stopped.
+function adAccessLine(records) {
+  const a = accessFor(records);
+  const fmt = d => new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' });
+  let line = a.tier === 'subscribed' ? `your Biomexa Care plan is active till ${fmt(a.expiresAt)}.`
+    : a.tier === 'trial' ? `your free trial of Biomexa Care ends on ${fmt(a.trialEndsAt)}. Subscribe to keep every feature.`
+    : 'your free trial of Biomexa Care has ended. Subscribe to keep every feature.';
+  const meds = records.flatMap(r => r.medicines || []);
+  if (!meds.length) line += ' Add your medicines in the app to get free WhatsApp reminders.';
+  else if (!meds.some(m => m.active !== false)) line += ' Your medicine reminders are stopped right now. Restart them any time in the app.';
+  return line;
+}
+
+async function sendAdTemplate(phone, patientName, accessLine) {
   try {
     const res = await fetch('https://api.msg91.com/api/v5/whatsapp/whatsapp-outbound-message/bulk/', {
       method: 'POST',
@@ -3638,7 +3672,8 @@ async function sendAdTemplate(phone, patientName) {
             to_and_components: [{
               to: [phone.replace(/\D/g, '')],
               components: {
-                body_1: { type: 'text', value: sanitizeTemplateParam(String(patientName || 'there').split(' ')[0], 40), parameter_name: 'patient_name' }
+                body_1: { type: 'text', value: sanitizeTemplateParam(String(patientName || 'there').split(' ')[0], 40), parameter_name: 'patient_name' },
+                ...(AD_TEMPLATE_HAS_ACCESS_LINE ? { body_2: { type: 'text', value: sanitizeTemplateParam(accessLine || 'welcome to Biomexa Care.', 250), parameter_name: 'access_line' } } : {})
               }
             }]
           }
@@ -3669,9 +3704,10 @@ async function processProductAds(now = new Date()) {
   }
   try {
     const cutoff = new Date(now.getTime() - AD_INTERVAL_DAYS * 86400000);
+    // Every patient — including those whose medicines are all stopped — except anyone who replied STOP.
     const due = await Patient.find({
       adOptOut: { $ne: true },
-      createdAt: { $lte: cutoff },
+      createdAt: { $lte: new Date(now.getTime() - AD_NEW_PATIENT_WAIT_DAYS * 86400000) },
       $or: [{ lastAdSentAt: null }, { lastAdSentAt: { $exists: false } }, { lastAdSentAt: { $lte: cutoff } }]
     }).select('name phone').limit(AD_MAX_PER_RUN);
     let sent = 0;
@@ -3682,7 +3718,8 @@ async function processProductAds(now = new Date()) {
         { lastAdSentAt: now }
       );
       if (!claimed) continue;
-      if (await sendAdTemplate(p.phone, p.name)) sent++;
+      const twins = await Patient.find({ phone: { $in: phoneVariants(p.phone) } }).select('createdAt subscription medicines');
+      if (await sendAdTemplate(p.phone, p.name, adAccessLine(twins.length ? twins : [p]))) sent++;
       await new Promise(r => setTimeout(r, 300)); // stay well under MSG91 rate limits
     }
     console.log(`📣 10-day product message: ${sent} sent of ${due.length} due`);

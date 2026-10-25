@@ -34,13 +34,13 @@
     try {
       const res = await fetch(API_URL + '/api/orders', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...O, customerName: name, phone: '+91' + phone10, address, quantity })
+        body: JSON.stringify({ ...O, customerName: name, phone: '+91' + phone10, address, quantity, promoCode: ($('orderPromo')?.value || '').trim() })
       });
       const text = await res.text(); let data; try { data = JSON.parse(text); } catch { data = { message: text }; }
       if (!res.ok) throw new Error(data.message || 'Could not place the order — please try again.');
       me.name = name; me.phone = phone10; store.set('biomexa_me', me);
       msg.className = 'form-msg ok';
-      msg.innerHTML = `✅ <strong>Request received!</strong> Our team will call you on +91 ${phone10} to confirm your ${quantity} strip${quantity > 1 ? 's' : ''} of ${O.productName}.`;
+      msg.innerHTML = `✅ <strong>Request received!</strong>${data.discountPct ? ` ${data.discountPct}% discount applied.` : ''} Our team will call you on +91 ${phone10} to confirm your ${quantity} strip${quantity > 1 ? 's' : ''} of ${O.productName}.`;
       $('orderAddress').value = ''; $('orderQuantity').value = 1;
     } catch (err) {
       fail(/fetch|network/i.test(err.message) ? 'Could not connect — please check your internet and try again.' : err.message);

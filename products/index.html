@@ -291,6 +291,8 @@
                 <textarea id="orderAddress" rows="2" required></textarea>
                 <label>Quantity</label>
                 <input type="number" id="orderQuantity" min="1" value="1" required>
+                <label>Discount code (optional)</label>
+                <input type="text" id="orderPromo" placeholder="e.g. BIOMEXA15" style="text-transform:uppercase">
                 <label>Notes (optional)</label>
                 <textarea id="orderNotes" rows="2" placeholder="e.g. preferred delivery time"></textarea>
                 <button type="submit" class="modal-submit" id="orderSubmitBtn">Submit Order</button>
@@ -337,7 +339,8 @@
                 phone: document.getElementById('orderPhone').value.trim(),
                 address: document.getElementById('orderAddress').value.trim(),
                 quantity: document.getElementById('orderQuantity').value,
-                notes: document.getElementById('orderNotes').value.trim()
+                notes: document.getElementById('orderNotes').value.trim(),
+                promoCode: document.getElementById('orderPromo').value.trim()
             };
 
             try {
