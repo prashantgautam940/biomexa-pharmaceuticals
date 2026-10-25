@@ -2270,8 +2270,18 @@ app.post('/api/quick-vitals', signupLimiter, async (req, res) => {
 // Medicine discount codes. Orders are confirmed by phone (no online payment), so the code is saved
 // on the order and shown to the team, who apply the discount on the call.
 const PROMO_CODES = {
-  BIOMEXA15: { pct: 15, products: /telmexa|diabmexa/i, label: '15% off Telmexa AM and Diabmexa M 500' }
+  // 10-day offer: 25 Oct – 3 Nov 2026 (inclusive, Indian time).
+  BIOMEXA15: { pct: 15, products: /telmexa|diabmexa/i, label: '15% off Telmexa AM and Diabmexa M 500', validUntil: new Date('2026-11-03T23:59:59+05:30') }
 };
+const promoActive = p => p && (!p.validUntil || new Date() <= p.validUntil);
+const promoEndLabel = p => p.validUntil.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'Asia/Kolkata' });
+// {{offer_line}} in the product message: the running offer, or a plain order line once it has ended.
+function adOfferLine() {
+  const live = Object.entries(PROMO_CODES).find(([, p]) => promoActive(p));
+  if (!live) return 'Order Telmexa AM and Diabmexa M 500 for home delivery: biomexapharmaceuticals.com/products/';
+  const [code, p] = live;
+  return `🎁 Offer till ${p.validUntil ? promoEndLabel(p) : 'stock lasts'}: ${p.label} with code ${code}. Order: biomexapharmaceuticals.com/products/`;
+}
 app.post('/api/orders', orderLimiter, async (req, res) => {
   try {
     const { productName, productSlug, customerName, phone, address, quantity, notes } = req.body;
@@ -2281,6 +2291,7 @@ app.post('/api/orders', orderLimiter, async (req, res) => {
     const code = String(req.body.promoCode || '').trim().toUpperCase();
     const promo = code ? PROMO_CODES[code] : null;
     if (code && !promo) return res.status(400).json({ message: `The discount code "${code}" isn't valid. Please check it or leave it empty.` });
+    if (promo && !promoActive(promo)) return res.status(400).json({ message: `The ${code} offer ended on ${promoEndLabel(promo)}. Please leave the code empty to place your order.` });
     if (promo && !promo.products.test(`${productName} ${productSlug || ''}`)) {
       return res.status(400).json({ message: `${code} works on ${promo.label.replace(/^\d+% off /, '')} only.` });
     }
@@ -3673,7 +3684,10 @@ async function sendAdTemplate(phone, patientName, accessLine) {
               to: [phone.replace(/\D/g, '')],
               components: {
                 body_1: { type: 'text', value: sanitizeTemplateParam(String(patientName || 'there').split(' ')[0], 40), parameter_name: 'patient_name' },
-                ...(AD_TEMPLATE_HAS_ACCESS_LINE ? { body_2: { type: 'text', value: sanitizeTemplateParam(accessLine || 'welcome to Biomexa Care.', 250), parameter_name: 'access_line' } } : {})
+                ...(AD_TEMPLATE_HAS_ACCESS_LINE ? {
+                  body_2: { type: 'text', value: sanitizeTemplateParam(accessLine || 'welcome to Biomexa Care.', 250), parameter_name: 'access_line' },
+                  body_3: { type: 'text', value: sanitizeTemplateParam(adOfferLine(), 250), parameter_name: 'offer_line' }
+                } : {})
               }
             }]
           }
