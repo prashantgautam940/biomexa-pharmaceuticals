@@ -156,6 +156,7 @@
 </footer>
 <div class="toast" id="toast" role="status"></div>
 
+<script src="js/voice.js"></script>
 <script>
 (function () {
   const API_URL = (location.hostname === 'localhost' || location.hostname === '127.0.0.1') ? 'http://localhost:3000' : 'https://biomexa-api-f9f6.onrender.com';
@@ -200,7 +201,8 @@
     const next = () => {
       if (token !== speakToken) return;
       if (i >= parts.length) { const f = onStop; onStop = null; f && f(); return; }
-      const u = new SpeechSynthesisUtterance(parts[i++]); u.lang = /[ऀ-ॿ]/.test(text) ? 'hi-IN' : 'en-IN'; u.rate = 0.9;
+      const said = parts[i++]; const u = new SpeechSynthesisUtterance(said);
+      if (window.BiomexaVoice) window.BiomexaVoice.apply(u, said, 0.95); else { u.lang = /[ऀ-ॿ]/.test(said) ? 'hi-IN' : 'en-IN'; u.rate = 0.9; }
       u.onstart = () => onState(true); u.onend = u.onerror = () => { if (token === speakToken) setTimeout(next, 120); };
       synth.speak(u);
     };

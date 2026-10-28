@@ -70,24 +70,11 @@
 
   // ---------- voice ----------
   const synth = window.speechSynthesis;
-  const RATES = { slow: 0.75, normal: 0.9, fast: 1.1 };
+  const RATES = { slow: 0.8, normal: 0.95, fast: 1.12 };
   let rateKey = store.get('biomexa_voice_rate', 'normal');
-  let cachedVoice = null, speakToken = 0, onStop = null;
-  function pickVoice() {
-    if (cachedVoice || !synth) return cachedVoice;
-    const voices = synth.getVoices(); if (!voices.length) return null;
-    const preferred = ['Microsoft Kajal Online', 'Microsoft Kajal', 'Google हिन्दी', 'Microsoft Heera', 'Veena', 'en-IN-NeerjaNeural', 'Lekha'];
-    for (const n of preferred) { const v = voices.find(x => x.name.includes(n)); if (v) return (cachedVoice = v); }
-    let best = null, bestScore = -Infinity;
-    for (const v of voices) {
-      let s = 0;
-      if (v.lang === 'en-IN' || v.lang === 'hi-IN') s += 10; else if (v.lang && v.lang.startsWith('en')) s += 2;
-      if (/neural|natural|online|enhanced|premium/i.test(v.name)) s += 6;
-      if (/female/i.test(v.name)) s += 3; if (/\bmale/i.test(v.name)) s -= 8;
-      if (s > bestScore) { bestScore = s; best = v; }
-    }
-    return (cachedVoice = bestScore > 0 ? best : null);
-  }
+  let speakToken = 0, onStop = null;
+  // Voice choice lives in js/voice.js (best Apple Premium/Enhanced, Siri, or neural voice on the device).
+  function pickVoice(text) { return window.BiomexaVoice ? window.BiomexaVoice.pick(window.BiomexaVoice.langFor(text)) : null; }
   function sentences(text) { return text.match(/[^.!?]+[.!?]+(\s|$)/g)?.map(s => s.trim()).filter(Boolean) || [text]; }
 
   // Speaks text sentence by sentence. opts.onSentence(i, total) lets callers highlight progress;
@@ -100,9 +87,10 @@
     const next = () => {
       if (token !== speakToken) return;
       if (i >= parts.length) { const f = onStop; onStop = null; f && f(); return; }
-      const u = new SpeechSynthesisUtterance(parts[i].replace(/\*/g, ''));
-      u.lang = 'en-IN'; u.rate = RATES[rateKey] || 0.9; u.pitch = 1.03;
-      const v = pickVoice(); if (v) u.voice = v;
+      const said = parts[i].replace(/\*/g, '');
+      const u = new SpeechSynthesisUtterance(said);
+      if (window.BiomexaVoice) window.BiomexaVoice.apply(u, said, RATES[rateKey] || 0.95);
+      else { u.lang = 'en-IN'; u.rate = RATES[rateKey] || 0.95; }
       const idx = i++;
       u.onstart = () => { opts.onState && opts.onState(true); opts.onSentence && opts.onSentence(idx, parts.length); };
       u.onend = () => { if (token === speakToken) setTimeout(next, 150); };
