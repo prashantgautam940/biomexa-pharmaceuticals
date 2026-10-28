@@ -155,9 +155,9 @@
   const $ = (id) => document.getElementById(id);
   const PRODUCTS = {
     'telmexa-am': { name: 'Telmexa AM', dosage: 'Telmisartan 40mg / Amlodipine 5mg', pack: 'images/products/telmexa-am-box.jpg', what: 'blood pressure',
-      slots: [{ label: 'Morning dose', sub: '1 tablet with breakfast', time: '07:30', on: true }], foodNote: 'Take with breakfast and a glass of water' },
+      times: ['08:00'], hint: 'Usually once a day. Set the time your doctor advised — morning or evening.', foodNote: 'Take at the same time every day, with a glass of water' },
     'diabmexa-m-500': { name: 'Diabmexa M 500', dosage: 'Metformin Hydrochloride 500mg', pack: 'images/products/diabmexa-m-box.jpg', what: 'diabetes',
-      slots: [{ label: 'Morning dose', sub: 'With breakfast', time: '08:00', on: true }, { label: 'Evening dose', sub: 'With dinner — if prescribed twice daily', time: '20:00', on: true }],
+      times: ['08:00', '20:00'], hint: 'Take with a meal. Once or twice a day as prescribed — remove a time with ✕ if you take it once.',
       foodNote: 'Take with food — never on an empty stomach' }
   };
   const store = { get(k, f) { try { const v = localStorage.getItem(k); return v === null ? f : JSON.parse(v); } catch { return f; } }, set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} } };
@@ -184,17 +184,14 @@
       $('sidePackImg').src = p.pack; $('sidePackImg').alt = p.name + ' pack';
       $('sideTitle').textContent = `Free reminders for ${p.name}`;
       $('sideLead').textContent = `Take ${p.name} on time, every time — and stay on track with your ${p.what} care.`;
-      $('slotArea').innerHTML = p.slots.map((s, i) => `
-        <label class="check"><input type="checkbox" data-slot="${i}" ${s.on ? 'checked' : ''}>
-          <div style="flex:1"><div class="t">${s.label}</div><div class="s">${s.sub}</div>
-          <input type="time" class="time-in" data-time="${i}" value="${s.time}" aria-label="${s.label} time"></div></label>`).join('');
     } else {
       $('sideTitle').textContent = 'Never miss a dose again';
       $('sideLead').textContent = 'Sign up once and Biomexa reminds you on WhatsApp at every dose time.';
-      $('slotArea').innerHTML = `<div id="timeRows"></div><button type="button" class="add-time" id="addTime">+ Add another time</button>`;
-      addTimeRow('08:00');
-      $('addTime').onclick = () => addTimeRow('');
     }
+    // Same time list for every medicine: pre-filled suggestion, any time of day, add or remove times.
+    $('slotArea').innerHTML = `${p ? `<p class="s" style="margin:0 0 10px;color:var(--muted);font-size:.88rem">${esc(p.hint)}</p>` : ''}<div id="timeRows"></div><button type="button" class="add-time" id="addTime">+ Add another time</button>`;
+    (p ? p.times : ['08:00']).forEach(addTimeRow);
+    $('addTime').onclick = () => addTimeRow('');
   }
   function addTimeRow(v) {
     const rows = $('timeRows'); if (rows.children.length >= 4) return;
@@ -210,7 +207,7 @@
   function readMedicine() {
     const p = PRODUCTS[medKey];
     if (p) {
-      const times = p.slots.map((s, i) => ({ on: document.querySelector(`[data-slot="${i}"]`).checked, t: document.querySelector(`[data-time="${i}"]`).value })).filter(x => x.on).map(x => x.t);
+      const times = [...new Set([...document.querySelectorAll('#timeRows input')].map(i => i.value).filter(Boolean))];
       return { name: p.name, dosage: p.dosage, foodNote: p.foodNote, times };
     }
     return { name: $('otherName').value.trim(), dosage: $('otherDose').value.trim(), foodNote: '', times: [...document.querySelectorAll('#timeRows input')].map(i => i.value).filter(Boolean) };
@@ -245,7 +242,7 @@
     const med = readMedicine();
     const days = $('days').value;
     if (!med.name) return fail('Please enter the medicine name.');
-    if (!med.times.length) return fail('Choose at least one reminder time.');
+    if (!med.times.length) return fail('Add at least one reminder time.');
     if (new Set(med.times).size !== med.times.length) return fail('Each reminder time must be different.');
     let name, phone10, password;
     if (!token) {
