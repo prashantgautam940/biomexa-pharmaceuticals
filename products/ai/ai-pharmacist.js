@@ -70,41 +70,17 @@
 
   // ---------- voice ----------
   const synth = window.speechSynthesis;
-  const RATES = { slow: 0.8, normal: 0.95, fast: 1.12 };
   let rateKey = store.get('biomexa_voice_rate', 'normal');
-  let speakToken = 0, onStop = null;
-  // Voice choice lives in js/voice.js (best Apple Premium/Enhanced, Siri, or neural voice on the device).
-  function pickVoice(text) { return window.BiomexaVoice ? window.BiomexaVoice.pick(window.BiomexaVoice.langFor(text)) : null; }
   function sentences(text) { return text.match(/[^.!?]+[.!?]+(\s|$)/g)?.map(s => s.trim()).filter(Boolean) || [text]; }
 
-  // Speaks text sentence by sentence. opts.onSentence(i, total) lets callers highlight progress;
-  // opts.onState(playing) lets callers swap their Listen/Stop button.
+  // Speaks text with the natural AI voice (falls back to the device voice) — see js/voice.js.
+  // opts.onSentence(i, total) lets callers highlight progress; opts.onState(playing) swaps Listen/Stop.
+  const SPEED = { slow: 0.85, normal: 1, fast: 1.15 };
   function speak(text, opts = {}) {
-    stopSpeaking();
-    if (!synth) { toast('Voice is not supported in this browser — you can read the text instead.'); return; }
-    const token = ++speakToken, parts = sentences(text); let i = 0;
-    onStop = () => { opts.onState && opts.onState(false); opts.onSentence && opts.onSentence(-1, parts.length); };
-    const next = () => {
-      if (token !== speakToken) return;
-      if (i >= parts.length) { const f = onStop; onStop = null; f && f(); return; }
-      const said = parts[i].replace(/\*/g, '');
-      const u = new SpeechSynthesisUtterance(said);
-      if (window.BiomexaVoice) window.BiomexaVoice.apply(u, said, RATES[rateKey] || 0.95);
-      else { u.lang = 'en-IN'; u.rate = RATES[rateKey] || 0.95; }
-      const idx = i++;
-      u.onstart = () => { opts.onState && opts.onState(true); opts.onSentence && opts.onSentence(idx, parts.length); };
-      u.onend = () => { if (token === speakToken) setTimeout(next, 150); };
-      u.onerror = () => { if (token === speakToken) setTimeout(next, 50); };
-      synth.speak(u);
-    };
-    if (!synth.getVoices().length) { synth.onvoiceschanged = () => { synth.onvoiceschanged = null; next(); }; setTimeout(next, 400); }
-    else next();
+    if (!window.BiomexaVoice) { toast('Voice is not supported in this browser — you can read the text instead.'); return; }
+    window.BiomexaVoice.say(text, { apiUrl: API_URL, speed: SPEED[rateKey] || 1, parts: sentences(text).map(s => s.replace(/\*/g, '')), onState: opts.onState, onSentence: opts.onSentence });
   }
-  function stopSpeaking() {
-    speakToken++;
-    if (synth && (synth.speaking || synth.pending)) synth.cancel();
-    const f = onStop; onStop = null; f && f();
-  }
+  function stopSpeaking() { if (window.BiomexaVoice) window.BiomexaVoice.stop(); }
   window.addEventListener('pagehide', stopSpeaking);
 
   // ---------- AI Medicine Guide ----------

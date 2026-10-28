@@ -193,22 +193,12 @@
   $('sizeBtn').addEventListener('click', () => { const b = !document.documentElement.classList.contains('big-text'); store.set('biomexa_big_text', b); applySize(b); });
 
   // Voice out
-  const synth = window.speechSynthesis; let speakToken = 0, onStop = null;
+  // Natural AI voice with device-voice fallback — see js/voice.js.
   function speak(text, onState) {
-    stop(); if (!synth) { toast('Voice is not supported in this browser'); return; }
-    const token = ++speakToken; const parts = (text.replace(/\*/g, '').match(/[^.!?\n]+[.!?]*/g) || [text]).map(s => s.trim()).filter(Boolean); let i = 0;
-    onStop = () => onState(false);
-    const next = () => {
-      if (token !== speakToken) return;
-      if (i >= parts.length) { const f = onStop; onStop = null; f && f(); return; }
-      const said = parts[i++]; const u = new SpeechSynthesisUtterance(said);
-      if (window.BiomexaVoice) window.BiomexaVoice.apply(u, said, 0.95); else { u.lang = /[ऀ-ॿ]/.test(said) ? 'hi-IN' : 'en-IN'; u.rate = 0.9; }
-      u.onstart = () => onState(true); u.onend = u.onerror = () => { if (token === speakToken) setTimeout(next, 120); };
-      synth.speak(u);
-    };
-    next();
+    if (!window.BiomexaVoice) { toast('Voice is not supported in this browser'); return; }
+    window.BiomexaVoice.say(text, { apiUrl: API_URL, onState });
   }
-  function stop() { speakToken++; if (synth) synth.cancel(); const f = onStop; onStop = null; f && f(); }
+  function stop() { if (window.BiomexaVoice) window.BiomexaVoice.stop(); }
   window.addEventListener('pagehide', stop);
 
   // Chat

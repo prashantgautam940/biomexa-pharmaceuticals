@@ -2439,6 +2439,85 @@ async function answerProductQuestionWithClaude(productName, question, history) {
   }
 }
 
+// ========== NATURAL AI VOICE (Gemini text-to-speech) ==========
+// The AI Pharmacist / AI Assistant read replies aloud. Phone voices sound robotic, so this turns
+// text into natural speech with Gemini's TTS model in a warm, calm pharmacist tone. The page falls
+// back to the device voice whenever this fails, so nothing breaks without it.
+// The TTS model is found from the key's own model list (any model with "tts" in its name), since
+// Google renames these often; set GEMINI_TTS_MODEL to force one. GEMINI_TTS_VOICE picks the
+// voice (default Sulafat — warm); GEMINI_TTS_STYLE sets the tone.
+const GEMINI_TTS_VOICE = process.env.GEMINI_TTS_VOICE || 'Sulafat';
+const GEMINI_TTS_STYLE = process.env.GEMINI_TTS_STYLE || 'Read this aloud in a warm, calm, caring and reassuring tone, like a friendly Indian pharmacist talking to a patient. Speak smoothly at a relaxed pace with natural pauses:';
+let ttsModelCache = { name: process.env.GEMINI_TTS_MODEL || null, checkedAt: 0 };
+async function geminiTtsModel() {
+  if (process.env.GEMINI_TTS_MODEL) return process.env.GEMINI_TTS_MODEL;
+  if (ttsModelCache.name && Date.now() - ttsModelCache.checkedAt < 6 * 3600e3) return ttsModelCache.name;
+  try {
+    const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=200', { headers: { 'x-goog-api-key': GEMINI_API_KEY }, signal: AbortSignal.timeout(10000) });
+    const d = await r.json();
+    const names = (d.models || []).filter(m => /tts/i.test(m.name) && (m.supportedGenerationMethods || []).includes('generateContent')).map(m => m.name.replace(/^models\//, ''));
+    // Newest version first; Flash (fast) before Pro; stable before preview.
+    const ver = n => parseFloat((n.match(/gemini-(\d+(?:\.\d+)?)/) || [])[1] || 0);
+    names.sort((a, b) => ver(b) - ver(a) || (/flash/.test(b) - /flash/.test(a)) || (/preview/.test(a) - /preview/.test(b)));
+    ttsModelCache = { name: names[0] || null, checkedAt: Date.now() };
+    if (names[0]) console.log('🔊 Gemini TTS model:', names[0]); else console.log('⚠️ No Gemini TTS model available for this key — pages use the device voice');
+  } catch (err) { console.log('⚠️ Could not list Gemini models for TTS:', err.message); }
+  return ttsModelCache.name;
+}
+function pcmToWav(pcm, rate) {
+  const h = Buffer.alloc(44);
+  h.write('RIFF', 0); h.writeUInt32LE(36 + pcm.length, 4); h.write('WAVE', 8); h.write('fmt ', 12);
+  h.writeUInt32LE(16, 16); h.writeUInt16LE(1, 20); h.writeUInt16LE(1, 22); h.writeUInt32LE(rate, 24);
+  h.writeUInt32LE(rate * 2, 28); h.writeUInt16LE(2, 32); h.writeUInt16LE(16, 34); h.write('data', 36); h.writeUInt32LE(pcm.length, 40);
+  return Buffer.concat([h, pcm]);
+}
+const ttsCache = new Map(); // text → wav, small in-memory cache for repeated guide/greeting lines
+async function geminiSpeak(text) {
+  const model = await geminiTtsModel(); if (!model) return null;
+  const body = voiceName => ({
+    contents: [{ parts: [{ text: `${GEMINI_TTS_STYLE}\n\n${text}` }] }],
+    generationConfig: { responseModalities: ['AUDIO'], ...(voiceName ? { speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName } } } } : {}) }
+  });
+  for (const voice of [GEMINI_TTS_VOICE, null]) {   // retry with the model's default voice if ours is unknown
+    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_API_KEY },
+      body: JSON.stringify(body(voice)), signal: AbortSignal.timeout(30000)
+    });
+    const d = await r.json().catch(() => ({}));
+    const part = d.candidates?.[0]?.content?.parts?.find(p => p.inlineData && /audio/.test(p.inlineData.mimeType || ''));
+    if (r.ok && part) {
+      const mime = part.inlineData.mimeType, raw = Buffer.from(part.inlineData.data, 'base64');
+      if (/wav|mpeg|mp3|ogg/.test(mime)) return { audio: raw, type: mime };
+      const rate = parseInt((mime.match(/rate=(\d+)/) || [])[1], 10) || 24000;
+      return { audio: pcmToWav(raw, rate), type: 'audio/wav' };
+    }
+    console.log(`⚠️ Gemini TTS failed (${model}${voice ? ', ' + voice : ''}):`, (d.error?.message || `HTTP ${r.status}`).slice(0, 200));
+    if (r.status === 404) ttsModelCache = { name: null, checkedAt: 0 };   // model gone — rediscover next time
+    if (r.status !== 400) break;
+  }
+  return null;
+}
+const ttsLimiter = rateLimit({ windowMs: 10 * 60 * 1000, max: 120, message: 'Too many voice requests — please wait a few minutes.' });
+app.post('/api/tts', ttsLimiter, async (req, res) => {
+  try {
+    const text = String(req.body.text || '').replace(/[*#_`]/g, '').replace(/\s+/g, ' ').trim().slice(0, 1200);
+    if (!text) return res.status(400).json({ message: 'Nothing to read.' });
+    if (!GEMINI_API_KEY) return res.status(503).json({ message: 'Natural voice is not configured.' });
+    const key = crypto.createHash('sha1').update(text).digest('hex');
+    let out = ttsCache.get(key);
+    if (!out) {
+      out = await geminiSpeak(text);
+      if (!out) return res.status(503).json({ message: 'Natural voice is unavailable right now.' });
+      ttsCache.set(key, out); if (ttsCache.size > 200) ttsCache.delete(ttsCache.keys().next().value);
+    }
+    res.set('Content-Type', out.type); res.set('Cache-Control', 'public, max-age=86400');
+    res.send(out.audio);
+  } catch (err) {
+    console.log('⚠️ TTS error:', err.message);
+    res.status(503).json({ message: 'Natural voice is unavailable right now.' });
+  }
+});
+
 app.post('/api/product-chat', productChatLimiter, async (req, res) => {
   try {
     const { productName, question, history } = req.body;
