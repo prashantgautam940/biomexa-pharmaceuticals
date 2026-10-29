@@ -8,6 +8,8 @@ const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
+const { cleanVitals, toFahrenheit, normaliseEntry, checkVitalsDanger } = require('./vitals/calibration');
+const { buildVitalsProgress } = require('./vitals/progress');
 const ivfCare = require('./ivf/routes'); // Biomexa IVF Care — separate module, mounted near the end of this file
 
 const app = express();
@@ -1295,20 +1297,7 @@ async function sendLoginMessage(phone, patientName, statusLine, fallbackMsg) {
 // "/" shape (safe, unambiguous), temperature by a decimal point (people essentially never write
 // a decimal for pulse or sugar, so this is a real signal, not a guess), and whatever whole
 // numbers are left are taken in order — first remaining is pulse, next is sugar.
-// Body temperature in °F (what the rest of the platform stores), or null if the number can't be
-// a body temperature. Unit 'f' / 'c' when the patient wrote one; otherwise 34–42 is read as °C.
-function toFahrenheit(n, unit) {
-  if (!Number.isFinite(n)) return null;
-  const isF = v => v >= 93 && v <= 108;
-  const isC = v => v >= 34 && v <= 42;
-  const c2f = v => Math.round((v * 9 / 5 + 32) * 10) / 10;
-  if (unit === 'f') return isF(n) ? n : null;
-  if (unit === 'c') return isC(n) ? c2f(n) : null;
-  if (isF(n)) return n;
-  if (isC(n)) return c2f(n);
-  return null;
-}
-
+// toFahrenheit lives in vitals/calibration.js (shared with the vitals form and the charts).
 function parseVitalsFromText(text) {
   const result = {};
   let consumed = text;
@@ -1892,46 +1881,7 @@ const ConversationState = mongoose.model('ConversationState', conversationStateS
 const RiskAlert = mongoose.model('RiskAlert', riskAlertSchema);
 const Admin = mongoose.model('Admin', adminSchema);
 
-// Clinical thresholds for auto-flagging a logged vital reading as dangerous. These are
-// deliberately conservative (err toward flagging) since a false alarm costs a doctor a glance,
-// but a missed one costs a lot more. Returns null if nothing is concerning, or a reason string.
-function checkVitalsDanger(vitals) {
-  const reasons = [];
-  let severity = 'high';
-
-  if (vitals.bpSystolic >= 180 || vitals.bpDiastolic >= 120) {
-    reasons.push(`Hypertensive crisis: BP ${vitals.bpSystolic}/${vitals.bpDiastolic}`);
-    severity = 'critical';
-  } else if (vitals.bpSystolic && vitals.bpSystolic < 90) {
-    reasons.push(`Low blood pressure: BP ${vitals.bpSystolic}/${vitals.bpDiastolic || '?'}`);
-  }
-
-  if (vitals.temperature >= 103) {
-    reasons.push(`High fever: ${vitals.temperature}°F`);
-    severity = 'critical';
-  } else if (vitals.temperature && vitals.temperature <= 95) {
-    reasons.push(`Low body temperature: ${vitals.temperature}°F`);
-  }
-
-  if (vitals.heartRate >= 120) {
-    reasons.push(`High heart rate: ${vitals.heartRate} bpm`);
-  } else if (vitals.heartRate && vitals.heartRate <= 45) {
-    reasons.push(`Low heart rate: ${vitals.heartRate} bpm`);
-    severity = 'critical';
-  }
-
-  if (vitals.glucose >= 250) {
-    reasons.push(`Severe hyperglycemia: sugar ${vitals.glucose} mg/dL`);
-    severity = 'critical';
-  } else if (vitals.glucose && vitals.glucose <= 70) {
-    reasons.push(`Hypoglycemia: sugar ${vitals.glucose} mg/dL`);
-    severity = 'critical';
-  } else if (vitals.glucose >= 180) {
-    reasons.push(`High blood sugar: sugar ${vitals.glucose} mg/dL`);
-  }
-
-  return reasons.length ? { reason: reasons.join('; '), severity } : null;
-}
+// checkVitalsDanger lives in vitals/calibration.js — the same rules flag points on the charts.
 
 // Fires a real risk alert: saves it, notifies an available doctor on WhatsApp, and warns the
 // patient too. Called from the MSG91 webhook right after vitals are logged.
@@ -2230,10 +2180,13 @@ app.post('/api/quick-vitals', signupLimiter, async (req, res) => {
     if (!phone || (!glucose && !bpSystolic && !temperature && !heartRate)) {
       return res.status(400).json({ message: 'Phone number and at least one vital reading are required.' });
     }
-    const check = cleanVitals({ bpSystolic, bpDiastolic, temperature, heartRate, glucose });
+    // Calibrated once, then the CLEANED numbers are what get saved (°C converted to °F, BP only
+    // as a full pair, rounded) — the raw form strings used to be parsed again and saved as typed.
+    const check = cleanVitals(normaliseEntry({ bpSystolic, bpDiastolic, temperature, heartRate, glucose }));
     if (check.rejected.length) {
       return res.status(400).json({ message: `This reading looks incorrect: ${check.rejected.join(', ')}. Please check the numbers and try again.` });
     }
+    if (!Object.keys(check.clean).length) return res.status(400).json({ message: 'Enter at least one reading.' });
 
     let patient = await findAccountByPhone('patient', phone);
     if (!patient) {
@@ -2243,13 +2196,7 @@ app.post('/api/quick-vitals', signupLimiter, async (req, res) => {
     }
     phone = patient.phone;
 
-    const vitals = {};
-    if (glucose) vitals.glucose = parseInt(glucose, 10);
-    if (bpSystolic) vitals.bpSystolic = parseInt(bpSystolic, 10);
-    if (bpDiastolic) vitals.bpDiastolic = parseInt(bpDiastolic, 10);
-    if (temperature) vitals.temperature = parseFloat(temperature);
-    if (heartRate) vitals.heartRate = parseInt(heartRate, 10);
-
+    const vitals = check.clean;
     await VitalsLog.create({ patientPhone: phone, ...vitals, source: 'manual' });
 
     const baselineUpdate = {};
@@ -2819,6 +2766,31 @@ app.get('/api/patient/vitals-history', auth, async (req, res) => {
   }
 });
 
+// Charts + end-of-treatment analysis for one patient — one chart per vital that has been
+// recorded, day-by-day medicine adherence, and a final analysis report (vitals/progress.js).
+// The patient portal and the doctor dashboard both call this, so they always show the same
+// numbers. Phone variants are matched so readings saved under "+91 98…" and "+9198…" both count.
+async function loadVitalsProgress(patient) {
+  const phones = phoneVariants(patient.phone);
+  const [doses, vitalsLogs] = await Promise.all([
+    Dose.find({ patientPhone: { $in: phones } }).sort({ scheduledDate: 1 }).lean(),
+    VitalsLog.find({ patientPhone: { $in: phones } }).sort({ recordedAt: 1 }).lean()
+  ]);
+  const pr = buildVitalsProgress({ patient, doses, vitalsLogs, now: new Date() });
+  return { patient: { name: patient.name, phone: patient.phone }, ...pr };
+}
+
+app.get('/api/patient/vitals-progress', auth, async (req, res) => {
+  try {
+    const patient = await Patient.findOne({ phone: req.user.phone }).lean();
+    if (!patient) return res.status(404).json({ message: 'Patient not found' });
+    res.json(await loadVitalsProgress(patient));
+  } catch (err) {
+    console.log(`❌ Vitals progress failed for ${req.user.phone}:`, err.message);
+    res.status(500).json({ message: 'Could not load your vitals charts right now — please try again.' });
+  }
+});
+
 const ALLOWED_DOCUMENT_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
 const MAX_DOCUMENT_BASE64_LENGTH = 5 * 1024 * 1024 * 1.4; // ~5MB per file, base64 adds ~33% overhead
 const MAX_FILES_PER_UPLOAD = 3;
@@ -2967,34 +2939,8 @@ app.get('/api/patient/missed-doses', auth, async (req, res) => {
 // apart.
 
 // ========== VITALS: PLAUSIBILITY + TREATMENT-ANALYSIS INPUT ==========
-// Readings outside these ranges are almost certainly typos (BP 280/130, temperature 110°F) and
-// used to flow straight into averages, trends and "time in range". Rejected at entry, and
-// ignored in analysis for anything already stored. Very high but real values (sugar 580) pass —
-// they're exactly what the report must flag, not hide.
-const VITAL_LIMITS = {
-  bpSystolic: { min: 60, max: 260, label: 'Top BP number', unit: 'mmHg' },
-  bpDiastolic: { min: 30, max: 160, label: 'Bottom BP number', unit: 'mmHg' },
-  temperature: { min: 90, max: 108, label: 'Temperature', unit: '°F' },
-  heartRate: { min: 25, max: 250, label: 'Pulse', unit: 'bpm' },
-  glucose: { min: 20, max: 700, label: 'Blood sugar', unit: 'mg/dL' }
-};
-function cleanVitals(v) {
-  const clean = {}, rejected = [];
-  for (const [k, lim] of Object.entries(VITAL_LIMITS)) {
-    const n = v?.[k] == null || v[k] === '' ? null : Number(v[k]);
-    if (n == null || Number.isNaN(n)) continue;
-    if (n < lim.min || n > lim.max) rejected.push(`${lim.label} ${n} ${lim.unit}`);
-    else clean[k] = n;
-  }
-  // A BP reading is a pair — if either number is impossible, neither is trusted.
-  if ((clean.bpSystolic == null) !== (clean.bpDiastolic == null) && (v?.bpSystolic != null && v?.bpDiastolic != null)) {
-    delete clean.bpSystolic; delete clean.bpDiastolic;
-  }
-  if (clean.bpSystolic != null && clean.bpDiastolic != null && clean.bpDiastolic >= clean.bpSystolic) {
-    rejected.push(`BP ${clean.bpSystolic}/${clean.bpDiastolic}`); delete clean.bpSystolic; delete clean.bpDiastolic;
-  }
-  return { clean, rejected };
-}
+// VITAL_LIMITS / cleanVitals live in vitals/calibration.js — one set of plausibility rules for
+// every entry path and every report.
 
 // One builder for both the doctor view and the patient's report, so they can never disagree.
 //  • one entry per scheduled dose (adherence = taken ÷ doses scheduled)
@@ -3172,23 +3118,20 @@ app.post('/api/patient/treatment-report/send-whatsapp', auth, requirePremium('re
 app.post('/api/patient/vitals', auth, async (req, res) => {
   try {
     const { bpSystolic, bpDiastolic, temperature, heartRate, glucose } = req.body;
-    if (!bpSystolic && !temperature && !heartRate && !glucose) {
+    if (!bpSystolic && !bpDiastolic && !temperature && !heartRate && !glucose) {
       return res.status(400).json({ message: 'Enter at least one reading.' });
     }
-    const check = cleanVitals({ bpSystolic, bpDiastolic, temperature, heartRate, glucose });
+    const check = cleanVitals(normaliseEntry({ bpSystolic, bpDiastolic, temperature, heartRate, glucose }));
     if (check.rejected.length) {
       return res.status(400).json({ message: `This reading looks incorrect: ${check.rejected.join(', ')}. Please check the numbers and try again.` });
     }
+    if (!Object.keys(check.clean).length) return res.status(400).json({ message: 'Enter at least one reading.' });
 
     const patient = await Patient.findOne({ phone: req.user.phone });
     if (!patient) return res.status(404).json({ message: 'Patient not found' });
 
-    const vitals = {};
-    if (bpSystolic) vitals.bpSystolic = parseInt(bpSystolic, 10);
-    if (bpDiastolic) vitals.bpDiastolic = parseInt(bpDiastolic, 10);
-    if (temperature) vitals.temperature = parseFloat(temperature);
-    if (heartRate) vitals.heartRate = parseInt(heartRate, 10);
-    if (glucose) vitals.glucose = parseInt(glucose, 10);
+    // The calibrated values are what get saved — never the raw form strings.
+    const vitals = check.clean;
 
     await VitalsLog.create({ patientPhone: req.user.phone, ...vitals, source: 'manual' });
 
@@ -4614,6 +4557,17 @@ app.get('/api/doctor/patient/:phone/vitals', staffAuth, async (req, res) => {
       });
     }
     res.json({ patient: { name: patient.name, phone: patient.phone, baselineVitals: patient.baselineVitals }, days });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Full-course charts + end-of-treatment analysis for one patient (same builder as the portal).
+app.get('/api/doctor/patient/:phone/vitals-progress', staffAuth, async (req, res) => {
+  try {
+    const patient = await findAccountByPhone('patient', req.params.phone);
+    if (!patient) return res.status(404).json({ message: 'Patient not found' });
+    res.json(await loadVitalsProgress(patient.toObject ? patient.toObject() : patient));
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

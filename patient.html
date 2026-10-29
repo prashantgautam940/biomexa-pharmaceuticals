@@ -233,7 +233,8 @@ input[type="time"] { color-scheme: dark; }
 .container > .card { margin-bottom: 0 !important; }
 @media (min-width: 1000px) {
   .container { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; }
-  .pc-hero, .pc-upload, .pc-report, .pc-profile { grid-column: 1 / -1; }
+  .pc-hero, .pc-upload, .pc-report, .pc-profile, .pc-charts { grid-column: 1 / -1; }
+  .pc-charts { order: 5 }
   .pc-hero { order: 0 } .pc-stats { order: 1 } .pc-doses { order: 2 } .pc-doctor { order: 3 } .pc-vitals { order: 4 }
   .pc-report { order: 5 } .pc-upload { order: 6 } .pc-addmed { order: 7 } .pc-wa { order: 8 } .pc-profile { order: 9 }
 }
@@ -273,6 +274,7 @@ html { scroll-padding-top: 80px; }
 .med-stop:hover { background: #fdecec; }
 </style>
 <link rel="stylesheet" href="css/biomexa-ui.css">
+<link rel="stylesheet" href="css/vitals-charts.css">
 <script src="js/biomexa-ui.js" defer></script>
 </head>
 <body>
@@ -300,6 +302,7 @@ html { scroll-padding-top: 80px; }
       <a id="planBanner" class="plan-banner" href="subscribe.html" style="display:none"></a>
       <nav class="pc-quick" aria-label="Quick actions">
         <a href="#doses"><span>💊</span>Today's doses</a>
+        <a href="#vitals-charts"><span>📈</span>Vitals charts</a>
         <a href="#treatment-report"><span>📊</span>Treatment report</a>
         <a href="#connect-doctor"><span>🩺</span>Talk to a doctor</a>
         <a href="#upload-report"><span>📄</span>Upload prescription</a>
@@ -379,6 +382,16 @@ html { scroll-padding-top: 80px; }
       <div id="uploadMsg" style="font-size:12.5px;margin-bottom:10px;"></div>
 
       <div id="reportsHistory"></div>
+    </div>
+
+    <!-- Vitals charts — one chart per recorded vital + end-of-treatment analysis (same chart
+         engine as the IVF portal; numbers from /api/patient/vitals-progress, shared with the doctor) -->
+    <div class="card pc-charts" id="vitals-charts">
+      <div class="card-header">
+        <span class="card-title">📈 My Vitals Charts</span>
+      </div>
+      <p style="color:#64748b;font-size:12.5px;margin:-4px 0 14px;">Every reading you log — here or on WhatsApp — plotted day by day across your treatment, with the target range shaded. Your doctor sees the same charts. Hover or tap a point for that day's readings.</p>
+      <div id="vitalsProgress"><div class="empty-state">Loading your charts...</div></div>
     </div>
 
     <!-- Treatment Report — real AI analysis of the whole course so far, same engine the doctor uses -->
@@ -568,6 +581,8 @@ html { scroll-padding-top: 80px; }
     </div>
   </div>
 
+  <script src="js/ivf-charts.js"></script>
+  <script src="js/vitals-charts.js"></script>
   <script>
     const API_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
       ? 'http://localhost:3000'
@@ -1136,6 +1151,7 @@ html { scroll-padding-top: 80px; }
         msg.textContent = data.riskFlagged ? '⚠️ Saved — this reading was flagged for review.' : 'Saved!';
         document.getElementById('vitalsForm').reset();
         loadVitalsHistory();
+        loadVitalsProgress(true);
       } catch (err) {
         msg.style.color = '#c0262d';
         msg.textContent = err.message;
@@ -1570,10 +1586,31 @@ html { scroll-padding-top: 80px; }
         });
     }
 
+    // Charts redraw only when something new was recorded, so an open table or tooltip isn't reset
+    // every 30 seconds.
+    let vitalsProgressSig = '';
+    function loadVitalsProgress(force) {
+      fetch(`${API_URL}/api/patient/vitals-progress`, { headers: { 'Authorization': `Bearer ${token}` } })
+        .then(res => res.json().then(data => ({ ok: res.ok, data })))
+        .then(({ ok, data }) => {
+          const el = document.getElementById('vitalsProgress');
+          if (!ok) throw new Error(data.message);
+          const sig = [data.summary.totalReadings, data.summary.lastReading, data.summary.taken, data.summary.missed, data.range.to, data.report.status].join('|');
+          if (!force && sig === vitalsProgressSig) return;
+          vitalsProgressSig = sig;
+          window.VitalsCharts.render(el, data, { audience: 'patient' });
+        })
+        .catch(err => {
+          if (vitalsProgressSig) return; // keep the last good charts on a temporary failure
+          document.getElementById('vitalsProgress').innerHTML = '<div class="empty-state">Could not load your charts right now.</div>';
+        });
+    }
+
     loadDoses();
     loadStats();
     loadVitalsHistory();
-    setInterval(() => { loadDoses(); loadStats(); loadVitalsHistory(); loadMissedDoses(); }, 30000);
+    loadVitalsProgress(true);
+    setInterval(() => { loadDoses(); loadStats(); loadVitalsHistory(); loadMissedDoses(); loadVitalsProgress(); }, 30000);
   </script>
 <div class="care-modal-bg" id="careModal" onclick="if(event.target===this)this.classList.remove('open')">
   <div class="care-modal" role="dialog" aria-modal="true" aria-labelledby="careModalTitle">

@@ -64,7 +64,12 @@
       const xOf = d => padL + (nDays === 1 ? iw / 2 : (daysBetween(from, d) / (nDays - 1)) * iw);
       let lo, hi;
       if (opts.yDomain) [lo, hi] = opts.yDomain;
-      else { const vs = all.map(p => p.v); lo = Math.min(...vs); hi = Math.max(...vs); const pad = (hi - lo) * 0.15 || Math.max(1, Math.abs(hi) * 0.02); lo -= pad; hi += pad; }
+      else {
+        // reference bands / lines (e.g. a target range) are kept on screen so a reading above
+        // target is visibly above it, not just a line at the top of an auto-scaled chart
+        const vs = all.map(p => p.v).concat((opts.bands || []).flatMap(b => [b.lo, b.hi]), (opts.refLines || []).map(r => r.v));
+        lo = Math.min(...vs); hi = Math.max(...vs); const pad = (hi - lo) * 0.15 || Math.max(1, Math.abs(hi) * 0.02); lo -= pad; hi += pad;
+      }
       const ticks = opts.yLabels ? Object.keys(opts.yLabels).map(Number) : niceTicks(lo, hi);
       if (!opts.yDomain) { lo = Math.min(lo, ticks[0]); hi = Math.max(hi, ticks[ticks.length - 1]); }
       const yOf = v => padT + ih - ((v - lo) / (hi - lo || 1)) * ih;
@@ -83,6 +88,17 @@
         const label = s.label.length * 6.2 + 8 < x1 - x0 ? s.label : (s.label.split(' ')[0].length * 6.2 + 8 < x1 - x0 ? s.label.split(' ')[0] : '');
         if (label) { const t = el('text', { x: x0 + 4, y: padT - 7, fill: C.muted, 'font-size': 11, 'font-weight': 600 }, svg); t.textContent = label; }
       });
+      // target bands and reference lines (optional — used by the general patient portal)
+      for (const b of opts.bands || []) {
+        const y0 = Math.max(padT, yOf(Math.min(hi, b.hi))), y1 = Math.min(padT + ih, yOf(Math.max(lo, b.lo)));
+        if (y1 - y0 > 0) el('rect', { x: padL, y: y0, width: iw, height: y1 - y0, fill: b.color || '#e3f4ea', opacity: 0.7 }, svg);
+        if (b.label && y1 - y0 > 14) { const t = el('text', { x: padL + iw - 4, y: y0 + 12, 'text-anchor': 'end', fill: '#11663a', 'font-size': 10.5, 'font-weight': 600 }, svg); t.textContent = b.label; }
+      }
+      for (const r of opts.refLines || []) {
+        if (r.v < lo || r.v > hi) continue;
+        el('line', { x1: padL, x2: padL + iw, y1: yOf(r.v), y2: yOf(r.v), stroke: r.color || '#b45309', 'stroke-width': 1, 'stroke-dasharray': '4 4' }, svg);
+        if (r.label) { const t = el('text', { x: padL + iw - 4, y: yOf(r.v) - 4, 'text-anchor': 'end', fill: r.color || '#b45309', 'font-size': 10.5, 'font-weight': 600 }, svg); t.textContent = r.label; }
+      }
       // grid + y labels
       for (const v of ticks) {
         if (v < lo - 1e-9 || v > hi + 1e-9) continue;
