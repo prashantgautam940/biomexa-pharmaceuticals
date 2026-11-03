@@ -3818,6 +3818,15 @@ async function markUnansweredDosesMissed(now = new Date()) {
       { status: 'missed', autoMissed: true }
     );
     if (r.modifiedCount) console.log(`🕒 Marked ${r.modifiedCount} unanswered dose(s) as missed (no reply within ${DOSE_MISSED_AFTER_HOURS}h)`);
+    if (!markUnansweredDosesMissed.reported) {
+      // One-time health check (counts only): how past doses are recorded across all patients.
+      markUnansweredDosesMissed.reported = true;
+      const rows = await Dose.aggregate([
+        { $match: { scheduledDate: { $lt: localDateStr(now) } } },
+        { $group: { _id: { status: '$status', reminded: '$sentReminder' }, n: { $sum: 1 } } }
+      ]);
+      console.log('🩺 Past-dose status counts:', JSON.stringify(rows.map(x => [x._id.status, x._id.reminded, x.n])), '| total doses:', await Dose.estimatedDocumentCount());
+    }
   } catch (err) { console.error('❌ Missed-dose sweep error:', err.message); }
 }
 
