@@ -3831,9 +3831,9 @@ async function markUnansweredDosesMissed(now = new Date()) {
       for (const p of await Patient.find().select('phone')) {
         const k = String(p.phone).replace(/\D/g, '').slice(-10); if (seen.has(k)) continue; seen.add(k);
         const r = await computeRiskScore(p);
-        if (r.total) out.push(`…${k.slice(-4)}: ${r.adherenceKnown ? Math.round(r.adherence * 100) + '%' : '—'} (${r.due - r.missed}✓ ${r.missed}✗ ${r.total - r.due}⏳)`);
+        if (r.total) { out.push(k); console.log(`🩺 Patient …${k.slice(-4)} dashboard adherence ${r.adherenceKnown ? Math.round(r.adherence * 100) + '%' : 'none yet'} — taken ${r.due - r.missed}, missed ${r.missed}, pending ${r.total - r.due}`); }
       }
-      console.log('🩺 Dashboard adherence per patient:', out.join(' | '));
+      console.log(`🩺 Checked ${out.length} patients with doses`);
     }
   } catch (err) { console.error('❌ Missed-dose sweep error:', err.message); }
 }
