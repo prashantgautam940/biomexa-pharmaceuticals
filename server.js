@@ -1682,6 +1682,7 @@ const doseSchema = new mongoose.Schema({
   status: { type: String, default: 'pending' },
   foodNote: String,
   sentReminder: { type: Boolean, default: false },
+  autoMissed: Boolean, // marked missed because nobody replied (see markUnansweredDosesMissed)
   createdAt: { type: Date, default: Date.now }
 });
 
@@ -3799,6 +3800,27 @@ async function processProductAds(now = new Date()) {
   }
 }
 
+// A reminded dose nobody confirmed within DOSE_MISSED_AFTER_HOURS counts as missed, so adherence
+// reflects reality (unanswered reminders used to stay "pending" forever and were left out of the
+// rate — a patient who answered 2 of 15 reminders showed 100%). A late "Taken" on WhatsApp or the
+// dashboard Confirm button still turns it into taken.
+const DOSE_MISSED_AFTER_HOURS = Math.max(1, parseFloat(process.env.DOSE_MISSED_AFTER_HOURS) || 3);
+let lastMissedSweep = 0;
+async function markUnansweredDosesMissed(now = new Date()) {
+  if (now - lastMissedSweep < 10 * 60 * 1000) return; // every 10 minutes is plenty
+  lastMissedSweep = now.getTime();
+  try {
+    const cutoff = new Date(now.getTime() - DOSE_MISSED_AFTER_HOURS * 3600e3);
+    const cutDate = localDateStr(cutoff);
+    const cutTime = `${String(cutoff.getHours()).padStart(2, '0')}:${String(cutoff.getMinutes()).padStart(2, '0')}`;
+    const r = await Dose.updateMany(
+      { status: 'pending', sentReminder: true, $or: [{ scheduledDate: { $lt: cutDate } }, { scheduledDate: cutDate, scheduledTime: { $lte: cutTime } }] },
+      { status: 'missed', autoMissed: true }
+    );
+    if (r.modifiedCount) console.log(`🕒 Marked ${r.modifiedCount} unanswered dose(s) as missed (no reply within ${DOSE_MISSED_AFTER_HOURS}h)`);
+  } catch (err) { console.error('❌ Missed-dose sweep error:', err.message); }
+}
+
 cron.schedule('* * * * *', async () => {
   const now = new Date();
   const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
@@ -3816,6 +3838,8 @@ cron.schedule('* * * * *', async () => {
   }
   processProductAds(now); // once a day after 11 AM; not awaited
   processSubscriptionNotices(now); // once a day after 10 AM; not awaited
+
+  markUnansweredDosesMissed(now); // not awaited
 
   console.log(`⏰ [${currentTime}] Checking for pending doses...`);
 

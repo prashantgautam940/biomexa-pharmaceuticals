@@ -757,7 +757,7 @@ html { scroll-padding-top: 80px; }
               <div>
                 <div class="dose-time">${d.scheduledTime}</div>
                 <div style="color: #5b6b86;font-size:11px;margin-top:4px;text-transform:uppercase;">${d.status}</div>
-                ${d.status === 'pending' ? `<button class="btn btn-confirm" onclick="confirmDose('${d._id}')">Confirm</button>` : ''}
+                ${d.status === 'pending' || d.status === 'missed' ? `<button class="btn btn-confirm" onclick="confirmDose('${d._id}')">${d.status === 'missed' ? 'I took it' : 'Confirm'}</button>` : ''}
               </div>
               <button onclick="stopMedicine(${JSON.stringify(d.medicineName).replace(/"/g, '&quot;')})" title="Stop this medicine's reminders" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:16px;padding:4px 6px;border-radius:6px;transition:color 0.15s, background 0.15s;" onmouseover="this.style.color='#c0262d';this.style.background='rgba(248,113,113,0.1)';" onmouseout="this.style.color='#64748b';this.style.background='none';">🗑️</button>
             </div>
