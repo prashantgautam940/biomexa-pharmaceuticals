@@ -4565,9 +4565,11 @@ app.get('/api/doctor/patient/:phone/vitals', staffAuth, async (req, res) => {
       d.setDate(d.getDate() - i);
       const dateStr = localDateStr(d);
 
-      const dayDoses = await Dose.find({ patientPhone: phone, scheduledDate: dateStr });
+      const dayDoses = await Dose.find({ patientPhone: { $in: phoneVariants(phone) }, scheduledDate: dateStr });
       const taken = dayDoses.filter(x => x.status === 'taken').length;
-      const adherence = dayDoses.length ? Math.round((taken / dayDoses.length) * 100) : null;
+      // Only doses whose outcome is known count — a dose later today (still pending) isn't a miss.
+      const decided = dayDoses.filter(x => x.status !== 'pending').length;
+      const adherence = decided ? Math.round((taken / decided) * 100) : null;
 
       // Real vitals logged that day (last one wins if several) — falls back to the baseline
       // snapshot only when nothing was actually logged that day, and marks which is which.
@@ -4756,7 +4758,7 @@ function sigmoid(z) { return 1 / (1 + Math.exp(-z)); }
 // this is what makes the model genuinely predict from "vitals AND adherence score" together,
 // rather than adherence alone. Falls back sensibly when a patient has no vitals logged yet.
 async function computePatientFeatures(patient) {
-  const doses = await Dose.find({ patientPhone: patient.phone });
+  const doses = await Dose.find({ patientPhone: { $in: phoneVariants(patient.phone) } });
   const total = doses.length;
   const missed = doses.filter(d => d.status === 'missed').length;
   const taken = doses.filter(d => d.status === 'taken').length;

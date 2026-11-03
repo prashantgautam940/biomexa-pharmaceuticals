@@ -427,6 +427,9 @@ async function ivfTick() {
 
   // Mark long-overdue daily doses as missed so adherence stays honest.
   await IvfDose.updateMany({ isTrigger: false, status: 'pending', scheduledAt: { $lt: new Date(now - 12 * 36e5) } }, { status: 'missed' });
+  // A trigger shot still unconfirmed 12 h after its time also counts as missed (the centre was
+  // already alerted at +30 min). A late "Taken" from the patient still records it as taken.
+  await IvfDose.updateMany({ isTrigger: true, status: 'pending', scheduledAt: { $lt: new Date(now - 12 * 36e5) } }, { status: 'missed' });
 
   // Virtual follow-up reminders, 15 minutes before.
   const soon = await IvfConsult.find({ status: 'scheduled', scheduledAt: { $gte: now, $lte: new Date(+now + 15 * 60e3) }, remindersSent: { $ne: 't-15' } });
