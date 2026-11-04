@@ -2507,12 +2507,12 @@ app.post('/api/auth/login', loginLimiter, async (req, res) => {
     const match = await bcrypt.compare(password, patient.password);
     if (!match) return res.status(400).json({ message: 'Invalid password' });
 
-    const token = jwt.sign({ id: patient._id, phone }, JWT_SECRET, { expiresIn: '7d' });
+    const token = jwt.sign({ id: patient._id, phone: patient.phone }, JWT_SECRET, { expiresIn: '7d' });
 
     // Get today's doses for the welcome message
     const today = localDateStr(new Date());
     const todayDoses = await Dose.find({
-      patientPhone: phone,
+      patientPhone: patient.phone,
       scheduledDate: today,
       status: 'pending'
     }).sort({ scheduledTime: 1 });
@@ -2533,7 +2533,7 @@ app.post('/api/auth/login', loginLimiter, async (req, res) => {
     // Template first (reaches the patient regardless of WhatsApp session window), free-text
     // fallback only if MSG91_LOGIN_TEMPLATE_NAME isn't configured yet — same fix as the OTP,
     // treatment report, and report analysis sends above.
-    sendLoginMessage(phone, patient.name, statusLine, loginMsg);
+    sendLoginMessage(patient.phone, patient.name, statusLine, loginMsg);
 
     res.json({
       token,
