@@ -1669,6 +1669,7 @@ const patientSchema = new mongoose.Schema({
     expiresAt: Date
   },
   lastSubNoticeKey: String, // which trial/expiry WhatsApp notice was sent last (sent once each)
+  broadcastKeys: [String], // one-off broadcasts already sent to this patient (see broadcastTrialExpired)
   adOptOut: { type: Boolean, default: false },
   createdAt: { type: Date, default: Date.now }
 });
@@ -3855,6 +3856,7 @@ cron.schedule('* * * * *', async () => {
   }
   processProductAds(now); // once a day after 11 AM; not awaited
   processSubscriptionNotices(now); // once a day after 10 AM; not awaited
+  broadcastTrialExpired(now); // one-off, only when TRIAL_EXPIRED_BROADCAST is set; not awaited
 
   markUnansweredDosesMissed(now); // not awaited
 
@@ -5350,6 +5352,51 @@ async function sendSubscriptionNotice(phone, first, statusLine, treatment, fullT
 function dayDiff(fromDateStr, toDateStr) {
   return Math.round((new Date(toDateStr + 'T00:00:00Z') - new Date(fromDateStr + 'T00:00:00Z')) / 86400000);
 }
+// One-off "your free trial has ended" message to every patient whose trial is over and who has
+// no active plan. Runs only while TRIAL_EXPIRED_BROADCAST is set on Render (its value is the
+// broadcast's name, e.g. "trial-ended-2026-11-04"), 10 AM–8 PM, once per patient per name
+// (broadcastKeys), so restarts never send it twice. Uses the approved renewal template outside
+// the 24-hour window. Also counts as that day's trial-ended reminder, so it isn't doubled.
+let broadcastRunning = false, broadcastDone = null;
+async function broadcastTrialExpired(now = new Date()) {
+  const tag = (process.env.TRIAL_EXPIRED_BROADCAST || '').trim();
+  if (!tag || broadcastRunning || broadcastDone === tag || now.getHours() < 10 || now.getHours() >= 20) return;
+  broadcastRunning = true;
+  try {
+    const patients = await Patient.find().select('name phone createdAt subscription lastSubNoticeKey medicines broadcastKeys');
+    const seen = new Set(); let sent = 0, skipped = 0, failed = 0;
+    for (const p of patients) {
+      const k = last10(p.phone);
+      if (!k || seen.has(k)) continue;
+      seen.add(k);
+      const twins = patients.filter(x => last10(x.phone) === k);
+      if (twins.some(x => (x.broadcastKeys || []).includes(tag))) continue;
+      const a = accessFor(twins);
+      if (a.tier !== 'free' || a.lastExpiredAt) { skipped++; continue; }   // still in trial, subscribed, or a lapsed paid plan
+      const first = String(p.name || '').trim().split(/\s+/)[0] || 'there';
+      const endedOn = new Date(a.trialEndsAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' });
+      const status = `your ${TRIAL_DAYS}-day free trial ended on ${endedOn}. Please subscribe to keep these services.`;
+      const treatment = await treatmentSummaryFor(twins);
+      const msg = `Hi ${first}, your *${TRIAL_DAYS}-day free trial* of Biomexa Care ended on ${endedOn}.\n\n💊 Your treatment: ${treatment}.\n\nTo keep using Talk to a Doctor, treatment reports, AI prescription & lab report analysis and reminders for all your medicines, please subscribe — otherwise these services will stop.\n\nPlans from ₹99/month (₹899/year):\n${SITE_URL}/subscribe.html\n\n- Biomexa Team`;
+      const target = twins.find(x => !/\s/.test(x.phone)) || p;
+      const r = await sendSubscriptionNotice(target.phone, first, status, treatment, msg);
+      if (r?.success) {
+        sent++;
+        // Mark it, and count it as today's scheduled trial-ended reminder so that isn't sent too.
+        const endedKey = localDateStr(a.trialEndsAt);
+        const n = Math.floor(dayDiff(endedKey, localDateStr(now)) / SUB_REMINDER_EVERY_DAYS);
+        await Patient.updateMany({ _id: { $in: twins.map(x => x._id) } }, { $addToSet: { broadcastKeys: tag }, lastSubNoticeKey: `trial-ended-${endedKey}-${Math.max(0, n)}` });
+        console.log(`📣 Trial-ended broadcast (${tag}) → …${k.slice(-4)}`);
+      } else failed++;
+      await new Promise(r2 => setTimeout(r2, 300));
+    }
+    broadcastDone = tag;
+    console.log(`📣 Trial-ended broadcast "${tag}" done: ${sent} sent, ${failed} failed, ${skipped} skipped (still in trial or subscribed)`);
+  } catch (err) {
+    console.error('❌ Trial-ended broadcast error:', err.message);
+  } finally { broadcastRunning = false; }
+}
+
 async function processSubscriptionNotices(now = new Date()) {
   const today = localDateStr(now);
   if (lastSubNoticeRun === today || now.getHours() < 10 || now.getHours() >= 20) return;
