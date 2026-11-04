@@ -1132,7 +1132,9 @@ function phoneVariants(raw) {
   // '+91 ' + last10 covers accounts saved with a space after the country code — without it the
   // WhatsApp webhook (which sees "+91XXXXXXXXXX") never found their conversation, so Taken /
   // Not Taken / Remind Me Later taps were silently ignored.
-  return [...new Set([s, '+' + digits, digits, last10, '+91' + last10, '+91 ' + last10, '91' + last10].filter(Boolean))];
+  // '+910' + last10 matches accounts saved with the trunk 0 kept ("+91 09958…" typed at sign-up):
+  // WhatsApp replies arrive as "91XXXXXXXXXX", so without it their Taken taps found no dose.
+  return [...new Set([s, '+' + digits, digits, last10, '+91' + last10, '+91 ' + last10, '91' + last10, '+910' + last10, '910' + last10].filter(Boolean))];
 }
 
 // One canonical format for numbers typed into public forms ("+91 98765 43210", "09876543210",
@@ -1162,6 +1164,7 @@ function normalizePhone(raw) {
   const digits = String(raw || '').replace(/\D/g, '');
   if (digits.length === 10) return '+91' + digits;
   if (digits.length === 11 && digits.startsWith('0')) return '+91' + digits.slice(1);
+  if (digits.length === 13 && digits.startsWith('910')) return '+91' + digits.slice(3); // "+91 0XXXXXXXXXX"
   return digits ? '+' + digits : '';
 }
 
@@ -2497,7 +2500,8 @@ app.post('/api/product-chat', productChatLimiter, async (req, res) => {
 app.post('/api/auth/login', loginLimiter, async (req, res) => {
   try {
     const { phone, password } = req.body;
-    const patient = await Patient.findOne({ phone });
+    // Exact match first; then the same number in another saved format (e.g. "+91 0…").
+    const patient = await Patient.findOne({ phone }) || await Patient.findOne({ phone: { $in: phoneVariants(phone) } });
     if (!patient) return res.status(400).json({ message: 'User not found' });
 
     const match = await bcrypt.compare(password, patient.password);
