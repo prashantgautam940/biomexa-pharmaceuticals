@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lead Campaigns | Biomexa Admin</title>
+<link rel="icon" type="image/svg+xml" href="logo.svg">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<style>
+:root { --navy: #16336b; --green: #1c9a55; --green-soft: #e8f6ee; --amber: #b45309; --amber-soft: #fff6e6; --danger: #c0262d; --bg: #f3f6fb; --card: #fff; --inner: #f6f8fc; --text: #13213d; --muted: #5b6b86; --line: #e2e8f2; --shadow: 0 1px 2px rgba(19,33,61,.05), 0 8px 24px rgba(19,33,61,.07); }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+header { background: rgba(255,255,255,.95); border-bottom: 1px solid var(--line); padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 50; gap: 1rem; flex-wrap: wrap; }
+header nav { display: flex; gap: 1.25rem; align-items: center; flex-wrap: wrap; }
+header nav a { color: var(--muted); text-decoration: none; font-weight: 500; font-size: .9rem; }
+header nav a:hover, header nav a.active { color: var(--navy); }
+.container { max-width: 1200px; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+h1 { font-size: 1.7rem; letter-spacing: -.02em; display: flex; align-items: center; gap: .6rem; }
+h1 i { color: #25d366; }
+.sub { color: var(--muted); margin-top: .35rem; font-size: .93rem; max-width: 780px; }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem; margin: 1.5rem 0; }
+.stat { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 1rem 1.1rem; box-shadow: var(--shadow); cursor: pointer; text-align: left; font: inherit; color: inherit; transition: transform .15s; }
+.stat:hover { transform: translateY(-2px); }
+.stat.on { border-color: var(--navy); box-shadow: 0 0 0 2px rgba(22,51,107,.15), var(--shadow); }
+.stat .lbl { font-size: .78rem; color: var(--muted); font-weight: 600; display: flex; align-items: center; gap: .45rem; }
+.stat .num { font-size: 1.8rem; font-weight: 800; margin-top: .3rem; }
+.n-new .num { color: var(--navy); } .n-sent .num { color: #2563eb; } .n-replied .num { color: var(--green); } .n-joined .num { color: #11663a; } .n-optout .num { color: var(--muted); } .n-failed .num { color: var(--danger); }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 18px; box-shadow: var(--shadow); padding: 1.4rem; margin-bottom: 1.5rem; }
+.card h2 { font-size: 1.08rem; display: flex; gap: .5rem; align-items: center; }
+.card h2 i { color: var(--navy); }
+.card.wa { border-color: rgba(28,154,85,.35); background: linear-gradient(135deg, #fff 0%, #f1faf5 100%); }
+.card.wa h2 i { color: #25d366; }
+.card p.desc { color: var(--muted); font-size: .86rem; margin: .4rem 0 1rem; line-height: 1.5; }
+.field { margin-bottom: .85rem; }
+.field label { display: block; font-size: .8rem; font-weight: 600; color: #34425e; margin-bottom: .35rem; }
+select, input[type=text], input[type=number], input[type=file] { padding: 10px 12px; border: 1px solid #cfd8e6; border-radius: 10px; font: inherit; font-size: .9rem; background: #fff; color: var(--text); width: 100%; }
+input:focus, select:focus { outline: none; border-color: var(--navy); box-shadow: 0 0 0 3px rgba(31,68,148,.15); }
+.check { display: flex; gap: .55rem; align-items: flex-start; font-size: .84rem; color: #34425e; margin: .4rem 0 1rem; line-height: 1.45; }
+.check input { margin-top: 3px; width: auto; }
+.btn { display: inline-flex; align-items: center; gap: .5rem; padding: 10px 18px; border-radius: 10px; border: 0; font: inherit; font-weight: 700; font-size: .9rem; cursor: pointer; background: var(--navy); color: #fff; white-space: nowrap; text-decoration: none; }
+.btn.wa { background: #1fa855; } .btn.wa:hover { background: #188a46; }
+.btn.ghost { background: #fff; color: var(--navy); border: 1px solid var(--line); }
+.btn.sm { padding: 6px 11px; font-size: .78rem; }
+.btn.del { background: #fff; color: var(--danger); border: 1px solid #f3c9cb; }
+.btn:disabled { opacity: .55; cursor: not-allowed; }
+.result { margin-top: .9rem; font-size: .86rem; padding: .7rem .9rem; border-radius: 10px; display: none; line-height: 1.45; }
+.result.ok { display: block; background: var(--green-soft); color: #11663a; }
+.result.err { display: block; background: #fdecec; color: var(--danger); }
+.result.info { display: block; background: var(--amber-soft); color: var(--amber); }
+.limits { display: grid; grid-template-columns: repeat(3, 1fr); gap: .6rem; margin-bottom: 1rem; }
+.limits div { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: .6rem .75rem; font-size: .76rem; color: var(--muted); font-weight: 600; }
+.limits b { display: block; font-size: 1.15rem; color: var(--text); margin-top: 2px; }
+.row-inline { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; }
+.row-inline input { width: 110px; }
+.progress { height: 10px; background: var(--inner); border-radius: 999px; overflow: hidden; margin-top: .9rem; display: none; }
+.progress > div { height: 100%; background: #1fa855; width: 0; transition: width .4s; }
+.preview { background: #e7ffdb; border-radius: 12px; padding: .9rem 1rem; font-size: .83rem; line-height: 1.5; white-space: pre-wrap; color: #13213d; border: 1px solid #c9eeb6; }
+.preview-btns { display: flex; gap: .5rem; margin-top: .5rem; }
+.preview-btns span { flex: 1; text-align: center; background: #fff; border-radius: 10px; padding: .45rem; color: #128c7e; font-weight: 600; font-size: .82rem; border: 1px solid var(--line); }
+.toolbar { display: flex; gap: .75rem; align-items: center; justify-content: space-between; flex-wrap: wrap; margin-bottom: 1rem; }
+.tabs { display: flex; gap: .4rem; flex-wrap: wrap; }
+.tab { padding: 7px 13px; border-radius: 999px; border: 1px solid var(--line); background: #fff; font: inherit; font-size: .82rem; font-weight: 600; color: var(--muted); cursor: pointer; }
+.tab.on { background: var(--navy); color: #fff; border-color: var(--navy); }
+.search { position: relative; }
+.search input { padding-left: 34px; width: 240px; }
+.search i { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--muted); font-size: .85rem; }
+table { width: 100%; border-collapse: collapse; font-size: .86rem; }
+th { text-align: left; font-size: .74rem; color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: .03em; padding: .6rem .5rem; border-bottom: 1px solid var(--line); }
+td { padding: .65rem .5rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+td .err { color: var(--danger); font-size: .74rem; margin-top: 3px; max-width: 320px; word-break: break-word; }
+.pill { display: inline-block; font-size: .72rem; font-weight: 700; padding: 3px 9px; border-radius: 999px; }
+.p-new { background: #e8eefb; color: var(--navy); } .p-sent { background: #e5efff; color: #2563eb; } .p-replied { background: var(--green-soft); color: #11663a; }
+.p-joined { background: #d3f3df; color: #0b5a30; } .p-optout { background: var(--inner); color: var(--muted); } .p-failed { background: #fdecec; color: var(--danger); }
+.table-wrap { overflow-x: auto; }
+.empty, .loading { text-align: center; color: var(--muted); padding: 2.5rem 1rem; }
+.warn { display: none; margin-bottom: 1.5rem; background: var(--amber-soft); color: var(--amber); border: 1px solid #f5d9a8; border-radius: 14px; padding: .9rem 1.1rem; font-size: .88rem; line-height: 1.5; }
+@media (max-width: 900px) { .grid2 { grid-template-columns: 1fr; } .search input { width: 100%; } .search { width: 100%; } }
+@media (max-width: 560px) { header { padding: .8rem 16px; } .container { padding: 1.25rem 16px 3rem; } .limits { grid-template-columns: 1fr 1fr 1fr; } }
+</style>
+<link rel="stylesheet" href="css/biomexa-ui.css">
+</head>
+<body>
+<header>
+  <a href="index.html"><img src="images/logo-full.png" alt="Biomexa Pharmaceuticals" style="height:30px;width:auto;"></a>
+  <nav>
+    <a href="admin.html"><i class="fas fa-arrow-left"></i> Admin Panel</a>
+    <a href="admin-reminders.html">Reminder Center</a>
+    <a href="admin-leads.html" class="active">Lead Campaigns</a>
+    <a href="#" onclick="logout();return false;">Logout</a>
+  </nav>
+</header>
+
+<div class="container">
+  <h1><i class="fab fa-whatsapp"></i> Lead Campaigns</h1>
+  <p class="sub">Upload a list of new contacts (from clinics, pharmacies, camps or your website) and invite them on WhatsApp to start free medicine reminders. People who tap <b>Start Reminders</b> get the sign-up link automatically; <b>Stop</b> removes them for good. When a lead signs up, they move to <b>Joined</b> on their own.</p>
+
+  <div class="warn" id="tplWarn"></div>
+
+  <div class="stats">
+    <button class="stat n-new" data-f="new" onclick="setFilter('new')"><div class="lbl"><i class="fas fa-inbox"></i> Waiting</div><div class="num" id="c-new">–</div></button>
+    <button class="stat n-sent" data-f="sent" onclick="setFilter('sent')"><div class="lbl"><i class="fas fa-paper-plane"></i> Sent</div><div class="num" id="c-sent">–</div></button>
+    <button class="stat n-replied" data-f="replied" onclick="setFilter('replied')"><div class="lbl"><i class="fas fa-reply"></i> Replied START</div><div class="num" id="c-replied">–</div></button>
+    <button class="stat n-joined" data-f="joined" onclick="setFilter('joined')"><div class="lbl"><i class="fas fa-user-check"></i> Joined</div><div class="num" id="c-joined">–</div></button>
+    <button class="stat n-optout" data-f="optout" onclick="setFilter('optout')"><div class="lbl"><i class="fas fa-ban"></i> Opted out</div><div class="num" id="c-optout">–</div></button>
+    <button class="stat n-failed" data-f="failed" onclick="setFilter('failed')"><div class="lbl"><i class="fas fa-triangle-exclamation"></i> Failed</div><div class="num" id="c-failed">–</div></button>
+  </div>
+
+  <div class="grid2">
+    <div class="card">
+      <h2><i class="fas fa-file-csv"></i> 1. Upload leads</h2>
+      <p class="desc">CSV with a header row and columns <b>name</b> and <b>number</b> (phone / mobile also works). Numbers like <code>98765 43210</code>, <code>+91…</code> or <code>0987…</code> are fixed automatically. Duplicates, invalid numbers and people already on Biomexa are skipped. <a href="#" onclick="downloadSample();return false;">Download sample CSV</a></p>
+      <div class="field"><label for="file">CSV file</label><input type="file" id="file" accept=".csv,text/csv"></div>
+      <div class="field"><label for="source">Where did these leads come from?</label><input type="text" id="source" placeholder="e.g. Dr Sharma clinic, Hapur health camp" maxlength="80"></div>
+      <label class="check"><input type="checkbox" id="consent"> These people agreed to be contacted by Biomexa on WhatsApp (required by WhatsApp and India's DPDP Act). Bought or scraped lists get your number blocked.</label>
+      <button class="btn" id="uploadBtn" onclick="upload()"><i class="fas fa-upload"></i> Upload leads</button>
+      <div id="uploadResult" class="result"></div>
+    </div>
+
+    <div class="card wa">
+      <h2><i class="fab fa-whatsapp"></i> 2. Send WhatsApp invite</h2>
+      <p class="desc">Sends your approved <b id="tplName">lead_onboarding</b> template to waiting leads, oldest first. To protect your number's quality rating, only <b id="limTxt">250</b> go out per 24 hours, between <span id="hoursTxt">9 AM–9 PM</span> India time.</p>
+      <div class="limits">
+        <div>Daily limit<b id="lim">–</b></div>
+        <div>Sent last 24h<b id="sent24">–</b></div>
+        <div>Left today<b id="left">–</b></div>
+      </div>
+      <div class="row-inline">
+        <label for="count" style="font-size:.84rem;font-weight:600;color:#34425e">Send to</label>
+        <input type="number" id="count" min="1" value="250">
+        <span style="font-size:.84rem;color:var(--muted)">leads</span>
+      </div>
+      <label class="check"><input type="checkbox" id="retry"> Also retry leads that failed before</label>
+      <button class="btn wa" id="sendBtn" onclick="send()"><i class="fab fa-whatsapp"></i> Send invite now</button>
+      <div class="progress" id="prog"><div id="progBar"></div></div>
+      <div id="sendResult" class="result"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2><i class="fas fa-eye"></i> What leads receive</h2>
+    <p class="desc">Preview of the template to create in MSG91 (name <b>lead_onboarding</b>, category Marketing). <code>{{1}}</code> is filled with each lead's first name.</p>
+    <div style="max-width:420px">
+      <div class="preview">Hello <b>Rahul</b> 🙏
+
+Never miss your medicine again! 💊
+
+Biomexa WhatsApp Health Assistant:
+✅ Medicine reminders on time
+✅ Reply "Taken" to confirm your dose
+✅ Track sugar and BP on WhatsApp
+✅ Treatment reports to share with your doctor
+✅ Chat in Hindi or English
+
+No app needed. Tap Start Reminders to begin (takes 1 minute).
+🌐 biomexapharmaceuticals.com
+
+Your health data stays private. Tap Stop if you don't want these messages.
+— Team Biomexa</div>
+      <div class="preview-btns"><span>Start Reminders</span><span>Stop</span></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="toolbar">
+      <div class="tabs">
+        <button class="tab" data-f="all" onclick="setFilter('all')">All</button>
+        <button class="tab" data-f="new" onclick="setFilter('new')">Waiting</button>
+        <button class="tab" data-f="sent" onclick="setFilter('sent')">Sent</button>
+        <button class="tab" data-f="replied" onclick="setFilter('replied')">Replied</button>
+        <button class="tab" data-f="joined" onclick="setFilter('joined')">Joined</button>
+        <button class="tab" data-f="optout" onclick="setFilter('optout')">Opted out</button>
+        <button class="tab" data-f="failed" onclick="setFilter('failed')">Failed</button>
+      </div>
+      <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;">
+        <div class="search"><i class="fas fa-search"></i><input type="text" id="q" placeholder="Search name, number, source" oninput="render()"></div>
+        <button class="btn ghost sm" onclick="exportCsv()"><i class="fas fa-download"></i> Export</button>
+        <button class="btn ghost sm" onclick="load()"><i class="fas fa-rotate"></i> Refresh</button>
+      </div>
+    </div>
+    <div class="table-wrap" id="list"><div class="loading"><i class="fas fa-spinner fa-spin"></i> Loading leads…</div></div>
+  </div>
+</div>
+
+<script>
+const API_BASE = (location.hostname === 'localhost' || location.hostname === '127.0.0.1') ? 'http://localhost:3000' : 'https://biomexa-api-f9f6.onrender.com';
+const authHeader = sessionStorage.getItem('adminAuthHeader') || '';
+if (!authHeader) location.href = 'admin.html';
+
+let data = { leads: [], counts: {} };
+let filter = 'all';
+let pollTimer = null;
+const LABEL = { new: 'Waiting', sent: 'Sent', failed: 'Failed', replied: 'Replied START', joined: 'Joined', optout: 'Opted out' };
+
+function authFetch(path, opts = {}) {
+  opts.headers = Object.assign({ Authorization: authHeader }, opts.headers || {});
+  return fetch(API_BASE + path, opts).then(r => {
+    if (r.status === 401) { logout(); throw new Error('Session expired'); }
+    return r;
+  });
+}
+function logout() { sessionStorage.removeItem('adminAuthHeader'); location.href = 'admin.html'; }
+const esc = t => String(t ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const fmt = d => d ? new Date(d).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : '';
+function showResult(id, kind, msg) { const el = document.getElementById(id); el.className = 'result ' + kind; el.textContent = msg; }
+
+function load(quiet) {
+  if (!quiet) document.getElementById('list').innerHTML = '<div class="loading"><i class="fas fa-spinner fa-spin"></i> Loading leads…</div>';
+  return authFetch('/api/admin/leads').then(r => r.json()).then(d => {
+    if (!d.leads) throw new Error(d.message || 'Could not load');
+    data = d;
+    Object.keys(LABEL).forEach(k => document.getElementById('c-' + k).textContent = d.counts[k] || 0);
+    document.getElementById('lim').textContent = d.dailyLimit;
+    document.getElementById('limTxt').textContent = d.dailyLimit;
+    document.getElementById('sent24').textContent = d.sentLast24h;
+    document.getElementById('left').textContent = d.remainingToday;
+    document.getElementById('tplName').textContent = d.templateName || 'lead_onboarding';
+    const c = document.getElementById('count');
+    c.max = d.remainingToday || 1;
+    if (!c.dataset.touched) c.value = Math.max(1, Math.min(d.remainingToday, d.counts.new || 0) || d.remainingToday || 1);
+    const w = document.getElementById('tplWarn');
+    if (!d.templateConfigured) {
+      w.style.display = 'block';
+      w.innerHTML = '<i class="fas fa-circle-info"></i> <b>Sending is off until the template is approved.</b> Create the <b>lead_onboarding</b> template in MSG91 (preview below), wait for Meta approval, then add <code>MSG91_LEAD_TEMPLATE_NAME=lead_onboarding</code> on Render and redeploy. You can upload leads now.';
+    } else w.style.display = 'none';
+    renderJob(d.job);
+    render();
+  }).catch(e => { if (!quiet) document.getElementById('list').innerHTML = `<div class="empty">Couldn't load leads — ${esc(e.message)}</div>`; });
+}
+
+function renderJob(job) {
+  const btn = document.getElementById('sendBtn');
+  const prog = document.getElementById('prog');
+  if (job && job.running) {
+    const done = job.sent + job.failed;
+    prog.style.display = 'block';
+    document.getElementById('progBar').style.width = (job.total ? Math.round(done / job.total * 100) : 0) + '%';
+    showResult('sendResult', 'info', `Sending… ${done} of ${job.total} done (${job.sent} sent, ${job.failed} failed). You can leave this page — it keeps going.`);
+    btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending…';
+    if (!pollTimer) pollTimer = setInterval(() => load(true), 3000);
+  } else {
+    btn.disabled = false; btn.innerHTML = '<i class="fab fa-whatsapp"></i> Send invite now';
+    if (pollTimer) {
+      clearInterval(pollTimer); pollTimer = null;
+      document.getElementById('progBar').style.width = '100%';
+      showResult('sendResult', job.failed ? 'info' : 'ok', `Finished: ${job.sent} sent, ${job.failed} failed.` + (job.failed ? ' Open the Failed tab to see why.' : ' Replies will show up under Replied START.'));
+    }
+  }
+}
+
+function setFilter(f) { filter = f; render(); }
+
+function render() {
+  document.querySelectorAll('.stat, .tab').forEach(b => b.classList.toggle('on', b.dataset.f === filter));
+  const q = document.getElementById('q').value.trim().toLowerCase();
+  const rows = data.leads.filter(l => (filter === 'all' || l.status === filter) && (!q || [l.name, l.phone, l.source].join(' ').toLowerCase().includes(q)));
+  const el = document.getElementById('list');
+  if (!rows.length) { el.innerHTML = `<div class="empty">${data.leads.length ? 'No leads here.' : 'No leads yet — upload a CSV above.'}</div>`; return; }
+  el.innerHTML = `<table><thead><tr><th>Name</th><th>Number</th><th>Source</th><th>Status</th><th>Sent</th><th>Replied</th><th></th></tr></thead><tbody>` +
+    rows.map(l => `<tr>
+      <td><b>${esc(l.name || '—')}</b></td>
+      <td>${esc(l.phone)}</td>
+      <td>${esc(l.source || '')}</td>
+      <td><span class="pill p-${l.status}">${LABEL[l.status]}</span>${l.status === 'failed' && l.lastError ? `<div class="err">${esc(l.lastError.slice(0, 160))}</div>` : ''}</td>
+      <td>${fmt(l.sentAt)}</td>
+      <td>${fmt(l.repliedAt)}</td>
+      <td><button class="btn del sm" title="Delete lead" onclick="del('${l.id}')"><i class="fas fa-trash"></i></button></td>
+    </tr>`).join('') + '</tbody></table>' + (data.leads.length >= 2000 ? '<p class="desc" style="margin-top:.8rem">Showing the latest 2,000 leads.</p>' : '');
+}
+
+function upload() {
+  const f = document.getElementById('file').files[0];
+  if (!f) return showResult('uploadResult', 'err', 'Please choose a CSV file.');
+  if (!document.getElementById('consent').checked) return showResult('uploadResult', 'err', 'Please tick the box confirming these people agreed to be contacted.');
+  if (f.size > 2 * 1024 * 1024) return showResult('uploadResult', 'err', 'File is too big — please keep it under 2 MB (about 5,000 leads).');
+  const btn = document.getElementById('uploadBtn');
+  btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Uploading…';
+  f.text().then(csv => authFetch('/api/admin/leads/upload', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ csv, source: document.getElementById('source').value.trim(), consent: true })
+  })).then(r => r.json().then(d => ({ ok: r.ok, d })))
+    .then(({ ok, d }) => { showResult('uploadResult', ok ? 'ok' : 'err', d.message); if (ok) { document.getElementById('file').value = ''; filter = 'new'; load(); } })
+    .catch(e => showResult('uploadResult', 'err', e.message))
+    .finally(() => { btn.disabled = false; btn.innerHTML = '<i class="fas fa-upload"></i> Upload leads'; });
+}
+
+function send() {
+  const count = parseInt(document.getElementById('count').value, 10) || 0;
+  const retryFailed = document.getElementById('retry').checked;
+  const waiting = (data.counts.new || 0) + (retryFailed ? (data.counts.failed || 0) : 0);
+  if (!data.templateConfigured) return showResult('sendResult', 'err', 'The lead_onboarding template isn\'t set up yet — see the note at the top of the page.');
+  if (!waiting) return showResult('sendResult', 'err', 'No leads are waiting. Upload a list first.');
+  const n = Math.min(count, waiting, data.remainingToday);
+  if (!n) return showResult('sendResult', 'err', 'Today\'s limit is used up. Send the next batch tomorrow.');
+  if (!confirm(`Send the WhatsApp invite to ${n} lead${n === 1 ? '' : 's'} now?\n\nEach message is charged by WhatsApp (marketing rate).`)) return;
+  const btn = document.getElementById('sendBtn');
+  btn.disabled = true;
+  authFetch('/api/admin/leads/send', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ count: n, retryFailed }) })
+    .then(r => r.json().then(d => ({ ok: r.ok, d })))
+    .then(({ ok, d }) => {
+      if (!ok) { showResult('sendResult', 'err', d.message); btn.disabled = false; return; }
+      showResult('sendResult', 'info', d.message);
+      renderJob(d.job);
+    })
+    .catch(e => { showResult('sendResult', 'err', e.message); btn.disabled = false; });
+}
+
+function del(id) {
+  if (!confirm('Delete this lead? They will not be messaged.')) return;
+  authFetch('/api/admin/leads/' + encodeURIComponent(id), { method: 'DELETE' }).then(() => load(true));
+}
+
+function downloadBlob(name, text) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([text], { type: 'text/csv' }));
+  a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+function downloadSample() { downloadBlob('biomexa-leads-sample.csv', 'name,number\nRahul Sharma,9876543210\nPriya Verma,+91 98765 43211\n'); }
+function exportCsv() {
+  const q = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  const rows = data.leads.filter(l => filter === 'all' || l.status === filter);
+  downloadBlob(`biomexa-leads-${filter}.csv`, 'name,number,source,status,sent_at,replied_at\n' +
+    rows.map(l => [l.name, l.phone, l.source, LABEL[l.status], l.sentAt || '', l.repliedAt || ''].map(q).join(',')).join('\n'));
+}
+
+document.getElementById('count').addEventListener('input', e => { e.target.dataset.touched = '1'; });
+load();
+</script>
+</body>
+</html>

@@ -4013,6 +4013,9 @@ app.post('/api/webhooks/msg91-whatsapp', async (req, res) => {
     const patient = await Patient.findOne({ phone: { $in: variants } });
     phone = (convo && convo.patientPhone) || (patient && patient.phone) || phone;
 
+    // Replies from a lead-campaign contact who hasn't signed up yet (START → sign-up link, STOP → opt out).
+    if (!patient && await handleLeadReply(phone, buttonText, freeText)) return;
+
     // STOP / START for the 10-day product message. Dose reminders are unaffected.
     if (!buttonText && patient && (AD_STOP_RE.test(freeText) || AD_START_RE.test(freeText))) {
       const optOut = AD_STOP_RE.test(freeText);
@@ -5703,6 +5706,279 @@ app.post('/api/admin/reminder-center/invite', adminAuth, async (req, res) => {
     });
   } catch (err) {
     res.status(500).json({ message: err.message });
+  }
+});
+
+// ========== LEAD CAMPAIGNS — WhatsApp onboarding for new (not-yet-registered) contacts ==========
+// Admin uploads a CSV of leads (name, number) on admin-leads.html, then sends the approved
+// MARKETING template "lead_onboarding" in safe daily batches. Leads who tap "Start Reminders" /
+// reply START get a free-text reply with the sign-up link (their reply opens the 24h window, so
+// it costs nothing); STOP marks them opted out and they are never messaged again.
+// WhatsApp only allows business-initiated messages through an approved template, so there is no
+// free-text fallback here. See .env.example for the template to create.
+const MSG91_LEAD_TEMPLATE_NAME = process.env.MSG91_LEAD_TEMPLATE_NAME || null;
+const MSG91_LEAD_TEMPLATE_NAMESPACE = process.env.MSG91_LEAD_TEMPLATE_NAMESPACE || MSG91_TEMPLATE_NAMESPACE;
+// New WhatsApp numbers can only start ~250 new conversations a day until Meta raises the tier —
+// going over it (or getting many blocks) hurts the number's quality rating.
+const LEAD_DAILY_LIMIT = Math.max(1, parseInt(process.env.LEAD_DAILY_LIMIT, 10) || 250);
+const LEAD_SEND_START_HOUR = 9;  // IST — don't message strangers early morning…
+const LEAD_SEND_END_HOUR = 21;   // …or late at night.
+
+const Lead = mongoose.model('Lead', new mongoose.Schema({
+  name: { type: String, default: '' },
+  phone: { type: String, required: true, unique: true }, // canonical 91XXXXXXXXXX
+  source: { type: String, default: '' },                  // e.g. "Dr Sharma clinic", "Pharmacy camp"
+  status: { type: String, enum: ['new', 'sent', 'failed', 'replied', 'joined', 'optout'], default: 'new', index: true },
+  sentAt: Date,
+  repliedAt: Date,
+  joinedAt: Date,
+  optedOutAt: Date,
+  lastError: String,
+  uploadedBy: String
+}, { timestamps: true }));
+
+// Indian mobile → "91XXXXXXXXXX", or null if it isn't a valid mobile number.
+function leadPhone(raw) {
+  let d = String(raw || '').replace(/\D/g, '').replace(/^0+/, '');
+  if (d.length === 10) d = '91' + d;
+  return /^91[6-9]\d{9}$/.test(d) ? d : null;
+}
+
+function parseCsvText(text) {
+  const rows = []; let row = [], field = '', q = false;
+  const s = String(text || '').replace(/^﻿/, '');
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (q) {
+      if (c === '"' && s[i + 1] === '"') { field += '"'; i++; }
+      else if (c === '"') q = false;
+      else field += c;
+    } else if (c === '"') q = true;
+    else if (c === ',' || c === ';' || c === '\t') { row.push(field); field = ''; }
+    else if (c === '\n' || c === '\r') {
+      if (c === '\r' && s[i + 1] === '\n') i++;
+      row.push(field); rows.push(row); row = []; field = '';
+    } else field += c;
+  }
+  if (field || row.length) { row.push(field); rows.push(row); }
+  return rows.filter(r => r.some(v => String(v).trim() !== ''));
+}
+
+function istHour(d = new Date()) {
+  return Number(new Intl.DateTimeFormat('en-US', { hour: 'numeric', hour12: false, timeZone: 'Asia/Kolkata' }).format(d)) % 24;
+}
+
+async function sendLeadTemplate(phone, name) {
+  try {
+    const res = await fetch('https://api.msg91.com/api/v5/whatsapp/whatsapp-outbound-message/bulk/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'authkey': MSG91_AUTH_KEY },
+      body: JSON.stringify({
+        integrated_number: MSG91_INTEGRATED_NUMBER,
+        content_type: 'template',
+        payload: {
+          messaging_product: 'whatsapp',
+          type: 'template',
+          template: {
+            name: MSG91_LEAD_TEMPLATE_NAME,
+            language: { code: MSG91_TEMPLATE_LANG, policy: 'deterministic' },
+            namespace: MSG91_LEAD_TEMPLATE_NAMESPACE,
+            to_and_components: [{
+              to: [phone],
+              components: {
+                body_1: { type: 'text', value: sanitizeTemplateParam(String(name || 'there').trim().split(/\s+/)[0] || 'there', 40), parameter_name: 'patient_name' }
+              }
+            }]
+          }
+        }
+      }),
+      signal: AbortSignal.timeout(10000)
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.hasError || data.status === 'fail') {
+      return { ok: false, error: JSON.stringify(data).substring(0, 300) || `HTTP ${res.status}` };
+    }
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+}
+
+// One campaign at a time, run in the background so the admin page doesn't time out.
+let leadJob = { running: false, total: 0, sent: 0, failed: 0, startedAt: null, finishedAt: null, by: null };
+
+async function runLeadCampaign(leads) {
+  for (const lead of leads) {
+    // Re-check: they may have replied STOP or signed up since the batch was picked.
+    const fresh = await Lead.findById(lead._id).lean();
+    if (!fresh || !['new', 'failed'].includes(fresh.status)) continue;
+    const r = await sendLeadTemplate(fresh.phone, fresh.name);
+    if (r.ok) {
+      leadJob.sent++;
+      await Lead.updateOne({ _id: fresh._id }, { status: 'sent', sentAt: new Date(), lastError: '' });
+    } else {
+      leadJob.failed++;
+      await Lead.updateOne({ _id: fresh._id }, { status: 'failed', lastError: r.error });
+      if (/401|auth/i.test(r.error || '')) { console.log('⚠️ Lead campaign stopped — MSG91 auth error'); break; }
+    }
+    await new Promise(r2 => setTimeout(r2, 400)); // gentle pace for MSG91 / Meta
+  }
+}
+
+// Mark leads who have since created a Biomexa account as "joined".
+async function syncJoinedLeads() {
+  const open = await Lead.find({ status: { $in: ['new', 'sent', 'failed', 'replied'] } }).select('phone').lean();
+  if (!open.length) return;
+  const patients = await Patient.find().select('phone').lean();
+  const patientKeys = new Set(patients.map(p => last10(p.phone)));
+  const joinedIds = open.filter(l => patientKeys.has(last10(l.phone))).map(l => l._id);
+  if (joinedIds.length) await Lead.updateMany({ _id: { $in: joinedIds } }, { status: 'joined', joinedAt: new Date() });
+}
+
+// Inbound WhatsApp from a lead (not a registered patient). Returns true if handled.
+async function handleLeadReply(phone, buttonText, freeText) {
+  const lead = await Lead.findOne({ phone: '91' + last10(phone) });
+  if (!lead) return false;
+  const said = (buttonText || freeText || '').trim().toLowerCase();
+  const isStop = /^stop\b/.test(said) || AD_STOP_RE.test(said);
+  const isStart = /start/.test(said) || AD_START_RE.test(said) || /^(yes|haan|ha)\b/.test(said);
+  if (isStop) {
+    await Lead.updateOne({ _id: lead._id }, { status: 'optout', optedOutAt: new Date() });
+    await sendWhatsAppFree(phone, '✅ Done — Biomexa won\'t message you again. If you ever want free medicine reminders, just reply START.');
+    return true;
+  }
+  if (isStart) {
+    if (lead.status !== 'joined') await Lead.updateOne({ _id: lead._id }, { status: 'replied', repliedAt: new Date(), optedOutAt: null });
+    const first = String(lead.name || '').trim().split(/\s+/)[0];
+    await sendWhatsAppFree(phone,
+      `🙏 Thank you${first ? ' ' + first : ''}! Let's set up your free medicine reminders.\n\n` +
+      `👉 Open this link and add your medicine and time (takes 1 minute):\n${SITE_URL}/reminders.html\n\n` +
+      `Please use this same WhatsApp number when you sign up, so your reminders come here.\n\n` +
+      `Have a question? Just reply here. — Team Biomexa 💙`);
+    return true;
+  }
+  return false;
+}
+
+app.get('/api/admin/leads', adminAuth, async (req, res) => {
+  try {
+    await syncJoinedLeads();
+    const [grouped, sentLast24h, leads] = await Promise.all([
+      Lead.aggregate([{ $group: { _id: '$status', n: { $sum: 1 } } }]),
+      Lead.countDocuments({ sentAt: { $gte: new Date(Date.now() - 24 * 3600000) } }),
+      Lead.find().sort({ createdAt: -1 }).limit(2000).lean()
+    ]);
+    const counts = { new: 0, sent: 0, failed: 0, replied: 0, joined: 0, optout: 0 };
+    grouped.forEach(g => { counts[g._id] = g.n; });
+    const hour = istHour();
+    res.json({
+      counts,
+      total: Object.values(counts).reduce((a, b) => a + b, 0),
+      dailyLimit: LEAD_DAILY_LIMIT,
+      sentLast24h,
+      remainingToday: Math.max(0, LEAD_DAILY_LIMIT - sentLast24h),
+      withinSendHours: hour >= LEAD_SEND_START_HOUR && hour < LEAD_SEND_END_HOUR,
+      sendHours: `${LEAD_SEND_START_HOUR}:00–${LEAD_SEND_END_HOUR}:00 IST`,
+      templateConfigured: !!(MSG91_CONFIGURED && MSG91_LEAD_TEMPLATE_NAME),
+      templateName: MSG91_LEAD_TEMPLATE_NAME,
+      job: leadJob,
+      leads: leads.map(l => ({ id: l._id, name: l.name, phone: l.phone, source: l.source, status: l.status, sentAt: l.sentAt, repliedAt: l.repliedAt, createdAt: l.createdAt, lastError: l.lastError || '' }))
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Body: { csv: "<file text>", source: "where these leads came from", consent: true }
+app.post('/api/admin/leads/upload', adminAuth, async (req, res) => {
+  try {
+    if (req.body?.consent !== true) {
+      return res.status(400).json({ message: 'Please confirm these people agreed to be contacted by Biomexa on WhatsApp.' });
+    }
+    const rows = parseCsvText(req.body?.csv);
+    if (rows.length < 2) return res.status(400).json({ message: 'The file is empty. It needs a header row and columns "name" and "number".' });
+    const header = rows[0].map(h => String(h).trim().toLowerCase());
+    const numCol = header.findIndex(h => /^(number|phone|mobile|contact|whatsapp|mobile number|phone number|whatsapp number)$/.test(h));
+    const nameCol = header.findIndex(h => /^(name|full name|patient name|patient)$/.test(h));
+    if (numCol === -1) return res.status(400).json({ message: 'Could not find a "number" (or phone / mobile) column in the header row.' });
+    if (rows.length - 1 > 5000) return res.status(400).json({ message: 'Please upload at most 5,000 leads at a time.' });
+
+    const source = String(req.body?.source || '').trim().slice(0, 80);
+    const stats = { rows: rows.length - 1, added: 0, invalid: 0, duplicateInFile: 0, alreadyLead: 0, alreadyPatient: 0 };
+    const seen = new Set();
+    const candidates = [];
+    for (const r of rows.slice(1)) {
+      const phone = leadPhone(r[numCol]);
+      if (!phone) { stats.invalid++; continue; }
+      if (seen.has(phone)) { stats.duplicateInFile++; continue; }
+      seen.add(phone);
+      candidates.push({ phone, name: nameCol >= 0 ? String(r[nameCol] || '').trim().slice(0, 60) : '' });
+    }
+    const existing = new Set((await Lead.find({ phone: { $in: candidates.map(c => c.phone) } }).select('phone').lean()).map(l => l.phone));
+    const patientKeys = new Set((await Patient.find().select('phone').lean()).map(p => last10(p.phone)));
+    const docs = [];
+    for (const c of candidates) {
+      if (existing.has(c.phone)) { stats.alreadyLead++; continue; }
+      if (patientKeys.has(last10(c.phone))) { stats.alreadyPatient++; continue; }
+      docs.push({ ...c, source, uploadedBy: req.admin?.username || 'admin' });
+    }
+    if (docs.length) {
+      try { await Lead.insertMany(docs, { ordered: false }); stats.added = docs.length; }
+      catch (e) { stats.added = e.insertedDocs?.length ?? e.result?.insertedCount ?? 0; }
+    }
+    console.log(`📥 Leads uploaded by ${req.admin?.username || 'admin'}: ${JSON.stringify(stats)}`);
+    res.json({
+      message: `${stats.added} new lead${stats.added === 1 ? '' : 's'} added.` +
+        (stats.invalid ? ` ${stats.invalid} invalid number${stats.invalid === 1 ? '' : 's'} skipped.` : '') +
+        (stats.duplicateInFile ? ` ${stats.duplicateInFile} duplicate${stats.duplicateInFile === 1 ? '' : 's'} in the file.` : '') +
+        (stats.alreadyLead ? ` ${stats.alreadyLead} already in your leads.` : '') +
+        (stats.alreadyPatient ? ` ${stats.alreadyPatient} already registered on Biomexa.` : ''),
+      ...stats
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Body: { count: 250, retryFailed: false }
+app.post('/api/admin/leads/send', adminAuth, async (req, res) => {
+  try {
+    if (!MSG91_CONFIGURED || !MSG91_LEAD_TEMPLATE_NAME) {
+      return res.status(400).json({ message: 'Lead template not set up yet. Create "lead_onboarding" in MSG91, get it approved, then set MSG91_LEAD_TEMPLATE_NAME on Render.' });
+    }
+    if (leadJob.running) return res.status(409).json({ message: 'A campaign is already sending. Please wait for it to finish.' });
+    const hour = istHour();
+    if (hour < LEAD_SEND_START_HOUR || hour >= LEAD_SEND_END_HOUR) {
+      return res.status(400).json({ message: `Messages to new contacts only go out between ${LEAD_SEND_START_HOUR} AM and ${LEAD_SEND_END_HOUR - 12} PM (India time). Please try again then.` });
+    }
+    const sentLast24h = await Lead.countDocuments({ sentAt: { $gte: new Date(Date.now() - 24 * 3600000) } });
+    const remaining = Math.max(0, LEAD_DAILY_LIMIT - sentLast24h);
+    if (!remaining) return res.status(400).json({ message: `Today's limit of ${LEAD_DAILY_LIMIT} is used up. Send the next batch tomorrow — this protects your WhatsApp number.` });
+    await syncJoinedLeads();
+    const want = Math.min(remaining, Math.max(1, parseInt(req.body?.count, 10) || remaining));
+    const statuses = req.body?.retryFailed ? ['new', 'failed'] : ['new'];
+    const batch = await Lead.find({ status: { $in: statuses } }).sort({ createdAt: 1 }).limit(want).lean();
+    if (!batch.length) return res.status(400).json({ message: 'No leads waiting to be messaged. Upload a new list first.' });
+
+    leadJob = { running: true, total: batch.length, sent: 0, failed: 0, startedAt: new Date(), finishedAt: null, by: req.admin?.username || 'admin' };
+    runLeadCampaign(batch)
+      .catch(err => console.log('⚠️ Lead campaign error:', err.message))
+      .finally(() => {
+        leadJob.running = false; leadJob.finishedAt = new Date();
+        console.log(`📨 Lead campaign by ${leadJob.by}: ${leadJob.sent} sent, ${leadJob.failed} failed of ${leadJob.total}`);
+      });
+    res.status(202).json({ message: `Sending to ${batch.length} lead${batch.length === 1 ? '' : 's'} now. This page updates as it goes.`, job: leadJob });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+app.delete('/api/admin/leads/:id', adminAuth, async (req, res) => {
+  try {
+    const r = await Lead.deleteOne({ _id: req.params.id });
+    res.json({ message: r.deletedCount ? 'Lead deleted.' : 'Lead not found.' });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
   }
 });
 
