@@ -6068,6 +6068,89 @@ app.post('/api/admin/leads/campaign', adminAuth, async (req, res) => {
   }
 });
 
+// Campaign Insights (admin-analytics.html): lead funnel, START / STOP responses, results per
+// list source, day-by-day activity and the latest replies. Body-free GET; ?days=7|30|90|365.
+app.get('/api/admin/leads/analytics', adminAuth, async (req, res) => {
+  try {
+    await syncJoinedLeads();
+    const days = [7, 30, 90, 365].includes(parseInt(req.query.days, 10)) ? parseInt(req.query.days, 10) : 30;
+    const now = new Date();
+    const since = new Date(now.getTime() - days * 86400000);
+    const leads = await Lead.find().select('name phone source status createdAt sentAt repliedAt joinedAt optedOutAt lastError').lean();
+    const inRange = d => d && d >= since;
+    // A lead is "in range" when it was invited in the period (or uploaded, if never invited).
+    const scoped = leads.filter(l => inRange(l.sentAt) || (!l.sentAt && inRange(l.createdAt)));
+
+    const metrics = list => {
+      const m = { uploaded: list.length, invited: 0, started: 0, stopped: 0, joined: 0, failed: 0, noReply: 0 };
+      for (const l of list) {
+        if (l.sentAt) m.invited++;
+        if (l.repliedAt) m.started++;
+        if (l.status === 'optout' || l.optedOutAt) m.stopped++;
+        if (l.status === 'joined') m.joined++;
+        if (l.status === 'failed') m.failed++;
+        if (l.status === 'sent') m.noReply++;
+      }
+      const pct = (a, b) => b ? Math.round((a / b) * 1000) / 10 : 0;
+      m.responseRate = pct(m.started + m.stopped, m.invited);   // anyone who tapped a button
+      m.startRate = pct(m.started, m.invited);
+      m.stopRate = pct(m.stopped, m.invited);
+      m.conversionRate = pct(m.joined, m.invited);              // invited → signed up
+      m.startToJoin = pct(m.joined, m.started);
+      return m;
+    };
+    const totals = metrics(scoped);
+
+    // Median time from invite to START.
+    const replyHours = scoped.filter(l => l.sentAt && l.repliedAt && l.repliedAt >= l.sentAt)
+      .map(l => (l.repliedAt - l.sentAt) / 3600000).sort((a, b) => a - b);
+    totals.medianReplyHours = replyHours.length ? Math.round(replyHours[Math.floor(replyHours.length / 2)] * 10) / 10 : null;
+    // Invited 2+ days ago and never answered.
+    totals.silent48h = scoped.filter(l => l.status === 'sent' && l.sentAt && (now - l.sentAt) > 48 * 3600000).length;
+
+    const bySourceMap = new Map();
+    for (const l of scoped) {
+      const k = l.source || '(no source)';
+      if (!bySourceMap.has(k)) bySourceMap.set(k, []);
+      bySourceMap.get(k).push(l);
+    }
+    const bySource = [...bySourceMap.entries()].map(([source, list]) => ({ source, ...metrics(list) }))
+      .sort((a, b) => b.invited - a.invited || b.uploaded - a.uploaded);
+
+    // Day-by-day (India time).
+    const dayKey = d => new Date(d).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+    const daily = [];
+    const idx = new Map();
+    const span = Math.min(days, 90); // keep the chart readable; longer ranges show the last 90 days
+    for (let i = span - 1; i >= 0; i--) {
+      const k = dayKey(new Date(now.getTime() - i * 86400000));
+      idx.set(k, daily.length);
+      daily.push({ date: k, invited: 0, started: 0, stopped: 0, joined: 0 });
+    }
+    const bump = (d, field) => { if (!d) return; const i = idx.get(dayKey(d)); if (i !== undefined) daily[i][field]++; };
+    for (const l of leads) { bump(l.sentAt, 'invited'); bump(l.repliedAt, 'started'); bump(l.optedOutAt, 'stopped'); bump(l.joinedAt, 'joined'); }
+
+    // Latest button taps / sign-ups.
+    const events = [];
+    for (const l of leads) {
+      if (l.repliedAt) events.push({ type: 'start', at: l.repliedAt, name: l.name, phone: l.phone, source: l.source, status: l.status });
+      if (l.optedOutAt) events.push({ type: 'stop', at: l.optedOutAt, name: l.name, phone: l.phone, source: l.source, status: l.status });
+      if (l.joinedAt) events.push({ type: 'joined', at: l.joinedAt, name: l.name, phone: l.phone, source: l.source, status: l.status });
+    }
+    events.sort((a, b) => b.at - a.at);
+
+    // Registered-patient offers (biomexa_care_offer) — sends in the period + total opted out.
+    const [offersSent, patientsOptedOut] = await Promise.all([
+      Patient.countDocuments({ lastAdSentAt: { $gte: since } }),
+      Patient.countDocuments({ adOptOut: true })
+    ]);
+
+    res.json({ days, totals, bySource, daily, recent: events.slice(0, 100), patientOffers: { sent: offersSent, optedOut: patientsOptedOut } });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 app.delete('/api/admin/leads/:id', adminAuth, async (req, res) => {
   try {
     const r = await Lead.deleteOne({ _id: req.params.id });

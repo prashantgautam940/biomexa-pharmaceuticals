@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Campaign Insights | Biomexa Admin</title>
+<link rel="icon" type="image/svg+xml" href="logo.svg">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<style>
+:root { --navy: #16336b; --green: #1c9a55; --green-soft: #e8f6ee; --amber: #b45309; --amber-soft: #fff6e6; --danger: #c0262d; --bg: #f3f6fb; --card: #fff; --inner: #f6f8fc; --text: #13213d; --muted: #5b6b86; --line: #e2e8f2; --shadow: 0 1px 2px rgba(19,33,61,.05), 0 8px 24px rgba(19,33,61,.07);
+  /* chart roles (validated categorical slots 1–3, light surface) */
+  --series-1: #2a78d6; --series-2: #eb6834; --series-3: #1baf7a; --grid: #e6e9ef; --axis: #8a94a6; }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+header { background: rgba(255,255,255,.95); border-bottom: 1px solid var(--line); padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 50; gap: 1rem; flex-wrap: wrap; }
+header nav { display: flex; gap: 1.25rem; align-items: center; flex-wrap: wrap; }
+header nav a { color: var(--muted); text-decoration: none; font-weight: 500; font-size: .9rem; }
+header nav a:hover, header nav a.active { color: var(--navy); }
+.container { max-width: 1200px; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+.top { display: flex; justify-content: space-between; align-items: flex-end; gap: 1rem; flex-wrap: wrap; }
+h1 { font-size: 1.7rem; letter-spacing: -.02em; display: flex; align-items: center; gap: .6rem; }
+h1 i { color: var(--navy); }
+.sub { color: var(--muted); margin-top: .35rem; font-size: .93rem; max-width: 720px; }
+.range { display: flex; gap: .35rem; background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 4px; }
+.range button { border: 0; background: none; font: inherit; font-size: .84rem; font-weight: 600; color: var(--muted); padding: 7px 12px; border-radius: 9px; cursor: pointer; }
+.range button.on { background: var(--navy); color: #fff; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 1rem; margin: 1.5rem 0; }
+.tile { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 1rem 1.15rem; box-shadow: var(--shadow); }
+.tile .lbl { font-size: .78rem; color: var(--muted); font-weight: 600; display: flex; align-items: center; gap: .45rem; }
+.tile .num { font-size: 1.9rem; font-weight: 800; margin-top: .3rem; letter-spacing: -.02em; }
+.tile .hint { font-size: .76rem; color: var(--muted); margin-top: .2rem; }
+.grid2 { display: grid; grid-template-columns: 1.1fr .9fr; gap: 1.5rem; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 18px; box-shadow: var(--shadow); padding: 1.4rem; margin-bottom: 1.5rem; }
+.card h2 { font-size: 1.05rem; display: flex; gap: .5rem; align-items: center; }
+.card h2 i { color: var(--navy); }
+.card .desc { color: var(--muted); font-size: .84rem; margin: .3rem 0 1rem; line-height: 1.5; }
+/* funnel */
+.funnel { display: grid; gap: .7rem; }
+.fstep { display: grid; grid-template-columns: 130px 1fr 92px; gap: .75rem; align-items: center; font-size: .86rem; }
+.fstep .name { font-weight: 600; color: #34425e; }
+.fbar { height: 26px; background: var(--inner); border-radius: 6px; position: relative; overflow: hidden; }
+.fbar > div { height: 100%; background: var(--navy); border-radius: 0 4px 4px 0; min-width: 2px; transition: width .4s; }
+.fstep .val { text-align: right; font-weight: 700; }
+.fstep .val small { display: block; font-weight: 500; color: var(--muted); font-size: .74rem; }
+.fnote { margin-top: 1rem; padding: .75rem .9rem; background: var(--inner); border-radius: 10px; font-size: .84rem; color: #34425e; line-height: 1.5; }
+/* responses donut-free summary */
+.split { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: .6rem; }
+.split div { background: var(--inner); border-radius: 12px; padding: .75rem .85rem; }
+.split b { display: block; font-size: 1.4rem; margin-top: .15rem; }
+.split span { font-size: .76rem; color: var(--muted); font-weight: 600; }
+.stack { display: flex; height: 14px; border-radius: 4px; overflow: hidden; margin: 1rem 0 .4rem; gap: 2px; background: #fff; }
+.stack > div { height: 100%; }
+.stack-legend { display: flex; gap: 1rem; flex-wrap: wrap; font-size: .78rem; color: var(--muted); }
+.sw { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
+/* daily chart */
+.chart-head { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; }
+.legend { display: flex; gap: 1rem; flex-wrap: wrap; font-size: .8rem; color: #34425e; }
+.toggle { border: 1px solid var(--line); background: #fff; font: inherit; font-size: .78rem; font-weight: 600; color: var(--navy); padding: 6px 11px; border-radius: 9px; cursor: pointer; }
+.chart-wrap { position: relative; margin-top: .75rem; }
+svg.daily { width: 100%; height: 260px; display: block; }
+.tip { position: absolute; pointer-events: none; background: #13213d; color: #fff; font-size: .78rem; padding: .55rem .7rem; border-radius: 9px; line-height: 1.55; white-space: nowrap; transform: translate(-50%, -100%); display: none; z-index: 5; box-shadow: 0 6px 20px rgba(0,0,0,.18); }
+.tip b { display: block; margin-bottom: 2px; }
+table { width: 100%; border-collapse: collapse; font-size: .85rem; }
+th { text-align: left; font-size: .72rem; color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: .03em; padding: .55rem .5rem; border-bottom: 1px solid var(--line); }
+td { padding: .6rem .5rem; border-bottom: 1px solid var(--line); vertical-align: middle; }
+td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; }
+.table-wrap { overflow-x: auto; }
+.mini { display: inline-block; width: 70px; height: 6px; background: var(--inner); border-radius: 3px; vertical-align: middle; margin-left: 6px; overflow: hidden; }
+.mini > i { display: block; height: 100%; background: var(--navy); }
+.pill { display: inline-flex; align-items: center; gap: 5px; font-size: .72rem; font-weight: 700; padding: 3px 9px; border-radius: 999px; }
+.e-start { background: var(--green-soft); color: #11663a; } .e-stop { background: #fdecec; color: var(--danger); } .e-joined { background: #e5efff; color: #1d4fb3; }
+.tabs { display: flex; gap: .4rem; flex-wrap: wrap; }
+.tab { padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line); background: #fff; font: inherit; font-size: .8rem; font-weight: 600; color: var(--muted); cursor: pointer; }
+.tab.on { background: var(--navy); color: #fff; border-color: var(--navy); }
+.toolbar { display: flex; justify-content: space-between; align-items: center; gap: .75rem; flex-wrap: wrap; margin-bottom: .8rem; }
+.btn { display: inline-flex; align-items: center; gap: .45rem; padding: 7px 12px; border-radius: 9px; border: 1px solid var(--line); background: #fff; color: var(--navy); font: inherit; font-weight: 700; font-size: .8rem; cursor: pointer; text-decoration: none; }
+.empty, .loading { text-align: center; color: var(--muted); padding: 2rem 1rem; font-size: .9rem; }
+.muted { color: var(--muted); }
+@media (max-width: 900px) { .grid2 { grid-template-columns: 1fr; } .fstep { grid-template-columns: 105px 1fr 80px; } }
+@media (max-width: 560px) { header { padding: .8rem 16px; } .container { padding: 1.25rem 16px 3rem; } .split { grid-template-columns: 1fr; } }
+</style>
+<link rel="stylesheet" href="css/biomexa-ui.css">
+</head>
+<body>
+<header>
+  <a href="index.html"><img src="images/logo-full.png" alt="Biomexa Pharmaceuticals" style="height:30px;width:auto;"></a>
+  <nav>
+    <a href="admin.html"><i class="fas fa-arrow-left"></i> Admin Panel</a>
+    <a href="admin-reminders.html">Reminder Center</a>
+    <a href="admin-leads.html">WhatsApp Campaigns</a>
+    <a href="admin-analytics.html" class="active">Campaign Insights</a>
+    <a href="#" onclick="logout();return false;">Logout</a>
+  </nav>
+</header>
+
+<div class="container">
+  <div class="top">
+    <div>
+      <h1><i class="fas fa-chart-column"></i> Campaign Insights</h1>
+      <p class="sub">How your uploaded leads are responding: who tapped <b>Start Reminders</b> or <b>Stop</b>, who signed up, and which lists work best.</p>
+    </div>
+    <div class="range" role="group" aria-label="Date range">
+      <button data-d="7" onclick="setDays(7)">7 days</button>
+      <button data-d="30" onclick="setDays(30)">30 days</button>
+      <button data-d="90" onclick="setDays(90)">90 days</button>
+      <button data-d="365" onclick="setDays(365)">1 year</button>
+    </div>
+  </div>
+
+  <div class="tiles">
+    <div class="tile"><div class="lbl"><i class="fas fa-paper-plane"></i> Leads invited</div><div class="num" id="tInvited">–</div><div class="hint" id="tUploaded"></div></div>
+    <div class="tile"><div class="lbl"><i class="fas fa-play"></i> Tapped START</div><div class="num" id="tStart">–</div><div class="hint" id="tStartRate"></div></div>
+    <div class="tile"><div class="lbl"><i class="fas fa-hand"></i> Tapped STOP</div><div class="num" id="tStop">–</div><div class="hint" id="tStopRate"></div></div>
+    <div class="tile"><div class="lbl"><i class="fas fa-user-check"></i> Signed up (converted)</div><div class="num" id="tJoined">–</div><div class="hint" id="tConv"></div></div>
+    <div class="tile"><div class="lbl"><i class="far fa-clock"></i> Typical reply time</div><div class="num" id="tReply">–</div><div class="hint">median, invite → START</div></div>
+    <div class="tile"><div class="lbl"><i class="fas fa-moon"></i> No reply after 48h</div><div class="num" id="tSilent">–</div><div class="hint">invited, never tapped</div></div>
+  </div>
+
+  <div class="grid2">
+    <div class="card">
+      <h2><i class="fas fa-filter"></i> Lead conversion funnel</h2>
+      <p class="desc">From the leads you uploaded to the ones who created a Biomexa account. Percentages are of leads invited.</p>
+      <div class="funnel" id="funnel"><div class="loading"><i class="fas fa-spinner fa-spin"></i></div></div>
+      <div class="fnote" id="funnelNote"></div>
+    </div>
+    <div class="card">
+      <h2><i class="fas fa-reply-all"></i> Patient responses</h2>
+      <p class="desc">What invited leads did with the message.</p>
+      <div class="split">
+        <div><span>Tapped START</span><b id="rStart">–</b></div>
+        <div><span>Tapped STOP</span><b id="rStop">–</b></div>
+        <div><span>No reply yet</span><b id="rNone">–</b></div>
+      </div>
+      <div class="stack" id="respStack" aria-hidden="true"></div>
+      <div class="stack-legend">
+        <span><i class="sw" style="background:var(--series-1)"></i>START</span>
+        <span><i class="sw" style="background:var(--series-2)"></i>STOP</span>
+        <span><i class="sw" style="background:#cfd6e2"></i>No reply</span>
+      </div>
+      <div class="fnote" id="respNote" style="margin-top:1rem"></div>
+      <div class="fnote" id="offerNote" style="margin-top:.75rem"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="chart-head">
+      <div><h2><i class="fas fa-calendar-day"></i> Day by day</h2><p class="desc" style="margin-bottom:0">Invites sent and button taps per day (India time).</p></div>
+      <div style="display:flex;gap:1rem;align-items:center;flex-wrap:wrap">
+        <div class="legend">
+          <span><i class="sw" style="background:var(--series-1)"></i>Tapped START</span>
+          <span><i class="sw" style="background:var(--series-2)"></i>Tapped STOP</span>
+          <span><i class="sw" style="background:var(--series-3)"></i>Invited</span>
+        </div>
+        <button class="toggle" id="viewToggle" onclick="toggleTable()"><i class="fas fa-table"></i> Table</button>
+      </div>
+    </div>
+    <div class="chart-wrap" id="chartWrap"><svg class="daily" id="daily" role="img" aria-label="Daily invites, START and STOP taps"></svg><div class="tip" id="tip"></div></div>
+    <div class="table-wrap" id="dailyTable" style="display:none;margin-top:.75rem"></div>
+  </div>
+
+  <div class="card">
+    <h2><i class="fas fa-layer-group"></i> Results by list source</h2>
+    <p class="desc">Compare the lists you uploaded (the "Where is this list from?" box). Use it to see which clinic, camp or channel brings patients who actually sign up.</p>
+    <div class="table-wrap" id="sources"></div>
+  </div>
+
+  <div class="card">
+    <div class="toolbar">
+      <div><h2><i class="fas fa-bolt"></i> Latest responses</h2></div>
+      <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
+        <div class="tabs">
+          <button class="tab" data-t="all" onclick="setType('all')">All</button>
+          <button class="tab" data-t="start" onclick="setType('start')">START</button>
+          <button class="tab" data-t="stop" onclick="setType('stop')">STOP</button>
+          <button class="tab" data-t="joined" onclick="setType('joined')">Signed up</button>
+        </div>
+        <button class="btn" onclick="exportRecent()"><i class="fas fa-download"></i> Export</button>
+      </div>
+    </div>
+    <div class="table-wrap" id="recent"></div>
+  </div>
+</div>
+
+<script>
+const API_BASE = (location.hostname === 'localhost' || location.hostname === '127.0.0.1') ? 'http://localhost:3000' : 'https://biomexa-api-f9f6.onrender.com';
+const authHeader = sessionStorage.getItem('adminAuthHeader') || '';
+if (!authHeader) location.href = 'admin.html';
+
+let days = 30, type = 'all', data = null, showTable = false;
+const SERIES = [
+  { key: 'started', label: 'Tapped START', color: 'var(--series-1)' },
+  { key: 'stopped', label: 'Tapped STOP', color: 'var(--series-2)' },
+  { key: 'invited', label: 'Invited', color: 'var(--series-3)' }
+];
+
+function authFetch(path) {
+  return fetch(API_BASE + path, { headers: { Authorization: authHeader } }).then(r => {
+    if (r.status === 401) { logout(); throw new Error('Session expired'); }
+    return r;
+  });
+}
+function logout() { sessionStorage.removeItem('adminAuthHeader'); location.href = 'admin.html'; }
+const esc = t => String(t ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const n = v => Number(v || 0).toLocaleString('en-IN');
+const pct = v => (v || 0).toLocaleString('en-IN', { maximumFractionDigits: 1 }) + '%';
+const fmtDT = d => new Date(d).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
+const fmtDay = k => new Date(k + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+function hours(h) { if (h === null || h === undefined) return '–'; if (h < 1) return Math.max(1, Math.round(h * 60)) + ' min'; if (h < 48) return (Math.round(h * 10) / 10) + ' h'; return Math.round(h / 24) + ' days'; }
+
+function setDays(d) { days = d; load(); }
+function setType(t) { type = t; renderRecent(); }
+function toggleTable() {
+  showTable = !showTable;
+  document.getElementById('dailyTable').style.display = showTable ? 'block' : 'none';
+  document.getElementById('chartWrap').style.display = showTable ? 'none' : 'block';
+  document.getElementById('viewToggle').innerHTML = showTable ? '<i class="fas fa-chart-column"></i> Chart' : '<i class="fas fa-table"></i> Table';
+}
+
+function load() {
+  document.querySelectorAll('.range button').forEach(b => b.classList.toggle('on', +b.dataset.d === days));
+  authFetch('/api/admin/leads/analytics?days=' + days).then(r => r.json()).then(d => {
+    if (!d.totals) throw new Error(d.message || 'Could not load');
+    data = d; render();
+  }).catch(e => { document.getElementById('funnel').innerHTML = `<div class="empty">Couldn't load — ${esc(e.message)}</div>`; });
+}
+
+function render() {
+  const t = data.totals;
+  document.getElementById('tInvited').textContent = n(t.invited);
+  document.getElementById('tUploaded').textContent = `${n(t.uploaded)} uploaded · ${n(t.failed)} failed to send`;
+  document.getElementById('tStart').textContent = n(t.started);
+  document.getElementById('tStartRate').textContent = `${pct(t.startRate)} of invited`;
+  document.getElementById('tStop').textContent = n(t.stopped);
+  document.getElementById('tStopRate').textContent = `${pct(t.stopRate)} of invited`;
+  document.getElementById('tJoined').textContent = n(t.joined);
+  document.getElementById('tConv').textContent = `${pct(t.conversionRate)} conversion`;
+  document.getElementById('tReply').textContent = hours(t.medianReplyHours);
+  document.getElementById('tSilent').textContent = n(t.silent48h);
+
+  // Funnel
+  const steps = [
+    { name: 'Uploaded', v: t.uploaded, base: null },
+    { name: 'Invited', v: t.invited, base: t.invited },
+    { name: 'Tapped START', v: t.started, base: t.invited },
+    { name: 'Signed up', v: t.joined, base: t.invited }
+  ];
+  const max = Math.max(1, ...steps.map(s => s.v));
+  document.getElementById('funnel').innerHTML = steps.map(s => `
+    <div class="fstep" title="${esc(s.name)}: ${n(s.v)}">
+      <div class="name">${s.name}</div>
+      <div class="fbar"><div style="width:${(s.v / max) * 100}%"></div></div>
+      <div class="val">${n(s.v)}${s.base !== null && s.name !== 'Invited' ? `<small>${pct(s.base ? s.v / s.base * 100 : 0)}</small>` : ''}</div>
+    </div>`).join('');
+  document.getElementById('funnelNote').innerHTML = t.invited
+    ? `Out of every <b>100 leads invited</b>, about <b>${Math.round(t.startRate)}</b> tap START and <b>${Math.round(t.conversionRate)}</b> create an account. ${t.started ? `Of those who tap START, <b>${pct(t.startToJoin)}</b> finish signing up.` : ''}`
+    : 'No invites sent in this period yet. Send a campaign from <a href="admin-leads.html">WhatsApp Campaigns</a>.';
+
+  // Responses
+  const none = Math.max(0, t.invited - t.started - t.stopped);
+  document.getElementById('rStart').textContent = n(t.started);
+  document.getElementById('rStop').textContent = n(t.stopped);
+  document.getElementById('rNone').textContent = n(none);
+  const tot = Math.max(1, t.started + t.stopped + none);
+  document.getElementById('respStack').innerHTML = [[t.started, 'var(--series-1)'], [t.stopped, 'var(--series-2)'], [none, '#cfd6e2']]
+    .filter(([v]) => v > 0).map(([v, c]) => `<div style="width:${v / tot * 100}%;background:${c}"></div>`).join('');
+  document.getElementById('respNote').innerHTML = t.invited
+    ? `<b>${pct(t.responseRate)}</b> of invited leads tapped a button. ` + (t.stopRate > 5 ? '<b>STOP rate is above 5%</b> — WhatsApp may lower your number\'s quality rating. Upload only people who agreed to be contacted.' : 'STOP rate is healthy (under 5%).')
+    : 'Responses appear here once leads are invited.';
+  document.getElementById('offerNote').innerHTML = `<i class="fas fa-user-check"></i> Registered patients: <b>${n(data.patientOffers.sent)}</b> got their latest Biomexa Care offer in this period · <b>${n(data.patientOffers.optedOut)}</b> have replied STOP to offers in total.`;
+
+  renderDaily(); renderSources(); renderRecent();
+}
+
+// ---------- day-by-day grouped bars ----------
+function renderDaily() {
+  const rows = data.daily.slice(-Math.min(days, 90));
+  const svg = document.getElementById('daily');
+  const W = Math.max(280, svg.clientWidth || 900), H = 260, L = 34, R = 8, T = 10, B = 28;
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  const maxV = Math.max(1, ...rows.flatMap(r => SERIES.map(s => r[s.key])));
+  const step = maxV <= 5 ? 1 : Math.ceil(maxV / 4 / 5) * 5;
+  const top = Math.ceil(maxV / step) * step;
+  const y = v => T + (H - T - B) * (1 - v / top);
+  const slot = (W - L - R) / rows.length;
+  const gap = 2, inner = Math.max(2, slot * 0.72);
+  const bw = Math.max(1.5, (inner - gap * (SERIES.length - 1)) / SERIES.length);
+  let g = '';
+  for (let v = 0; v <= top; v += step) {
+    g += `<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}" stroke="var(--grid)" stroke-width="1"/>` +
+         `<text x="${L - 6}" y="${y(v) + 4}" text-anchor="end" font-size="11" fill="var(--axis)">${v}</text>`;
+  }
+  const every = Math.ceil(rows.length / Math.max(3, Math.min(10, Math.floor(W / 90))));
+  rows.forEach((r, i) => {
+    const x0 = L + i * slot + (slot - inner) / 2;
+    SERIES.forEach((s, j) => {
+      const v = r[s.key]; if (!v) return;
+      const x = x0 + j * (bw + gap), yy = y(v), h = (H - B) - yy, rad = Math.min(4, bw / 2, h);
+      g += `<path d="M${x},${H - B} V${yy + rad} Q${x},${yy} ${x + rad},${yy} H${x + bw - rad} Q${x + bw},${yy} ${x + bw},${yy + rad} V${H - B} Z" fill="${s.color}"/>`;
+    });
+    if (i % every === 0) g += `<text x="${L + i * slot + slot / 2}" y="${H - 8}" text-anchor="middle" font-size="11" fill="var(--axis)">${fmtDay(r.date)}</text>`;
+    g += `<rect class="hit" data-i="${i}" x="${L + i * slot}" y="${T}" width="${slot}" height="${H - T - B}" fill="transparent"/>`;
+  });
+  svg.innerHTML = g;
+  const tip = document.getElementById('tip'), wrap = document.getElementById('chartWrap');
+  svg.querySelectorAll('.hit').forEach(el => {
+    el.addEventListener('mouseenter', () => el.setAttribute('fill', 'rgba(22,51,107,.05)'));
+    el.addEventListener('mouseleave', () => { el.setAttribute('fill', 'transparent'); tip.style.display = 'none'; });
+    el.addEventListener('mousemove', e => {
+      const r = rows[+el.dataset.i], box = wrap.getBoundingClientRect();
+      tip.innerHTML = `<b>${fmtDay(r.date)}</b>` + SERIES.map(s => `<span class="sw" style="background:${s.color}"></span>${s.label}: ${r[s.key]}`).join('<br>') + `<br><span class="sw" style="background:transparent"></span>Signed up: ${r.joined}`;
+      tip.style.left = Math.min(box.width - 80, Math.max(80, e.clientX - box.left)) + 'px';
+      tip.style.top = (e.clientY - box.top - 12) + 'px';
+      tip.style.display = 'block';
+    });
+  });
+  document.getElementById('dailyTable').innerHTML = `<table><thead><tr><th>Date</th><th class="n">Invited</th><th class="n">Tapped START</th><th class="n">Tapped STOP</th><th class="n">Signed up</th></tr></thead><tbody>` +
+    rows.slice().reverse().filter(r => r.invited || r.started || r.stopped || r.joined).map(r => `<tr><td>${fmtDay(r.date)}</td><td class="n">${r.invited}</td><td class="n">${r.started}</td><td class="n">${r.stopped}</td><td class="n">${r.joined}</td></tr>`).join('') +
+    '</tbody></table>' + (rows.some(r => r.invited || r.started || r.stopped || r.joined) ? '' : '<div class="empty">No activity in this period.</div>');
+}
+
+function renderSources() {
+  const el = document.getElementById('sources');
+  if (!data.bySource.length) { el.innerHTML = '<div class="empty">No leads in this period.</div>'; return; }
+  const best = Math.max(...data.bySource.map(s => s.conversionRate));
+  el.innerHTML = `<table><thead><tr><th>Source</th><th class="n">Uploaded</th><th class="n">Invited</th><th class="n">START</th><th class="n">STOP</th><th class="n">Signed up</th><th class="n">Conversion</th></tr></thead><tbody>` +
+    data.bySource.map(s => `<tr>
+      <td><b>${esc(s.source)}</b>${s.conversionRate === best && best > 0 && data.bySource.length > 1 ? ' <span class="pill e-start">Best</span>' : ''}</td>
+      <td class="n">${n(s.uploaded)}</td><td class="n">${n(s.invited)}</td>
+      <td class="n">${n(s.started)} <span class="muted">(${pct(s.startRate)})</span></td>
+      <td class="n">${n(s.stopped)} <span class="muted">(${pct(s.stopRate)})</span></td>
+      <td class="n">${n(s.joined)}</td>
+      <td class="n"><b>${pct(s.conversionRate)}</b><span class="mini"><i style="width:${Math.min(100, s.conversionRate)}%"></i></span></td>
+    </tr>`).join('') + '</tbody></table>';
+}
+
+const ELABEL = { start: '<i class="fas fa-play"></i> START', stop: '<i class="fas fa-hand"></i> STOP', joined: '<i class="fas fa-user-check"></i> Signed up' };
+function renderRecent() {
+  document.querySelectorAll('.tab').forEach(b => b.classList.toggle('on', b.dataset.t === type));
+  if (!data) return;
+  const rows = data.recent.filter(e => type === 'all' || e.type === type);
+  const el = document.getElementById('recent');
+  if (!rows.length) { el.innerHTML = '<div class="empty">No responses yet. When a lead taps Start Reminders or Stop, they show up here.</div>'; return; }
+  el.innerHTML = `<table><thead><tr><th>When</th><th>Response</th><th>Name</th><th>Number</th><th>Source</th></tr></thead><tbody>` +
+    rows.map(e => `<tr><td>${fmtDT(e.at)}</td><td><span class="pill e-${e.type}">${ELABEL[e.type]}</span></td><td><b>${esc(e.name || '—')}</b></td><td>${esc(e.phone)}</td><td>${esc(e.source || '')}</td></tr>`).join('') +
+    '</tbody></table>';
+}
+
+function exportRecent() {
+  if (!data) return;
+  const q = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  const T = { start: 'START', stop: 'STOP', joined: 'Signed up' };
+  const rows = data.recent.filter(e => type === 'all' || e.type === type);
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob(['when,response,name,number,source\n' + rows.map(e => [new Date(e.at).toISOString(), T[e.type], e.name, e.phone, e.source].map(q).join(',')).join('\n')], { type: 'text/csv' }));
+  a.download = `biomexa-responses-${type}.csv`; a.click();
+}
+
+let rt; window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => data && renderDaily(), 150); });
+load();
+</script>
+</body>
+</html>

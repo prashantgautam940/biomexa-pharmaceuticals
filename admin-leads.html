@@ -104,6 +104,7 @@ details summary { cursor: pointer; font-weight: 700; color: var(--navy); font-si
     <a href="admin.html"><i class="fas fa-arrow-left"></i> Admin Panel</a>
     <a href="admin-reminders.html">Reminder Center</a>
     <a href="admin-leads.html" class="active">WhatsApp Campaigns</a>
+    <a href="admin-analytics.html">Campaign Insights</a>
     <a href="#" onclick="logout();return false;">Logout</a>
   </nav>
 </header>
@@ -198,7 +199,7 @@ Reply STOP to stop these messages.</div>
   </div>
 
   <div class="card">
-    <h2><i class="fas fa-address-book"></i> Invited contacts</h2>
+    <h2><i class="fas fa-address-book"></i> Invited contacts <a href="admin-analytics.html" style="margin-left:auto;font-size:.82rem;font-weight:700;color:var(--navy);text-decoration:none"><i class="fas fa-chart-column"></i> See insights</a></h2>
     <p class="desc">Everyone invited so far. Tapping <b>Start Reminders</b> sends them the sign-up link automatically; once they sign up they move to <b>Joined</b>.</p>
     <div class="stats" style="margin:.5rem 0 1rem">
       <button class="stat n-new" data-f="new" onclick="setFilter('new')"><div class="lbl"><i class="fas fa-inbox"></i> Waiting</div><div class="num" id="c-new">–</div></button>
