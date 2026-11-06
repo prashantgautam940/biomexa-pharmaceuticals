@@ -175,6 +175,9 @@
   const params = new URLSearchParams(location.search);
   let medKey = PRODUCTS[params.get('product')] ? params.get('product') : (params.get('product') === 'other' ? 'other' : 'telmexa-am');
   document.querySelector(`input[name=med][value="${medKey}"]`).checked = true;
+  // ?phone=9876543210 (from the WhatsApp invite reply) pre-fills the number so signing up is one step.
+  const prefillPhone = String(params.get('phone') || '').replace(/\D/g, '').slice(-10);
+  if (/^[6-9]\d{9}$/.test(prefillPhone)) document.getElementById('phone').value = prefillPhone;
 
   function renderMed() {
     const p = PRODUCTS[medKey];
