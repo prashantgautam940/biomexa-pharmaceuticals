@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lead Campaigns | Biomexa Admin</title>
+<title>WhatsApp Campaigns | Biomexa Admin</title>
 <link rel="icon" type="image/svg+xml" href="logo.svg">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -78,6 +78,22 @@ td .err { color: var(--danger); font-size: .74rem; margin-top: 3px; max-width: 3
 .warn { display: none; margin-bottom: 1.5rem; background: var(--amber-soft); color: var(--amber); border: 1px solid #f5d9a8; border-radius: 14px; padding: .9rem 1.1rem; font-size: .88rem; line-height: 1.5; }
 @media (max-width: 900px) { .grid2 { grid-template-columns: 1fr; } .search input { width: 100%; } .search { width: 100%; } }
 @media (max-width: 560px) { header { padding: .8rem 16px; } .container { padding: 1.25rem 16px 3rem; } .limits { grid-template-columns: 1fr 1fr 1fr; } }
+.big { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin: 1rem 0; }
+.big .tile { border-radius: 16px; padding: 1rem 1.1rem; border: 1px solid var(--line); background: #fff; cursor: pointer; text-align: left; font: inherit; color: inherit; }
+.big .tile.on { border-color: var(--navy); box-shadow: 0 0 0 2px rgba(22,51,107,.15); }
+.big .tile .n { font-size: 2rem; font-weight: 800; margin-top: .2rem; }
+.big .tile .s { font-size: .78rem; color: var(--muted); margin-top: .2rem; }
+.tile.offer .n { color: #11663a; } .tile.invite .n { color: #2563eb; } .tile.skipped .n { color: var(--muted); }
+.p-offer { background: var(--green-soft); color: #11663a; } .p-invite { background: #e5efff; color: #2563eb; } .p-skipped { background: var(--inner); color: var(--muted); }
+.sendbar { display: flex; gap: 1rem; align-items: center; justify-content: space-between; flex-wrap: wrap; background: linear-gradient(135deg, #fff 0%, #f1faf5 100%); border: 1px solid rgba(28,154,85,.35); border-radius: 14px; padding: 1rem 1.1rem; }
+.sendbar .btn.wa { font-size: 1rem; padding: 13px 22px; }
+.sendbar small { color: var(--muted); font-size: .8rem; display: block; margin-top: .2rem; }
+.inline { display: flex; gap: .75rem; flex-wrap: wrap; align-items: flex-end; }
+.inline .field { flex: 1; min-width: 200px; margin-bottom: 0; }
+details summary { cursor: pointer; font-weight: 700; color: var(--navy); font-size: .92rem; }
+.prevs { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1rem; }
+.prevs h4 { font-size: .82rem; margin-bottom: .4rem; color: #34425e; }
+@media (max-width: 760px) { .big { grid-template-columns: 1fr; } .prevs { grid-template-columns: 1fr; } }
 </style>
 <link rel="stylesheet" href="css/biomexa-ui.css">
 </head>
@@ -87,62 +103,64 @@ td .err { color: var(--danger); font-size: .74rem; margin-top: 3px; max-width: 3
   <nav>
     <a href="admin.html"><i class="fas fa-arrow-left"></i> Admin Panel</a>
     <a href="admin-reminders.html">Reminder Center</a>
-    <a href="admin-leads.html" class="active">Lead Campaigns</a>
+    <a href="admin-leads.html" class="active">WhatsApp Campaigns</a>
     <a href="#" onclick="logout();return false;">Logout</a>
   </nav>
 </header>
 
 <div class="container">
-  <h1><i class="fab fa-whatsapp"></i> Lead Campaigns</h1>
-  <p class="sub">Upload a list of new contacts (from clinics, pharmacies, camps or your website) and invite them on WhatsApp to start free medicine reminders. People who tap <b>Start Reminders</b> get the sign-up link automatically; <b>Stop</b> removes them for good. When a lead signs up, they move to <b>Joined</b> on their own.</p>
+  <h1><i class="fab fa-whatsapp"></i> WhatsApp Campaigns</h1>
+  <p class="sub">Upload any contact list (CSV). Biomexa reads it, finds the names and numbers, and sorts everyone: <b>registered patients</b> get the Biomexa Care offer, <b>new contacts</b> get the invite to start free reminders, and anyone messaged recently, opted out or with a wrong number is skipped. Then one click sends it all.</p>
 
   <div class="warn" id="tplWarn"></div>
 
-  <div class="stats">
-    <button class="stat n-new" data-f="new" onclick="setFilter('new')"><div class="lbl"><i class="fas fa-inbox"></i> Waiting</div><div class="num" id="c-new">–</div></button>
-    <button class="stat n-sent" data-f="sent" onclick="setFilter('sent')"><div class="lbl"><i class="fas fa-paper-plane"></i> Sent</div><div class="num" id="c-sent">–</div></button>
-    <button class="stat n-replied" data-f="replied" onclick="setFilter('replied')"><div class="lbl"><i class="fas fa-reply"></i> Replied START</div><div class="num" id="c-replied">–</div></button>
-    <button class="stat n-joined" data-f="joined" onclick="setFilter('joined')"><div class="lbl"><i class="fas fa-user-check"></i> Joined</div><div class="num" id="c-joined">–</div></button>
-    <button class="stat n-optout" data-f="optout" onclick="setFilter('optout')"><div class="lbl"><i class="fas fa-ban"></i> Opted out</div><div class="num" id="c-optout">–</div></button>
-    <button class="stat n-failed" data-f="failed" onclick="setFilter('failed')"><div class="lbl"><i class="fas fa-triangle-exclamation"></i> Failed</div><div class="num" id="c-failed">–</div></button>
+  <div class="card">
+    <h2><i class="fas fa-file-csv"></i> 1. Upload your list</h2>
+    <p class="desc">Any CSV with names and mobile numbers works — the columns are found automatically, with or without a header row. From Excel or Google Sheets: <i>File → Download / Save as → CSV</i>. <a href="#" onclick="downloadSample();return false;">Sample CSV</a></p>
+    <div class="inline">
+      <div class="field"><label for="file">CSV file</label><input type="file" id="file" accept=".csv,text/csv,text/plain"></div>
+      <div class="field"><label for="gap">Skip anyone messaged in the last</label>
+        <select id="gap"><option value="1">1 day</option><option value="3">3 days</option><option value="7" selected>7 days</option><option value="10">10 days</option><option value="14">14 days</option><option value="30">30 days</option></select></div>
+      <div class="field"><label for="source">Where is this list from? (optional)</label><input type="text" id="source" placeholder="e.g. Dr Sharma clinic, health camp" maxlength="80"></div>
+    </div>
+    <div id="analyzeResult" class="result"></div>
   </div>
 
-  <div class="grid2">
-    <div class="card">
-      <h2><i class="fas fa-file-csv"></i> 1. Upload leads</h2>
-      <p class="desc">CSV with a header row and columns <b>name</b> and <b>number</b> (phone / mobile also works). Numbers like <code>98765 43210</code>, <code>+91…</code> or <code>0987…</code> are fixed automatically. Duplicates, invalid numbers and people already on Biomexa are skipped. <a href="#" onclick="downloadSample();return false;">Download sample CSV</a></p>
-      <div class="field"><label for="file">CSV file</label><input type="file" id="file" accept=".csv,text/csv"></div>
-      <div class="field"><label for="source">Where did these leads come from?</label><input type="text" id="source" placeholder="e.g. Dr Sharma clinic, Hapur health camp" maxlength="80"></div>
-      <label class="check"><input type="checkbox" id="consent"> These people agreed to be contacted by Biomexa on WhatsApp (required by WhatsApp and India's DPDP Act). Bought or scraped lists get your number blocked.</label>
-      <button class="btn" id="uploadBtn" onclick="upload()"><i class="fas fa-upload"></i> Upload leads</button>
-      <div id="uploadResult" class="result"></div>
+  <div class="card" id="planCard" style="display:none">
+    <h2><i class="fas fa-wand-magic-sparkles"></i> 2. Check who gets what</h2>
+    <div class="big">
+      <button class="tile offer" data-g="offer" onclick="setGroup('offer')"><div class="lbl" style="font-size:.8rem;font-weight:700;color:#11663a"><i class="fas fa-user-check"></i> Registered patients</div><div class="n" id="g-offer">0</div><div class="s">get the Biomexa Care offer (<span id="offerTplName">biomexa_care_offer</span>)</div></button>
+      <button class="tile invite" data-g="invite" onclick="setGroup('invite')"><div class="lbl" style="font-size:.8rem;font-weight:700;color:#2563eb"><i class="fas fa-user-plus"></i> New contacts</div><div class="n" id="g-invite">0</div><div class="s">get the invite to start free reminders (<span id="inviteTplName">lead_onboarding</span>)</div></button>
+      <button class="tile skipped" data-g="skipped" onclick="setGroup('skipped')"><div class="lbl" style="font-size:.8rem;font-weight:700;color:var(--muted)"><i class="fas fa-forward"></i> Skipped</div><div class="n" id="g-skipped">0</div><div class="s">messaged recently, opted out, duplicate or wrong number</div></button>
     </div>
 
-    <div class="card wa">
-      <h2><i class="fab fa-whatsapp"></i> 2. Send WhatsApp invite</h2>
-      <p class="desc">Sends your approved <b id="tplName">lead_onboarding</b> template to waiting leads, oldest first. To protect your number's quality rating, only <b id="limTxt">250</b> go out per 24 hours, between <span id="hoursTxt">9 AM–9 PM</span> India time.</p>
-      <div class="limits">
-        <div>Daily limit<b id="lim">–</b></div>
-        <div>Sent last 24h<b id="sent24">–</b></div>
-        <div>Left today<b id="left">–</b></div>
-      </div>
-      <div class="row-inline">
-        <label for="count" style="font-size:.84rem;font-weight:600;color:#34425e">Send to</label>
-        <input type="number" id="count" min="1" value="250">
-        <span style="font-size:.84rem;color:var(--muted)">leads</span>
-      </div>
-      <label class="check"><input type="checkbox" id="retry"> Also retry leads that failed before</label>
-      <button class="btn wa" id="sendBtn" onclick="send()"><i class="fab fa-whatsapp"></i> Send invite now</button>
-      <div class="progress" id="prog"><div id="progBar"></div></div>
-      <div id="sendResult" class="result"></div>
+    <label class="check"><input type="checkbox" id="consent"> These people agreed to be contacted by Biomexa on WhatsApp (required by WhatsApp and India's DPDP Act).</label>
+
+    <div class="sendbar">
+      <div><b id="sendSummary">–</b><small id="limitTxt"></small></div>
+      <button class="btn wa" id="sendBtn" onclick="send()"><i class="fab fa-whatsapp"></i> Send WhatsApp</button>
     </div>
+    <div class="progress" id="prog"><div id="progBar"></div></div>
+    <div id="sendResult" class="result"></div>
+
+    <div class="toolbar" style="margin-top:1.25rem">
+      <div class="tabs">
+        <button class="tab" data-g="all" onclick="setGroup('all')">Everyone</button>
+        <button class="tab" data-g="offer" onclick="setGroup('offer')">Patients</button>
+        <button class="tab" data-g="invite" onclick="setGroup('invite')">New contacts</button>
+        <button class="tab" data-g="skipped" onclick="setGroup('skipped')">Skipped</button>
+      </div>
+      <div class="search"><i class="fas fa-search"></i><input type="text" id="pq" placeholder="Search name or number" oninput="renderPlan()"></div>
+    </div>
+    <div class="table-wrap" id="planList"></div>
   </div>
 
   <div class="card">
-    <h2><i class="fas fa-eye"></i> What leads receive</h2>
-    <p class="desc">Preview of the template to create in MSG91 (name <b>lead_onboarding</b>, category Marketing). <code>{{1}}</code> is filled with each lead's first name.</p>
-    <div style="max-width:420px">
-      <div class="preview">Hello <b>Rahul</b> 🙏
+    <details>
+      <summary><i class="fas fa-eye"></i> What each group receives</summary>
+      <div class="prevs">
+        <div><h4>New contacts — lead_onboarding</h4>
+          <div class="preview">Hello <b>Rahul</b> 🙏
 
 Never miss your medicine again! 💊
 
@@ -158,20 +176,41 @@ No app needed. Tap Start Reminders to begin (takes 1 minute).
 
 Your health data stays private. Tap Stop if you don't want these messages.
 — Team Biomexa</div>
-      <div class="preview-btns"><span>Start Reminders</span><span>Stop</span></div>
-    </div>
+          <div class="preview-btns"><span>Start Reminders</span><span>Stop</span></div></div>
+        <div><h4>Registered patients — biomexa_care_offer</h4>
+          <div class="preview">Hi <b>Rahul</b>, your free trial of Biomexa Care ends on 20 Nov 2026. Subscribe to keep every feature.
+
+Biomexa Care gives you:
+✅ WhatsApp reminders for every medicine
+✅ Talk to a Doctor
+✅ AI Pharmacist in Hindi and English
+✅ AI analysis of prescriptions and lab reports
+✅ Treatment and adherence reports
+✅ Vitals tracking with doctor alerts
+✅ IVF Care for fertility treatment
+
+Plans from ₹99/month …
+
+Reply STOP to stop these messages.</div>
+          <p class="desc" style="margin-top:.4rem">The trial / plan line is filled in for each patient automatically.</p></div>
+      </div>
+    </details>
   </div>
 
   <div class="card">
+    <h2><i class="fas fa-address-book"></i> Invited contacts</h2>
+    <p class="desc">Everyone invited so far. Tapping <b>Start Reminders</b> sends them the sign-up link automatically; once they sign up they move to <b>Joined</b>.</p>
+    <div class="stats" style="margin:.5rem 0 1rem">
+      <button class="stat n-new" data-f="new" onclick="setFilter('new')"><div class="lbl"><i class="fas fa-inbox"></i> Waiting</div><div class="num" id="c-new">–</div></button>
+      <button class="stat n-sent" data-f="sent" onclick="setFilter('sent')"><div class="lbl"><i class="fas fa-paper-plane"></i> Invited</div><div class="num" id="c-sent">–</div></button>
+      <button class="stat n-replied" data-f="replied" onclick="setFilter('replied')"><div class="lbl"><i class="fas fa-reply"></i> Replied START</div><div class="num" id="c-replied">–</div></button>
+      <button class="stat n-joined" data-f="joined" onclick="setFilter('joined')"><div class="lbl"><i class="fas fa-user-check"></i> Joined</div><div class="num" id="c-joined">–</div></button>
+      <button class="stat n-optout" data-f="optout" onclick="setFilter('optout')"><div class="lbl"><i class="fas fa-ban"></i> Opted out</div><div class="num" id="c-optout">–</div></button>
+      <button class="stat n-failed" data-f="failed" onclick="setFilter('failed')"><div class="lbl"><i class="fas fa-triangle-exclamation"></i> Failed</div><div class="num" id="c-failed">–</div></button>
+    </div>
     <div class="toolbar">
       <div class="tabs">
-        <button class="tab" data-f="all" onclick="setFilter('all')">All</button>
-        <button class="tab" data-f="new" onclick="setFilter('new')">Waiting</button>
-        <button class="tab" data-f="sent" onclick="setFilter('sent')">Sent</button>
-        <button class="tab" data-f="replied" onclick="setFilter('replied')">Replied</button>
-        <button class="tab" data-f="joined" onclick="setFilter('joined')">Joined</button>
-        <button class="tab" data-f="optout" onclick="setFilter('optout')">Opted out</button>
-        <button class="tab" data-f="failed" onclick="setFilter('failed')">Failed</button>
+        <button class="tab lt" data-f="all" onclick="setFilter('all')">All</button>
       </div>
       <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;">
         <div class="search"><i class="fas fa-search"></i><input type="text" id="q" placeholder="Search name, number, source" oninput="render()"></div>
@@ -179,7 +218,7 @@ Your health data stays private. Tap Stop if you don't want these messages.
         <button class="btn ghost sm" onclick="load()"><i class="fas fa-rotate"></i> Refresh</button>
       </div>
     </div>
-    <div class="table-wrap" id="list"><div class="loading"><i class="fas fa-spinner fa-spin"></i> Loading leads…</div></div>
+    <div class="table-wrap" id="list"><div class="loading"><i class="fas fa-spinner fa-spin"></i> Loading…</div></div>
   </div>
 </div>
 
@@ -189,9 +228,12 @@ const authHeader = sessionStorage.getItem('adminAuthHeader') || '';
 if (!authHeader) location.href = 'admin.html';
 
 let data = { leads: [], counts: {} };
-let filter = 'all';
+let plan = null;      // result of /analyze
+let csvText = '';
+let filter = 'all', group = 'all';
 let pollTimer = null;
-const LABEL = { new: 'Waiting', sent: 'Sent', failed: 'Failed', replied: 'Replied START', joined: 'Joined', optout: 'Opted out' };
+const LABEL = { new: 'Waiting', sent: 'Invited', failed: 'Failed', replied: 'Replied START', joined: 'Joined', optout: 'Opted out' };
+const GLABEL = { offer: 'Patient offer', invite: 'New-contact invite', skipped: 'Skipped' };
 
 function authFetch(path, opts = {}) {
   opts.headers = Object.assign({ Authorization: authHeader }, opts.headers || {});
@@ -204,100 +246,73 @@ function logout() { sessionStorage.removeItem('adminAuthHeader'); location.href 
 const esc = t => String(t ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const fmt = d => d ? new Date(d).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : '';
 function showResult(id, kind, msg) { const el = document.getElementById(id); el.className = 'result ' + kind; el.textContent = msg; }
+const post = (path, body) => authFetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json().then(d => ({ ok: r.ok, d })));
 
-function load(quiet) {
-  if (!quiet) document.getElementById('list').innerHTML = '<div class="loading"><i class="fas fa-spinner fa-spin"></i> Loading leads…</div>';
-  return authFetch('/api/admin/leads').then(r => r.json()).then(d => {
-    if (!d.leads) throw new Error(d.message || 'Could not load');
-    data = d;
-    Object.keys(LABEL).forEach(k => document.getElementById('c-' + k).textContent = d.counts[k] || 0);
-    document.getElementById('lim').textContent = d.dailyLimit;
-    document.getElementById('limTxt').textContent = d.dailyLimit;
-    document.getElementById('sent24').textContent = d.sentLast24h;
-    document.getElementById('left').textContent = d.remainingToday;
-    document.getElementById('tplName').textContent = d.templateName || 'lead_onboarding';
-    const c = document.getElementById('count');
-    c.max = d.remainingToday || 1;
-    if (!c.dataset.touched) c.value = Math.max(1, Math.min(d.remainingToday, d.counts.new || 0) || d.remainingToday || 1);
-    const w = document.getElementById('tplWarn');
-    if (!d.templateConfigured) {
-      w.style.display = 'block';
-      w.innerHTML = '<i class="fas fa-circle-info"></i> <b>Sending is off until the template is approved.</b> Create the <b>lead_onboarding</b> template in MSG91 (preview below), wait for Meta approval, then add <code>MSG91_LEAD_TEMPLATE_NAME=lead_onboarding</code> on Render and redeploy. You can upload leads now.';
-    } else w.style.display = 'none';
-    renderJob(d.job);
-    render();
-  }).catch(e => { if (!quiet) document.getElementById('list').innerHTML = `<div class="empty">Couldn't load leads — ${esc(e.message)}</div>`; });
+// ---------- step 1: read + analyse ----------
+document.getElementById('file').addEventListener('change', e => {
+  const f = e.target.files[0];
+  if (!f) return;
+  if (f.size > 2 * 1024 * 1024) return showResult('analyzeResult', 'err', 'File is too big — please keep it under 2 MB (about 5,000 contacts).');
+  if (/\.xlsx?$/i.test(f.name)) return showResult('analyzeResult', 'err', 'This is an Excel file. In Excel choose File → Save As → CSV, then upload that.');
+  f.text().then(t => { csvText = t; analyze(); });
+});
+document.getElementById('gap').addEventListener('change', () => { if (csvText) analyze(); });
+
+function analyze() {
+  showResult('analyzeResult', 'info', 'Reading and sorting your list…');
+  post('/api/admin/leads/analyze', { csv: csvText, gapDays: document.getElementById('gap').value })
+    .then(({ ok, d }) => {
+      if (!ok) { plan = null; document.getElementById('planCard').style.display = 'none'; return showResult('analyzeResult', 'err', d.message); }
+      plan = d;
+      showResult('analyzeResult', 'ok', `Found ${d.summary.total} contact${d.summary.total === 1 ? '' : 's'}: ${d.summary.offer} registered patient${d.summary.offer === 1 ? '' : 's'}, ${d.summary.invite} new, ${d.summary.skipped} skipped.`);
+      document.getElementById('planCard').style.display = 'block';
+      document.getElementById('sendResult').className = 'result';
+      group = d.summary.offer + d.summary.invite ? 'all' : 'skipped';
+      renderPlan();
+      document.getElementById('planCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    })
+    .catch(e => showResult('analyzeResult', 'err', e.message));
 }
 
-function renderJob(job) {
+function setGroup(g) { group = g; renderPlan(); }
+
+function renderPlan() {
+  if (!plan) return;
+  const s = plan.summary;
+  ['offer', 'invite', 'skipped'].forEach(k => document.getElementById('g-' + k).textContent = s[k]);
+  document.getElementById('offerTplName').textContent = plan.offerTemplate || 'biomexa_care_offer';
+  document.getElementById('inviteTplName').textContent = plan.inviteTemplate || 'lead_onboarding';
+  document.querySelectorAll('.big .tile, #planCard .tab').forEach(b => b.classList.toggle('on', b.dataset.g === group));
+  const offers = plan.offerTemplateReady ? s.offer : 0, invites = plan.inviteTemplateReady ? s.invite : 0;
+  const toSend = offers + invites, now = Math.min(toSend, plan.remainingToday);
+  document.getElementById('sendSummary').textContent = toSend
+    ? `${now} WhatsApp message${now === 1 ? '' : 's'} will go out now` + (toSend > now ? ` (${toSend - now} tomorrow)` : '')
+    : 'Nobody in this list needs a message right now';
+  document.getElementById('limitTxt').textContent = `Daily limit ${plan.dailyLimit} · ${plan.sentLast24h} sent in the last 24h · ${plan.remainingToday} left today · sends 9 AM–9 PM`
+    + (!plan.offerTemplateReady && s.offer ? ' · offer template not set up' : '') + (!plan.inviteTemplateReady && s.invite ? ' · invite template not set up' : '');
   const btn = document.getElementById('sendBtn');
-  const prog = document.getElementById('prog');
-  if (job && job.running) {
-    const done = job.sent + job.failed;
-    prog.style.display = 'block';
-    document.getElementById('progBar').style.width = (job.total ? Math.round(done / job.total * 100) : 0) + '%';
-    showResult('sendResult', 'info', `Sending… ${done} of ${job.total} done (${job.sent} sent, ${job.failed} failed). You can leave this page — it keeps going.`);
-    btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending…';
-    if (!pollTimer) pollTimer = setInterval(() => load(true), 3000);
-  } else {
-    btn.disabled = false; btn.innerHTML = '<i class="fab fa-whatsapp"></i> Send invite now';
-    if (pollTimer) {
-      clearInterval(pollTimer); pollTimer = null;
-      document.getElementById('progBar').style.width = '100%';
-      showResult('sendResult', job.failed ? 'info' : 'ok', `Finished: ${job.sent} sent, ${job.failed} failed.` + (job.failed ? ' Open the Failed tab to see why.' : ' Replies will show up under Replied START.'));
-    }
-  }
+  if (!leadJobRunning) btn.disabled = !now || !plan.withinSendHours;
+  if (!plan.withinSendHours) document.getElementById('limitTxt').textContent += ' · outside sending hours now';
+
+  const q = document.getElementById('pq').value.trim().toLowerCase();
+  const rows = plan.rows.filter(r => (group === 'all' || r.group === group) && (!q || [r.name, r.phone].join(' ').toLowerCase().includes(q)));
+  document.getElementById('planList').innerHTML = rows.length
+    ? `<table><thead><tr><th>Name</th><th>Number</th><th>Action</th><th>Why</th></tr></thead><tbody>` +
+      rows.slice(0, 1000).map(r => `<tr><td><b>${esc(r.name || '—')}</b></td><td>${esc(r.phone)}</td><td><span class="pill p-${r.group}">${GLABEL[r.group]}</span></td><td style="color:var(--muted);font-size:.82rem">${esc(r.reason)}</td></tr>`).join('') +
+      '</tbody></table>' + (rows.length > 1000 ? `<p class="desc">Showing 1,000 of ${rows.length}.</p>` : '')
+    : '<div class="empty">Nobody in this group.</div>';
 }
 
-function setFilter(f) { filter = f; render(); }
-
-function render() {
-  document.querySelectorAll('.stat, .tab').forEach(b => b.classList.toggle('on', b.dataset.f === filter));
-  const q = document.getElementById('q').value.trim().toLowerCase();
-  const rows = data.leads.filter(l => (filter === 'all' || l.status === filter) && (!q || [l.name, l.phone, l.source].join(' ').toLowerCase().includes(q)));
-  const el = document.getElementById('list');
-  if (!rows.length) { el.innerHTML = `<div class="empty">${data.leads.length ? 'No leads here.' : 'No leads yet — upload a CSV above.'}</div>`; return; }
-  el.innerHTML = `<table><thead><tr><th>Name</th><th>Number</th><th>Source</th><th>Status</th><th>Sent</th><th>Replied</th><th></th></tr></thead><tbody>` +
-    rows.map(l => `<tr>
-      <td><b>${esc(l.name || '—')}</b></td>
-      <td>${esc(l.phone)}</td>
-      <td>${esc(l.source || '')}</td>
-      <td><span class="pill p-${l.status}">${LABEL[l.status]}</span>${l.status === 'failed' && l.lastError ? `<div class="err">${esc(l.lastError.slice(0, 160))}</div>` : ''}</td>
-      <td>${fmt(l.sentAt)}</td>
-      <td>${fmt(l.repliedAt)}</td>
-      <td><button class="btn del sm" title="Delete lead" onclick="del('${l.id}')"><i class="fas fa-trash"></i></button></td>
-    </tr>`).join('') + '</tbody></table>' + (data.leads.length >= 2000 ? '<p class="desc" style="margin-top:.8rem">Showing the latest 2,000 leads.</p>' : '');
-}
-
-function upload() {
-  const f = document.getElementById('file').files[0];
-  if (!f) return showResult('uploadResult', 'err', 'Please choose a CSV file.');
-  if (!document.getElementById('consent').checked) return showResult('uploadResult', 'err', 'Please tick the box confirming these people agreed to be contacted.');
-  if (f.size > 2 * 1024 * 1024) return showResult('uploadResult', 'err', 'File is too big — please keep it under 2 MB (about 5,000 leads).');
-  const btn = document.getElementById('uploadBtn');
-  btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Uploading…';
-  f.text().then(csv => authFetch('/api/admin/leads/upload', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ csv, source: document.getElementById('source').value.trim(), consent: true })
-  })).then(r => r.json().then(d => ({ ok: r.ok, d })))
-    .then(({ ok, d }) => { showResult('uploadResult', ok ? 'ok' : 'err', d.message); if (ok) { document.getElementById('file').value = ''; filter = 'new'; load(); } })
-    .catch(e => showResult('uploadResult', 'err', e.message))
-    .finally(() => { btn.disabled = false; btn.innerHTML = '<i class="fas fa-upload"></i> Upload leads'; });
-}
-
+// ---------- step 2: one click send ----------
+let leadJobRunning = false;
 function send() {
-  const count = parseInt(document.getElementById('count').value, 10) || 0;
-  const retryFailed = document.getElementById('retry').checked;
-  const waiting = (data.counts.new || 0) + (retryFailed ? (data.counts.failed || 0) : 0);
-  if (!data.templateConfigured) return showResult('sendResult', 'err', 'The lead_onboarding template isn\'t set up yet — see the note at the top of the page.');
-  if (!waiting) return showResult('sendResult', 'err', 'No leads are waiting. Upload a list first.');
-  const n = Math.min(count, waiting, data.remainingToday);
-  if (!n) return showResult('sendResult', 'err', 'Today\'s limit is used up. Send the next batch tomorrow.');
-  if (!confirm(`Send the WhatsApp invite to ${n} lead${n === 1 ? '' : 's'} now?\n\nEach message is charged by WhatsApp (marketing rate).`)) return;
+  if (!plan) return;
+  if (!document.getElementById('consent').checked) return showResult('sendResult', 'err', 'Please tick the box confirming these people agreed to be contacted.');
+  const label = document.getElementById('sendSummary').textContent;
+  if (!confirm(`${label}.\n\nWhatsApp charges for each message. Send now?`)) return;
   const btn = document.getElementById('sendBtn');
   btn.disabled = true;
-  authFetch('/api/admin/leads/send', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ count: n, retryFailed }) })
-    .then(r => r.json().then(d => ({ ok: r.ok, d })))
+  post('/api/admin/leads/campaign', { csv: csvText, gapDays: document.getElementById('gap').value, source: document.getElementById('source').value.trim(), consent: true })
     .then(({ ok, d }) => {
       if (!ok) { showResult('sendResult', 'err', d.message); btn.disabled = false; return; }
       showResult('sendResult', 'info', d.message);
@@ -306,8 +321,66 @@ function send() {
     .catch(e => { showResult('sendResult', 'err', e.message); btn.disabled = false; });
 }
 
+function renderJob(job) {
+  const btn = document.getElementById('sendBtn');
+  const prog = document.getElementById('prog');
+  if (job && job.running) {
+    leadJobRunning = true;
+    const done = job.sent + job.failed;
+    prog.style.display = 'block';
+    document.getElementById('progBar').style.width = (job.total ? Math.round(done / job.total * 100) : 0) + '%';
+    showResult('sendResult', 'info', `Sending… ${done} of ${job.total} (${job.offers} offers, ${job.invites} invites, ${job.failed} failed). You can leave this page — it keeps going.`);
+    btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending…';
+    if (!pollTimer) pollTimer = setInterval(() => load(true), 3000);
+  } else {
+    btn.innerHTML = '<i class="fab fa-whatsapp"></i> Send WhatsApp';
+    if (pollTimer) {
+      clearInterval(pollTimer); pollTimer = null; leadJobRunning = false;
+      document.getElementById('progBar').style.width = '100%';
+      showResult('sendResult', job.failed ? 'info' : 'ok', `Done: ${job.offers} patient offer${job.offers === 1 ? '' : 's'} and ${job.invites} invite${job.invites === 1 ? '' : 's'} sent` +
+        (job.failed ? `, ${job.failed} failed (${(job.errors || []).join(' | ').slice(0, 300)}).` : '.') + ' Check MSG91 → Logs to see delivered / read.');
+      if (csvText) analyze(); // refresh the plan — everyone just messaged now shows as skipped
+    }
+  }
+}
+
+// ---------- invited contacts ----------
+function load(quiet) {
+  if (!quiet) document.getElementById('list').innerHTML = '<div class="loading"><i class="fas fa-spinner fa-spin"></i> Loading…</div>';
+  return authFetch('/api/admin/leads').then(r => r.json()).then(d => {
+    if (!d.leads) throw new Error(d.message || 'Could not load');
+    data = d;
+    Object.keys(LABEL).forEach(k => document.getElementById('c-' + k).textContent = d.counts[k] || 0);
+    const w = document.getElementById('tplWarn');
+    const miss = [];
+    if (!d.offerTemplateReady) miss.push('<b>MSG91_AD_TEMPLATE_NAME</b> (patient offer)');
+    if (!d.inviteTemplateReady) miss.push('<b>MSG91_LEAD_TEMPLATE_NAME</b> (new-contact invite)');
+    if (miss.length) { w.style.display = 'block'; w.innerHTML = '<i class="fas fa-circle-info"></i> Not set on Render yet: ' + miss.join(' and ') + '. That group will be shown but not sent.'; }
+    else w.style.display = 'none';
+    if (d.job && (d.job.running || pollTimer)) renderJob(d.job);
+    render();
+  }).catch(e => { if (!quiet) document.getElementById('list').innerHTML = `<div class="empty">Couldn't load — ${esc(e.message)}</div>`; });
+}
+
+function setFilter(f) { filter = f; render(); }
+
+function render() {
+  document.querySelectorAll('.stat, .tab.lt').forEach(b => b.classList.toggle('on', b.dataset.f === filter));
+  const q = document.getElementById('q').value.trim().toLowerCase();
+  const rows = data.leads.filter(l => (filter === 'all' || l.status === filter) && (!q || [l.name, l.phone, l.source].join(' ').toLowerCase().includes(q)));
+  const el = document.getElementById('list');
+  if (!rows.length) { el.innerHTML = `<div class="empty">${data.leads.length ? 'Nobody here.' : 'No new contacts invited yet.'}</div>`; return; }
+  el.innerHTML = `<table><thead><tr><th>Name</th><th>Number</th><th>Source</th><th>Status</th><th>Invited</th><th>Replied</th><th></th></tr></thead><tbody>` +
+    rows.map(l => `<tr>
+      <td><b>${esc(l.name || '—')}</b></td><td>${esc(l.phone)}</td><td>${esc(l.source || '')}</td>
+      <td><span class="pill p-${l.status}">${LABEL[l.status]}</span>${l.status === 'failed' && l.lastError ? `<div class="err">${esc(l.lastError.slice(0, 160))}</div>` : ''}</td>
+      <td>${fmt(l.sentAt)}</td><td>${fmt(l.repliedAt)}</td>
+      <td><button class="btn del sm" title="Delete" onclick="del('${l.id}')"><i class="fas fa-trash"></i></button></td>
+    </tr>`).join('') + '</tbody></table>';
+}
+
 function del(id) {
-  if (!confirm('Delete this lead? They will not be messaged.')) return;
+  if (!confirm('Delete this contact? They will not be messaged.')) return;
   authFetch('/api/admin/leads/' + encodeURIComponent(id), { method: 'DELETE' }).then(() => load(true));
 }
 
@@ -316,15 +389,14 @@ function downloadBlob(name, text) {
   a.href = URL.createObjectURL(new Blob([text], { type: 'text/csv' }));
   a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
-function downloadSample() { downloadBlob('biomexa-leads-sample.csv', 'name,number\nRahul Sharma,9876543210\nPriya Verma,+91 98765 43211\n'); }
+function downloadSample() { downloadBlob('biomexa-contacts-sample.csv', 'name,number\nRahul Sharma,9876543210\nPriya Verma,+91 98765 43211\n'); }
 function exportCsv() {
   const q = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
   const rows = data.leads.filter(l => filter === 'all' || l.status === filter);
-  downloadBlob(`biomexa-leads-${filter}.csv`, 'name,number,source,status,sent_at,replied_at\n' +
+  downloadBlob(`biomexa-invited-${filter}.csv`, 'name,number,source,status,invited_at,replied_at\n' +
     rows.map(l => [l.name, l.phone, l.source, LABEL[l.status], l.sentAt || '', l.repliedAt || ''].map(q).join(',')).join('\n'));
 }
 
-document.getElementById('count').addEventListener('input', e => { e.target.dataset.touched = '1'; });
 load();
 </script>
 </body>
