@@ -5718,6 +5718,12 @@ app.post('/api/admin/reminder-center/invite', adminAuth, async (req, res) => {
 // free-text fallback here. See .env.example for the template to create.
 const MSG91_LEAD_TEMPLATE_NAME = process.env.MSG91_LEAD_TEMPLATE_NAME || null;
 const MSG91_LEAD_TEMPLATE_NAMESPACE = process.env.MSG91_LEAD_TEMPLATE_NAMESPACE || MSG91_TEMPLATE_NAMESPACE;
+// New contacts are never greeted by name (the name in an uploaded list may be wrong or belong to
+// someone else). With the approved lead_onboarding template ("Hello {{1}} 🙏") the variable is
+// always filled with "there". If you create a template with no variable at all, set
+// MSG91_LEAD_TEMPLATE_HAS_VARIABLE=false and nothing is sent for it.
+const LEAD_TEMPLATE_HAS_VARIABLE = process.env.MSG91_LEAD_TEMPLATE_HAS_VARIABLE !== 'false';
+const LEAD_GREETING_WORD = 'there';
 // New WhatsApp numbers can only start ~250 new conversations a day until Meta raises the tier —
 // going over it (or getting many blocks) hurts the number's quality rating.
 const LEAD_DAILY_LIMIT = Math.max(1, parseInt(process.env.LEAD_DAILY_LIMIT, 10) || 250);
@@ -5785,9 +5791,9 @@ async function sendLeadTemplate(phone, name) {
             namespace: MSG91_LEAD_TEMPLATE_NAMESPACE,
             to_and_components: [{
               to: [phone],
-              components: {
-                body_1: { type: 'text', value: sanitizeTemplateParam(String(name || 'there').trim().split(/\s+/)[0] || 'there', 40), parameter_name: 'patient_name' }
-              }
+              components: LEAD_TEMPLATE_HAS_VARIABLE
+                ? { body_1: { type: 'text', value: LEAD_GREETING_WORD, parameter_name: 'patient_name' } }
+                : {}
             }]
           }
         }
@@ -5868,9 +5874,8 @@ async function handleLeadReply(phone, buttonText, freeText) {
   }
   if (isStart) {
     if (lead.status !== 'joined') await Lead.updateOne({ _id: lead._id }, { status: 'replied', repliedAt: new Date(), optedOutAt: null });
-    const first = String(lead.name || '').trim().split(/\s+/)[0];
     await sendWhatsAppFree(phone,
-      `🙏 Thank you${first ? ' ' + first : ''}! Let's set up your free medicine reminders.\n\n` +
+      `🙏 Thank you! Let's set up your free medicine reminders.\n\n` +
       `👉 Open this link and add your medicine and time (takes 1 minute):\n${SITE_URL}/reminders.html\n\n` +
       `Please use this same WhatsApp number when you sign up, so your reminders come here.\n\n` +
       `Have a question? Just reply here. — Team Biomexa 💙`);
