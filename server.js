@@ -5724,6 +5724,8 @@ const MSG91_LEAD_TEMPLATE_NAMESPACE = process.env.MSG91_LEAD_TEMPLATE_NAMESPACE 
 // MSG91_LEAD_TEMPLATE_HAS_VARIABLE=false and nothing is sent for it.
 const LEAD_TEMPLATE_HAS_VARIABLE = process.env.MSG91_LEAD_TEMPLATE_HAS_VARIABLE !== 'false';
 const LEAD_GREETING_WORD = 'there';
+// Sign-up link sent to leads — the public custom domain, so patients see a link they trust.
+const SIGNUP_SITE_URL = (process.env.SIGNUP_SITE_URL || 'https://biomexapharmaceuticals.com').replace(/\/+$/, '');
 // New WhatsApp numbers can only start ~250 new conversations a day until Meta raises the tier —
 // going over it (or getting many blocks) hurts the number's quality rating.
 const LEAD_DAILY_LIMIT = Math.max(1, parseInt(process.env.LEAD_DAILY_LIMIT, 10) || 250);
@@ -5876,8 +5878,8 @@ async function handleLeadReply(phone, buttonText, freeText) {
     if (lead.status !== 'joined') await Lead.updateOne({ _id: lead._id }, { status: 'replied', repliedAt: new Date(), optedOutAt: null });
     await sendWhatsAppFree(phone,
       `🙏 Thank you! Let's set up your free medicine reminders.\n\n` +
-      `👉 Open this link and add your medicine and time (takes 1 minute):\n${SITE_URL}/reminders.html\n\n` +
-      `Please use this same WhatsApp number when you sign up, so your reminders come here.\n\n` +
+      `👉 Tap to sign up and add your medicine (takes 1 minute):\n${SIGNUP_SITE_URL}/reminders.html?product=other&phone=${last10(phone)}\n\n` +
+      `Your WhatsApp number is already filled in, so your reminders come right here.\n\n` +
       `Have a question? Just reply here. — Team Biomexa 💙`);
     return true;
   }
