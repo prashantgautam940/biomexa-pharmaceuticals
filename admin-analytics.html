@@ -160,6 +160,12 @@ td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; }
   </div>
 
   <div class="card">
+    <h2><i class="fas fa-stethoscope"></i> Results by condition</h2>
+    <p class="desc">Which patient groups respond best — worked out from the disease / medicine on your lists.</p>
+    <div class="table-wrap" id="segments"></div>
+  </div>
+
+  <div class="card">
     <h2><i class="fas fa-layer-group"></i> Results by list source</h2>
     <p class="desc">Compare the lists you uploaded (the "Where is this list from?" box). Use it to see which clinic, camp or channel brings patients who actually sign up.</p>
     <div class="table-wrap" id="sources"></div>
@@ -269,7 +275,7 @@ function render() {
     : 'Responses appear here once leads are invited.';
   document.getElementById('offerNote').innerHTML = `<i class="fas fa-user-check"></i> Registered patients: <b>${n(data.patientOffers.sent)}</b> got their latest Biomexa Care offer in this period · <b>${n(data.patientOffers.optedOut)}</b> have replied STOP to offers in total.`;
 
-  renderDaily(); renderSources(); renderRecent();
+  renderDaily(); renderSegments(); renderSources(); renderRecent();
 }
 
 // ---------- day-by-day grouped bars ----------
@@ -319,6 +325,16 @@ function renderDaily() {
     '</tbody></table>' + (rows.some(r => r.invited || r.started || r.stopped || r.joined) ? '' : '<div class="empty">No activity in this period.</div>');
 }
 
+function renderSegments() {
+  const el = document.getElementById('segments');
+  const list = data.bySegment || [];
+  if (!list.length) { el.innerHTML = '<div class="empty">No leads in this period.</div>'; return; }
+  el.innerHTML = `<table><thead><tr><th>Condition</th><th class="n">Uploaded</th><th class="n">Invited</th><th class="n">START</th><th class="n">STOP</th><th class="n">Signed up</th><th class="n">Conversion</th></tr></thead><tbody>` +
+    list.map(s => `<tr><td><b>${esc(s.label)}</b></td><td class="n">${n(s.uploaded)}</td><td class="n">${n(s.invited)}</td>
+      <td class="n">${n(s.started)} <span class="muted">(${pct(s.startRate)})</span></td><td class="n">${n(s.stopped)} <span class="muted">(${pct(s.stopRate)})</span></td>
+      <td class="n">${n(s.joined)}</td><td class="n"><b>${pct(s.conversionRate)}</b><span class="mini"><i style="width:${Math.min(100, s.conversionRate)}%"></i></span></td></tr>`).join('') + '</tbody></table>';
+}
+
 function renderSources() {
   const el = document.getElementById('sources');
   if (!data.bySource.length) { el.innerHTML = '<div class="empty">No leads in this period.</div>'; return; }
@@ -334,6 +350,16 @@ function renderSources() {
     </tr>`).join('') + '</tbody></table>';
 }
 
+const SEGL = { diabetes: 'Diabetes', bp: 'Blood pressure', thyroid: 'Thyroid', heart: 'Heart / cholesterol', ivf: 'IVF / fertility', general: '' };
+const GENDER = { male: 'Male', female: 'Female', other: 'Other' };
+function details(e) {
+  if (e.signup) {
+    const parts = [e.signup.age ? `${e.signup.age} yrs` : '', GENDER[e.signup.gender] || '', e.signup.city ? `📍 ${esc(e.signup.city)}` : ''].filter(Boolean);
+    const meds = e.signup.medicines.length ? `<div class="muted">💊 ${e.signup.medicines.map(esc).join(', ')}</div>` : '';
+    return (parts.length ? parts.join(' · ') : '<span class="muted">No age / city given</span>') + meds;
+  }
+  return SEGL[e.segment] ? `<span class="muted">${SEGL[e.segment]} (from your list)</span>` : '<span class="muted">—</span>';
+}
 const ELABEL = { start: '<i class="fas fa-play"></i> START', stop: '<i class="fas fa-hand"></i> STOP', joined: '<i class="fas fa-user-check"></i> Signed up' };
 function renderRecent() {
   document.querySelectorAll('.tab').forEach(b => b.classList.toggle('on', b.dataset.t === type));
@@ -341,8 +367,10 @@ function renderRecent() {
   const rows = data.recent.filter(e => type === 'all' || e.type === type);
   const el = document.getElementById('recent');
   if (!rows.length) { el.innerHTML = '<div class="empty">No responses yet. When a lead taps Start Reminders or Stop, they show up here.</div>'; return; }
-  el.innerHTML = `<table><thead><tr><th>When</th><th>Response</th><th>Name</th><th>Number</th><th>Source</th></tr></thead><tbody>` +
-    rows.map(e => `<tr><td>${fmtDT(e.at)}</td><td><span class="pill e-${e.type}">${ELABEL[e.type]}</span></td><td><b>${esc(e.name || '—')}</b></td><td>${esc(e.phone)}</td><td>${esc(e.source || '')}</td></tr>`).join('') +
+  el.innerHTML = `<table><thead><tr><th>When</th><th>Response</th><th>Name</th><th>Number</th><th>Details</th><th>Source</th></tr></thead><tbody>` +
+    rows.map(e => `<tr><td>${fmtDT(e.at)}</td><td><span class="pill e-${e.type}">${ELABEL[e.type]}</span></td>
+      <td><b>${esc(e.name || '—')}</b>${e.listName && e.listName !== e.name ? `<div class="muted" style="font-size:.74rem">on your list as "${esc(e.listName)}"</div>` : ''}</td>
+      <td>${esc(e.phone)}</td><td style="font-size:.8rem">${details(e)}</td><td>${esc(e.source || '')}</td></tr>`).join('') +
     '</tbody></table>';
 }
 
@@ -352,7 +380,7 @@ function exportRecent() {
   const T = { start: 'START', stop: 'STOP', joined: 'Signed up' };
   const rows = data.recent.filter(e => type === 'all' || e.type === type);
   const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob(['when,response,name,number,source\n' + rows.map(e => [new Date(e.at).toISOString(), T[e.type], e.name, e.phone, e.source].map(q).join(',')).join('\n')], { type: 'text/csv' }));
+  a.href = URL.createObjectURL(new Blob(['when,response,name,name_on_list,number,age,gender,city,medicines,condition_group,source\n' + rows.map(e => [new Date(e.at).toISOString(), T[e.type], e.name, e.listName || e.name, e.phone, e.signup?.age || '', e.signup?.gender || '', e.signup?.city || '', (e.signup?.medicines || []).join('; '), SEGL[e.segment] || '', e.source].map(q).join(',')).join('\n')], { type: 'text/csv' }));
   a.download = `biomexa-responses-${type}.csv`; a.click();
 }
 
