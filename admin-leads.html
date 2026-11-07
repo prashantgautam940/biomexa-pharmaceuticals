@@ -90,6 +90,18 @@ td .err { color: var(--danger); font-size: .74rem; margin-top: 3px; max-width: 3
 .sendbar small { color: var(--muted); font-size: .8rem; display: block; margin-top: .2rem; }
 .inline { display: flex; gap: .75rem; flex-wrap: wrap; align-items: flex-end; }
 .inline .field { flex: 1; min-width: 200px; margin-bottom: 0; }
+.insights { display: grid; grid-template-columns: repeat(3, 1fr); gap: .8rem; margin: 0 0 1rem; }
+.ins { background: var(--inner); border-radius: 12px; padding: .85rem .95rem; font-size: .82rem; }
+.ins h4 { font-size: .8rem; color: #34425e; margin-bottom: .45rem; display: flex; gap: .4rem; align-items: center; }
+.ins p { color: var(--muted); margin-top: .5rem; }
+.chip { display: inline-flex; gap: .35rem; align-items: center; background: #fff; border: 1px solid var(--line); border-radius: 999px; padding: 3px 9px; margin: 0 .3rem .3rem 0; font-size: .76rem; }
+.bars div { display: grid; grid-template-columns: 62px 1fr 38px; gap: .5rem; align-items: center; margin-bottom: .3rem; }
+.bars i { height: 7px; background: #fff; border-radius: 4px; overflow: hidden; display: block; }
+.bars i b { display: block; height: 100%; background: var(--navy); }
+.bars em { font-style: normal; text-align: right; font-weight: 700; }
+.pill.seg { background: #f1ecff; color: #5b3fc4; }
+code { font-size: .74rem; background: var(--inner); padding: 1px 5px; border-radius: 5px; color: #34425e; }
+@media (max-width: 900px) { .insights { grid-template-columns: 1fr; } }
 details summary { cursor: pointer; font-weight: 700; color: var(--navy); font-size: .92rem; }
 .prevs { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1rem; }
 .prevs h4 { font-size: .82rem; margin-bottom: .4rem; color: #34425e; }
@@ -111,15 +123,24 @@ details summary { cursor: pointer; font-weight: 700; color: var(--navy); font-si
 
 <div class="container">
   <h1><i class="fab fa-whatsapp"></i> WhatsApp Campaigns</h1>
-  <p class="sub">Upload any contact list (CSV). Biomexa reads it, finds the names and numbers, and sorts everyone: <b>registered patients</b> get the Biomexa Care offer, <b>new contacts</b> get the invite to start free reminders, and anyone messaged recently, opted out or with a wrong number is skipped. Then one click sends it all.</p>
+  <p class="sub">Upload any contact list — Excel, CSV, Word, PDF, a photo of a register, or phone contacts. Biomexa reads it, finds the names and numbers, and sorts everyone: <b>registered patients</b> get the Biomexa Care offer, <b>new contacts</b> get the invite to start free reminders, and anyone messaged recently, opted out or with a wrong number is skipped. Then one click sends it all.</p>
 
   <div class="warn" id="tplWarn"></div>
 
+  <div class="card wa" id="waitCard" style="display:none">
+    <div class="sendbar" style="border:0;padding:0;background:none">
+      <div><b><span id="waitN">0</span> contacts are waiting</b><small>Saved from earlier uploads but not invited yet (daily limit). No need to upload again — each still gets the message for their condition.</small></div>
+      <button class="btn wa" id="waitBtn" onclick="sendWaiting()"><i class="fab fa-whatsapp"></i> Send to waiting contacts</button>
+    </div>
+    <label class="check" style="margin:.8rem 0 0"><input type="checkbox" id="wconsent"> These people agreed to be contacted by Biomexa on WhatsApp.</label>
+    <div id="waitResult" class="result"></div>
+  </div>
+
   <div class="card">
     <h2><i class="fas fa-file-arrow-up"></i> 1. Upload your list</h2>
-    <p class="desc">Upload a <b>CSV</b> or <b>PDF</b> with names and mobile numbers. Columns are found automatically, with or without a header row. From Excel or Google Sheets: <i>File → Download / Save as → CSV</i>. PDFs must contain real text (exported from Excel, Word or software) — scanned photos of paper can't be read. <a href="#" onclick="downloadSample();return false;">Sample CSV</a></p>
+    <p class="desc">Accepts <b>Excel</b> (.xlsx, .xls, .ods), <b>CSV / TXT</b>, <b>Word</b> (.docx), <b>PDF</b>, <b>photos or scans</b> of a written list (read by AI), <b>phone contacts</b> (.vcf) and JSON — up to 50,000 contacts. Columns like name, number, disease, medicine, city, doctor and language are found automatically, so each person gets a message about <b>their</b> condition and medicine. <a href="#" onclick="downloadSample();return false;">Sample file</a></p>
     <div class="inline">
-      <div class="field"><label for="file">CSV or PDF file</label><input type="file" id="file" accept=".csv,text/csv,text/plain,.pdf,application/pdf"></div>
+      <div class="field"><label for="file">Contact list (any file)</label><input type="file" id="file" accept=".xlsx,.xls,.xlsm,.xlsb,.ods,.numbers,.csv,.tsv,.txt,.docx,.doc,.pdf,.vcf,.json,.html,.htm,image/*,text/*"></div>
       <div class="field"><label for="gap">Skip anyone messaged in the last</label>
         <select id="gap"><option value="1">1 day</option><option value="3">3 days</option><option value="7" selected>7 days</option><option value="10">10 days</option><option value="14">14 days</option><option value="30">30 days</option></select></div>
       <div class="field"><label for="source">Where is this list from? (optional)</label><input type="text" id="source" placeholder="e.g. Dr Sharma clinic, health camp" maxlength="80"></div>
@@ -134,6 +155,8 @@ details summary { cursor: pointer; font-weight: 700; color: var(--navy); font-si
       <button class="tile invite" data-g="invite" onclick="setGroup('invite')"><div class="lbl" style="font-size:.8rem;font-weight:700;color:#2563eb"><i class="fas fa-user-plus"></i> New contacts</div><div class="n" id="g-invite">0</div><div class="s">get the invite to start free reminders (<span id="inviteTplName">lead_onboarding</span>)</div></button>
       <button class="tile skipped" data-g="skipped" onclick="setGroup('skipped')"><div class="lbl" style="font-size:.8rem;font-weight:700;color:var(--muted)"><i class="fas fa-forward"></i> Skipped</div><div class="n" id="g-skipped">0</div><div class="s">messaged recently, opted out, duplicate or wrong number</div></button>
     </div>
+
+    <div class="insights" id="insights"></div>
 
     <label class="check"><input type="checkbox" id="consent"> These people agreed to be contacted by Biomexa on WhatsApp (required by WhatsApp and India's DPDP Act).</label>
 
@@ -151,7 +174,8 @@ details summary { cursor: pointer; font-weight: 700; color: var(--navy); font-si
         <button class="tab" data-g="invite" onclick="setGroup('invite')">New contacts</button>
         <button class="tab" data-g="skipped" onclick="setGroup('skipped')">Skipped</button>
       </div>
-      <div class="search"><i class="fas fa-search"></i><input type="text" id="pq" placeholder="Search name or number" oninput="renderPlan()"></div>
+      <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap"><div class="search"><i class="fas fa-search"></i><input type="text" id="pq" placeholder="Search name, number, city, medicine" oninput="renderPlan()"></div>
+      <button class="btn ghost sm" onclick="downloadPlan()"><i class="fas fa-download"></i> Download analysis</button></div>
     </div>
     <div class="table-wrap" id="planList"></div>
   </div>
@@ -250,18 +274,160 @@ const fmt = d => d ? new Date(d).toLocaleString('en-IN', { day: 'numeric', month
 function showResult(id, kind, msg) { const el = document.getElementById(id); el.className = 'result ' + kind; el.textContent = msg; }
 const post = (path, body) => authFetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json().then(d => ({ ok: r.ok, d })));
 
-// ---------- step 1: read + analyse ----------
+// ---------- step 1: read ANY file → CSV → analyse ----------
+// Excel / Word / PDF / phone contacts / JSON / web pages are read here in the browser.
+// Photos and scanned PDFs are read by AI on the server. Everything becomes one CSV table.
+const SCRIPTS = {
+  xlsx: 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js',
+  mammoth: 'https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js'
+};
+const loaded = {};
+function loadScript(key) {
+  if (!loaded[key]) loaded[key] = new Promise((resolve, reject) => {
+    const sc = document.createElement('script'); sc.src = SCRIPTS[key];
+    sc.onload = resolve; sc.onerror = () => { loaded[key] = null; reject(new Error('Could not load the file reader — check your internet and try again.')); };
+    document.head.appendChild(sc);
+  });
+  return loaded[key];
+}
+const extOf = name => (String(name).toLowerCase().match(/\.([a-z0-9]+)$/) || [])[1] || '';
+const q = v => '"' + String(v ?? '').replace(/"/g, '""').replace(/[\r\n]+/g, ' ') + '"';
+const toCsv = rows => rows.map(r => r.map(q).join(',')).join('\n');
+const countPhones = t => (String(t).match(PHONE_RE) || []).length;
+function fileToBase64(f) {
+  return new Promise((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(String(r.result).split(',')[1]); r.onerror = () => reject(new Error('Could not read the file.')); r.readAsDataURL(f); });
+}
+
+async function readAnyFile(f) {
+  const ext = extOf(f.name), type = f.type || '';
+  const say = m => showResult('analyzeResult', 'info', m);
+  if (['xlsx', 'xls', 'xlsm', 'xlsb', 'ods', 'numbers', 'fods'].includes(ext)) {
+    say('Reading the spreadsheet…');
+    await loadScript('xlsx');
+    const wb = XLSX.read(await f.arrayBuffer(), { type: 'array' });
+    // Every sheet with phone numbers is used; each keeps its own header row.
+    const sheets = wb.SheetNames.map(n => ({ n, rows: XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, raw: false, defval: '' }) }))
+      .map(s => ({ ...s, phones: countPhones(s.rows.map(r => r.join(' ')).join('\n')) })).filter(s => s.phones > 0).sort((a, b) => b.phones - a.phones);
+    if (!sheets.length) throw new Error('No mobile numbers found in any sheet of this file.');
+    if (sheets.length === 1) return toCsv(sheets[0].rows);
+    return mergeTables(sheets.map(s => s.rows));
+  }
+  if (ext === 'docx') {
+    say('Reading the Word document…');
+    await loadScript('mammoth');
+    const { value: html } = await mammoth.convertToHtml({ arrayBuffer: await f.arrayBuffer() });
+    return htmlToCsv(html);
+  }
+  if (ext === 'doc') throw new Error('Old .doc files can\'t be read. In Word choose File → Save As → .docx (or PDF), then upload that.');
+  if (ext === 'htm' || ext === 'html') return htmlToCsv(await f.text());
+  if (ext === 'vcf' || type === 'text/vcard' || type === 'text/x-vcard') return vcfToCsv(await f.text());
+  if (ext === 'json' || type === 'application/json') return jsonToCsv(await f.text());
+  if (ext === 'pdf' || type === 'application/pdf') {
+    const textCsv = await pdfToCsv(f).catch(err => { if (/scanned image|No Indian mobile/.test(err.message)) return null; throw err; });
+    if (textCsv) return textCsv;
+    return aiExtract(f, 'application/pdf');
+  }
+  if (/^image\//.test(type) || ['jpg', 'jpeg', 'png', 'webp', 'heic', 'heif', 'gif'].includes(ext)) {
+    const mime = type || (ext === 'jpg' ? 'image/jpeg' : 'image/' + ext);
+    return aiExtract(f, mime);
+  }
+  // CSV / TSV / TXT / anything else that is text.
+  const text = await f.text();
+  if (/\u0000/.test(text.slice(0, 2000))) throw new Error('This file type can\'t be read. Please upload Excel, CSV, Word, PDF, a photo, or phone contacts (.vcf).');
+  const lines = text.split(/\r?\n/).filter(l => l.trim());
+  const tabular = lines.filter(l => /[,;\t]/.test(l)).length >= lines.length * 0.6;
+  return tabular ? text : linesToCsv(lines);
+}
+
+// Several sheets / tables with different headers → one table (columns matched by header name).
+// Same column roles the server uses, so "Mobile" on one sheet and "Contact No" on another line up.
+const ROLE_RE = [['doctor', /doctor|\bdr\b|physician|consultant|referred|reference|prescriber/i], ['number', /number|phone|mobile|contact|whatsapp|cell|\bmob\b|\bph\b|\btel\b/i],
+  ['notes', /notes?|remarks?|comments?|details|description/i], ['medicine', /medicine|medication|drug|\brx\b|prescri|tablet|product|brand|molecule|treatment/i],
+  ['condition', /condition|disease|diagnos|illness|problem|complaint|ailment|indication|therapy|speciality|specialty|department/i],
+  ['name', /name|patient|customer|client|person/i], ['city', /city|town|location|area|district|address|place|village|state|locality/i],
+  ['age', /\bage\b|dob|birth/i], ['gender', /gender|\bsex\b/i], ['language', /language|\blang\b/i]];
+function mergeTables(tables) {
+  const header = [];
+  const norm = h => { const r = ROLE_RE.find(([, re]) => re.test(String(h))); return r ? r[0] : String(h).trim().toLowerCase(); };
+  const out = [];
+  for (const t of tables) {
+    const hasHeader = t.length && !t[0].some(v => countPhones(v)) && t[0].some(v => /[a-z]/i.test(v));
+    const h = hasHeader ? t[0] : t[0].map((_, i) => 'column ' + (i + 1));
+    const idx = h.map(x => { let i = header.findIndex(y => norm(y) === norm(x)); if (i < 0) { header.push(x); i = header.length - 1; } return i; });
+    (hasHeader ? t.slice(1) : t).forEach(r => { const row = []; r.forEach((v, i) => { row[idx[i]] = v; }); out.push(row); });
+  }
+  return toCsv([header, ...out.map(r => header.map((_, i) => r[i] ?? ''))]);
+}
+
+function htmlToCsv(html) {
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  const tables = [...doc.querySelectorAll('table')].map(t => [...t.querySelectorAll('tr')].map(tr => [...tr.querySelectorAll('th,td')].map(td => td.textContent.trim())))
+    .filter(rows => countPhones(rows.map(r => r.join(' ')).join('\n')));
+  if (tables.length) return mergeTables(tables);
+  doc.querySelectorAll('table').forEach(t => t.remove());
+  return linesToCsv(doc.body.innerText.split(/\n+/));
+}
+
+function vcfToCsv(text) {
+  const cards = text.split(/BEGIN:VCARD/i).slice(1);
+  const rows = [['name', 'number', 'notes']];
+  for (const c of cards) {
+    const lines = c.replace(/\r?\n[ \t]/g, '').split(/\r?\n/);
+    const val = key => (lines.find(l => new RegExp('^' + key + '[;:]', 'i').test(l)) || '').replace(/^[^:]*:/, '').trim();
+    const name = val('FN') || val('N').split(';').filter(Boolean).reverse().join(' ');
+    const notes = [val('NOTE'), val('ORG'), val('ADR').replace(/;+/g, ' ')].filter(Boolean).join(' ');
+    lines.filter(l => /^TEL[;:]/i.test(l)).forEach(l => rows.push([name, l.replace(/^[^:]*:/, '').trim(), notes]));
+  }
+  if (rows.length < 2) throw new Error('No phone numbers found in these contacts.');
+  return toCsv(rows);
+}
+
+function jsonToCsv(text) {
+  let j; try { j = JSON.parse(text); } catch { throw new Error('This JSON file is not valid.'); }
+  const arr = Array.isArray(j) ? j : (Object.values(j).find(Array.isArray) || []);
+  if (!arr.length || typeof arr[0] !== 'object') throw new Error('Could not find a list of contacts in this JSON.');
+  const keys = [...new Set(arr.flatMap(o => Object.keys(o || {})))];
+  return toCsv([keys, ...arr.map(o => keys.map(k => typeof o[k] === 'object' ? JSON.stringify(o[k]) : o[k]))]);
+}
+
+// Free text (Word paragraphs, PDF lines, messages): a number with the name on that line or the one above.
+function linesToCsv(lines) {
+  const out = [];
+  let prevNameOnly = '', prevLine = '';
+  for (const line of lines) {
+    const phones = line.match(PHONE_RE) || [];
+    if (!phones.length) { prevNameOnly = nameFrom(line); prevLine = line; continue; }
+    let rest = line;
+    phones.forEach(ph => { rest = rest.replace(ph, ' '); });
+    const own = nameFrom(rest);
+    const name = own || prevNameOnly;
+    const notes = (own ? '' : prevLine + ' ') + line;
+    phones.forEach(ph => out.push([name, ph.replace(/[^\d+]/g, ''), notes.trim()]));
+    prevNameOnly = ''; prevLine = '';
+  }
+  if (!out.length) throw new Error('No Indian mobile numbers found in this file.');
+  return toCsv([['name', 'number', 'notes'], ...out]);
+}
+
+async function aiExtract(f, mime) {
+  if (f.size > 15 * 1024 * 1024) throw new Error('Photos and scans must be under 15 MB.');
+  showResult('analyzeResult', 'info', 'Reading the photo / scan with AI — this can take up to a minute…');
+  const { ok, d } = await post('/api/admin/leads/extract', { fileData: await fileToBase64(f), fileType: mime });
+  if (!ok) throw new Error(d.message || 'AI could not read this file.');
+  showResult('analyzeResult', 'info', `AI found ${d.count} contact${d.count === 1 ? '' : 's'}. Please check the names and numbers below before sending. Sorting…`);
+  return d.csv;
+}
+
 document.getElementById('file').addEventListener('change', e => {
   const f = e.target.files[0];
   if (!f) return;
-  if (/\.xlsx?$/i.test(f.name)) return showResult('analyzeResult', 'err', 'This is an Excel file. In Excel choose File → Save As → CSV (or PDF), then upload that.');
-  if (f.size > 15 * 1024 * 1024) return showResult('analyzeResult', 'err', 'File is too big — please keep it under 15 MB.');
-  const isPdf = /\.pdf$/i.test(f.name) || f.type === 'application/pdf';
-  if (!isPdf && f.size > 2 * 1024 * 1024) return showResult('analyzeResult', 'err', 'File is too big — please keep it under 2 MB (about 5,000 contacts).');
-  (isPdf ? pdfToCsv(f) : f.text())
+  if (f.size > 25 * 1024 * 1024) return showResult('analyzeResult', 'err', 'File is too big — please keep it under 25 MB, or split it.');
+  csvText = ''; plan = null; document.getElementById('planCard').style.display = 'none';
+  readAnyFile(f)
     .then(t => { csvText = t; analyze(); })
-    .catch(err => { plan = null; document.getElementById('planCard').style.display = 'none'; showResult('analyzeResult', 'err', err.message); });
+    .catch(err => showResult('analyzeResult', 'err', err.message));
 });
+document.getElementById('gap').addEventListener('change', () => { if (csvText) analyze(); });
 
 // ---------- PDF → contacts ----------
 // Reads the text layer of the PDF in the browser (nothing is uploaded except the names and
@@ -281,13 +447,13 @@ function loadPdfJs() {
 }
 
 const PHONE_RE = /(?<![\d+])(?:\+?\s?91[\s.-]*|0)?[6-9]\d{2}[\s.-]?\d{2}[\s.-]?\d{5}(?![\d])/g;
-const NOT_NAME = /^(name|names|patient|patients|mobile|mobile no|phone|phone no|contact|contact no|number|no|s ?no|sr ?no|sl ?no|serial|whatsapp|ph|mob|tel|city|address|age|gender|male|female|mr|mrs|ms|dr|shri|smt|total|page|date|list|of)$/i;
+const NOT_NAME = /^(name|names|patient|patients|mobile|mobile no|phone|phone no|contact|contact no|number|no|s ?no|sr ?no|sl ?no|serial|whatsapp|ph|mob|tel|city|address|age|gender|male|female|mr|mrs|ms|dr|shri|smt|total|page|date|list|of|bp|sugar|diabetes|diabetic|thyroid|ivf|hypertension|htn|dm|cholesterol|heart|disease|medicine|camp)$/i;
 
 function nameFrom(text) {
   // Table cells are separated by "|". Use the left-most cell that looks like a person's name
   // (letters only, not a column heading) — so "Rahul Sharma | 98765… | Hapur" gives "Rahul Sharma".
   const runs = String(text).split(/\||[^A-Za-z\u0900-\u097F .'-]+/).map(r => r.replace(/\s+/g, ' ').trim())
-    .map(r => r.split(' ').filter(w => w && !NOT_NAME.test(w.replace(/[.']/g, ''))).join(' '))
+    .map(r => r.split(' ').filter(w => w.replace(/[^A-Za-z\u0900-\u097F]/g, '').length >= 2 && !NOT_NAME.test(w.replace(/[.'-]/g, ''))).join(' '))
     .filter(r => r.replace(/[^A-Za-z\u0900-\u097F]/g, '').length >= 2);
   return runs[0] || '';
 }
@@ -313,31 +479,19 @@ async function pdfToCsv(file) {
     rows.sort((a, b) => b.y - a.y).forEach(r => lines.push(r.parts.sort((a, b) => a.x - b.x).map(t => t.s).join(' | ')));
   }
   if (!lines.join('').trim()) throw new Error('No text found in this PDF — it looks like a scanned image. Please upload the original Excel/CSV, or a PDF exported from software.');
-  const out = [];
-  let prevNameOnly = '';
-  for (const line of lines) {
-    const phones = line.match(PHONE_RE) || [];
-    if (!phones.length) { prevNameOnly = nameFrom(line); continue; }
-    let rest = line;
-    phones.forEach(ph => { rest = rest.replace(ph, ' '); });
-    const name = nameFrom(rest) || prevNameOnly;
-    phones.forEach(ph => out.push([name, ph.replace(/[^\d+]/g, '')]));
-    prevNameOnly = '';
-  }
-  if (!out.length) throw new Error('No Indian mobile numbers found in this PDF.');
-  const q = v => '"' + String(v).replace(/"/g, '""') + '"';
-  showResult('analyzeResult', 'info', `Found ${out.length} number${out.length === 1 ? '' : 's'} in the PDF (${doc.numPages} page${doc.numPages === 1 ? '' : 's'}). Sorting…`);
-  return 'name,number\n' + out.map(([n, ph]) => q(n) + ',' + q(ph)).join('\n');
+  showResult('analyzeResult', 'info', `Read ${doc.numPages} page${doc.numPages === 1 ? '' : 's'} of the PDF. Sorting…`);
+  return linesToCsv(lines);
 }
 document.getElementById('gap').addEventListener('change', () => { if (csvText) analyze(); });
 
 function analyze() {
-  showResult('analyzeResult', 'info', 'Reading and sorting your list…');
+  showResult('analyzeResult', 'info', 'Analysing your list…');
   post('/api/admin/leads/analyze', { csv: csvText, gapDays: document.getElementById('gap').value })
     .then(({ ok, d }) => {
       if (!ok) { plan = null; document.getElementById('planCard').style.display = 'none'; return showResult('analyzeResult', 'err', d.message); }
       plan = d;
-      showResult('analyzeResult', 'ok', `Found ${d.summary.total} contact${d.summary.total === 1 ? '' : 's'}: ${d.summary.offer} registered patient${d.summary.offer === 1 ? '' : 's'}, ${d.summary.invite} new, ${d.summary.skipped} skipped.`);
+      const cols = Object.entries(d.columns || {}).map(([k, v]) => `${COLNAME[k] || k}: "${v}"`).join(' · ');
+      showResult('analyzeResult', 'ok', `Found ${n(d.summary.total)} contact${d.summary.total === 1 ? '' : 's'}: ${n(d.summary.offer)} registered patient${d.summary.offer === 1 ? '' : 's'}, ${n(d.summary.invite)} new, ${n(d.summary.skipped)} skipped.` + (cols ? `  Columns read — ${cols}` : ''));
       document.getElementById('planCard').style.display = 'block';
       document.getElementById('sendResult').className = 'result';
       group = d.summary.offer + d.summary.invite ? 'all' : 'skipped';
@@ -347,33 +501,80 @@ function analyze() {
     .catch(e => showResult('analyzeResult', 'err', e.message));
 }
 
+const COLNAME = { number: 'Number', name: 'Name', condition: 'Condition', medicine: 'Medicine', city: 'City', doctor: 'Doctor', age: 'Age', gender: 'Gender', language: 'Language', notes: 'Notes' };
+const SEG = { diabetes: 'Diabetes', bp: 'Blood pressure', thyroid: 'Thyroid', heart: 'Heart / cholesterol', ivf: 'IVF / fertility', general: 'General' };
+const n = v => Number(v || 0).toLocaleString('en-IN');
+
 function setGroup(g) { group = g; renderPlan(); }
+
+function renderInsights() {
+  const s = plan.summary, ins = plan.insights, reach = Math.max(1, ins.reach);
+  const pc = v => Math.round(v / reach * 100) + '%';
+  const chips = (list, fmt) => list.length ? list.map(x => `<span class="chip">${esc(fmt(x))} <b>${n(x.count)}</b></span>`).join('') : '<span class="muted">—</span>';
+  document.getElementById('insights').innerHTML = `
+    <div class="ins"><h4><i class="fas fa-stethoscope"></i> Conditions found</h4><div>${chips(ins.segments, x => x.label)}</div>
+      <p>Each group gets a message about <b>their</b> condition and medicine.</p></div>
+    <div class="ins"><h4><i class="fas fa-clipboard-check"></i> Data quality</h4>
+      <div class="bars">
+        <div><span>Names</span><i><b style="width:${pc(ins.withName)}"></b></i><em>${pc(ins.withName)}</em></div>
+        <div><span>Medicine</span><i><b style="width:${pc(ins.withMedicine)}"></b></i><em>${pc(ins.withMedicine)}</em></div>
+        <div><span>City</span><i><b style="width:${pc(ins.withCity)}"></b></i><em>${pc(ins.withCity)}</em></div>
+      </div>
+      <p>${n(ins.hindi)} will get their reply in Hindi.</p></div>
+    <div class="ins"><h4><i class="fas fa-location-dot"></i> Top cities</h4><div>${chips(ins.cities, x => x.key)}</div>
+      ${ins.skipReasons.length ? `<h4 style="margin-top:.7rem"><i class="fas fa-forward"></i> Why skipped</h4><div>${chips(ins.skipReasons, x => x.key)}</div>` : ''}</div>`;
+}
 
 function renderPlan() {
   if (!plan) return;
   const s = plan.summary;
-  ['offer', 'invite', 'skipped'].forEach(k => document.getElementById('g-' + k).textContent = s[k]);
+  ['offer', 'invite', 'skipped'].forEach(k => document.getElementById('g-' + k).textContent = n(s[k]));
   document.getElementById('offerTplName').textContent = plan.offerTemplate || 'biomexa_care_offer';
-  document.getElementById('inviteTplName').textContent = plan.inviteTemplate || 'lead_onboarding';
+  document.getElementById('inviteTplName').textContent = plan.inviteTemplate || 'lead_invite';
   document.querySelectorAll('.big .tile, #planCard .tab').forEach(b => b.classList.toggle('on', b.dataset.g === group));
+  renderInsights();
   const offers = plan.offerTemplateReady ? s.offer : 0, invites = plan.inviteTemplateReady ? s.invite : 0;
   const toSend = offers + invites, now = Math.min(toSend, plan.remainingToday);
   document.getElementById('sendSummary').textContent = toSend
-    ? `${now} WhatsApp message${now === 1 ? '' : 's'} will go out now` + (toSend > now ? ` (${toSend - now} tomorrow)` : '')
+    ? `${n(now)} WhatsApp message${now === 1 ? '' : 's'} will go out now` + (toSend > now ? ` (${n(toSend - now)} saved for the next days)` : '')
     : 'Nobody in this list needs a message right now';
   document.getElementById('limitTxt').textContent = `Daily limit ${plan.dailyLimit} · ${plan.sentLast24h} sent in the last 24h · ${plan.remainingToday} left today · sends 9 AM–9 PM`
-    + (!plan.offerTemplateReady && s.offer ? ' · offer template not set up' : '') + (!plan.inviteTemplateReady && s.invite ? ' · invite template not set up' : '');
+    + (!plan.offerTemplateReady && s.offer ? ' · offer template not set up' : '') + (!plan.inviteTemplateReady && s.invite ? ' · invite template not set up' : '')
+    + (!plan.withinSendHours ? ' · outside sending hours now' : '');
   const btn = document.getElementById('sendBtn');
   if (!leadJobRunning) btn.disabled = !now || !plan.withinSendHours;
-  if (!plan.withinSendHours) document.getElementById('limitTxt').textContent += ' · outside sending hours now';
 
-  const q = document.getElementById('pq').value.trim().toLowerCase();
-  const rows = plan.rows.filter(r => (group === 'all' || r.group === group) && (!q || [r.name, r.phone].join(' ').toLowerCase().includes(q)));
+  const qq = document.getElementById('pq').value.trim().toLowerCase();
+  const rows = plan.rows.filter(r => (group === 'all' || r.group === group) && (!qq || [r.name, r.phone, r.city, r.medicine, SEG[r.segment]].join(' ').toLowerCase().includes(qq)));
+  const profile = r => [r.segment && r.segment !== 'general' ? `<span class="pill seg">${SEG[r.segment]}</span>` : '', r.medicine ? `<span class="muted">💊 ${esc(r.medicine)}</span>` : '', r.city ? `<span class="muted">📍 ${esc(r.city)}</span>` : '', r.language === 'hi' ? '<span class="muted">हिं</span>' : ''].filter(Boolean).join(' ');
   document.getElementById('planList').innerHTML = rows.length
-    ? `<table><thead><tr><th>Name</th><th>Number</th><th>Action</th><th>Why</th></tr></thead><tbody>` +
-      rows.slice(0, 1000).map(r => `<tr><td><b>${esc(r.name || '—')}</b></td><td>${esc(r.phone)}</td><td><span class="pill p-${r.group}">${GLABEL[r.group]}</span></td><td style="color:var(--muted);font-size:.82rem">${esc(r.reason)}</td></tr>`).join('') +
-      '</tbody></table>' + (rows.length > 1000 ? `<p class="desc">Showing 1,000 of ${rows.length}.</p>` : '')
+    ? `<table><thead><tr><th>Name</th><th>Number</th><th>Action</th><th>Profile</th><th>Message they get</th></tr></thead><tbody>` +
+      rows.slice(0, 1000).map(r => `<tr><td><b>${esc(r.name || '—')}</b></td><td>${esc(r.phone)}</td><td><span class="pill p-${r.group}">${GLABEL[r.group]}</span></td><td style="font-size:.8rem">${profile(r) || '<span class="muted">—</span>'}</td><td style="color:var(--muted);font-size:.8rem">${esc(r.reason)}${r.template ? `<br><code>${esc(r.template)}</code>` : ''}</td></tr>`).join('') +
+      '</tbody></table>' + (rows.length > 1000 || plan.rowsTruncated ? `<p class="desc">Showing the first ${n(Math.min(rows.length, 1000))} rows — counts above include everyone. Use <a href="#" onclick="downloadPlan();return false;">Download analysis</a> for the full list.</p>` : '')
     : '<div class="empty">Nobody in this group.</div>';
+}
+
+function downloadPlan() {
+  if (!plan) return;
+  downloadBlob('biomexa-list-analysis.csv', 'name,number,action,condition_group,medicine,city,language,message\n' +
+    plan.rows.map(r => [r.name, r.phone, GLABEL[r.group], SEG[r.segment] || '', r.medicine, r.city, r.language === 'hi' ? 'Hindi' : 'English', r.reason].map(q).join(',')).join('\n'));
+}
+
+// ---------- waiting contacts (saved earlier, not yet invited) ----------
+function sendWaiting() {
+  if (!document.getElementById('wconsent').checked) return showResult('waitResult', 'err', 'Please tick the box confirming these people agreed to be contacted.');
+  const w = data.counts.new || 0, m = Math.min(w, data.remainingToday);
+  if (!m) return showResult('waitResult', 'err', w ? 'Today\'s limit is used up — try again tomorrow.' : 'No contacts are waiting.');
+  if (!confirm(`Send the invite to ${m} waiting contact${m === 1 ? '' : 's'} now?\n\nWhatsApp charges for each message.`)) return;
+  const btn = document.getElementById('waitBtn'); btn.disabled = true;
+  post('/api/admin/leads/campaign', { waitingOnly: true, consent: true })
+    .then(({ ok, d }) => {
+      if (!ok) { showResult('waitResult', 'err', d.message); btn.disabled = false; return; }
+      showResult('waitResult', 'info', d.message);
+      document.getElementById('planCard').style.display = 'block';
+      renderJob(d.job);
+    })
+    .catch(e => { showResult('waitResult', 'err', e.message); btn.disabled = false; });
 }
 
 // ---------- step 2: one click send ----------
@@ -430,6 +631,10 @@ function load(quiet) {
     if (!d.inviteTemplateReady) miss.push('<b>MSG91_LEAD_TEMPLATE_NAME</b> (new-contact invite)');
     if (miss.length) { w.style.display = 'block'; w.innerHTML = '<i class="fas fa-circle-info"></i> Not set on Render yet: ' + miss.join(' and ') + '. That group will be shown but not sent.'; }
     else w.style.display = 'none';
+    const wc = document.getElementById('waitCard');
+    wc.style.display = (d.counts.new || 0) > 0 && d.inviteTemplateReady ? 'block' : 'none';
+    document.getElementById('waitN').textContent = Number(d.counts.new || 0).toLocaleString('en-IN');
+    if (!leadJobRunning) document.getElementById('waitBtn').disabled = !d.remainingToday || !d.withinSendHours;
     if (d.job && (d.job.running || pollTimer)) renderJob(d.job);
     render();
   }).catch(e => { if (!quiet) document.getElementById('list').innerHTML = `<div class="empty">Couldn't load — ${esc(e.message)}</div>`; });
@@ -462,7 +667,7 @@ function downloadBlob(name, text) {
   a.href = URL.createObjectURL(new Blob([text], { type: 'text/csv' }));
   a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
-function downloadSample() { downloadBlob('biomexa-contacts-sample.csv', 'name,number\nRahul Sharma,9876543210\nPriya Verma,+91 98765 43211\n'); }
+function downloadSample() { downloadBlob('biomexa-contacts-sample.csv', 'name,number,disease,medicine,city,language\nRahul Sharma,9876543210,Diabetes,Glimepiride 1mg,Hapur,Hindi\nPriya Verma,+91 98765 43211,BP,Telmexa AM,Delhi,English\n'); }
 function exportCsv() {
   const q = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
   const rows = data.leads.filter(l => filter === 'all' || l.status === filter);

@@ -1635,6 +1635,9 @@ const patientSchema = new mongoose.Schema({
   phone: { type: String, unique: true },
   email: String,
   password: String,
+  age: Number,     // optional, entered at sign-up
+  gender: String,  // optional: male | female | other
+  city: String,    // optional, entered at sign-up
   preferredLanguage: { type: String, default: 'English' }, // drives AI-generated report language (document analysis, treatment reports)
   baselineVitals: {
     bpSystolic: Number,
@@ -2056,7 +2059,12 @@ app.post('/api/auth/register', signupLimiter, async (req, res) => {
     if (existing) return res.status(409).json({ code: 'exists', message: 'This number already has a Biomexa account. Please log in — or use "Forgot password" if you never set one.' });
 
     const hashed = await bcrypt.hash(password, 10);
-    const patient = new Patient({ name, phone, email, password: hashed });
+    // Optional profile — helps the admin see who signed up (Campaign Insights).
+    const ageNum = parseInt(req.body.age, 10);
+    const age = ageNum >= 1 && ageNum <= 120 ? ageNum : undefined;
+    const gender = ['male', 'female', 'other'].includes(String(req.body.gender || '').toLowerCase()) ? String(req.body.gender).toLowerCase() : undefined;
+    const city = String(req.body.city || '').trim().slice(0, 60) || undefined;
+    const patient = new Patient({ name, phone, email, password: hashed, age, gender, city });
     await patient.save();
 
     const token = jwt.sign({ id: patient._id, phone }, JWT_SECRET, { expiresIn: '7d' });
@@ -5723,6 +5731,12 @@ const MSG91_LEAD_TEMPLATE_NAMESPACE = process.env.MSG91_LEAD_TEMPLATE_NAMESPACE 
 // always filled with "there". If you create a template with no variable at all, set
 // MSG91_LEAD_TEMPLATE_HAS_VARIABLE=false and nothing is sent for it.
 const LEAD_TEMPLATE_HAS_VARIABLE = process.env.MSG91_LEAD_TEMPLATE_HAS_VARIABLE !== 'false';
+// Optional condition-specific invites (must have NO variables), e.g. MSG91_LEAD_TEMPLATE_DIABETES=lead_invite_diabetes.
+// Anyone whose segment has no template of its own gets MSG91_LEAD_TEMPLATE_NAME.
+function leadTemplateFor(segment) {
+  const own = segment && segment !== 'general' ? process.env['MSG91_LEAD_TEMPLATE_' + segment.toUpperCase()] : null;
+  return own ? { name: own, hasVariable: false } : { name: MSG91_LEAD_TEMPLATE_NAME, hasVariable: LEAD_TEMPLATE_HAS_VARIABLE };
+}
 const LEAD_GREETING_WORD = 'there';
 // Sign-up link sent to leads — the public custom domain, so patients see a link they trust.
 const SIGNUP_SITE_URL = (process.env.SIGNUP_SITE_URL || 'https://biomexapharmaceuticals.com').replace(/\/+$/, '');
@@ -5742,8 +5756,56 @@ const Lead = mongoose.model('Lead', new mongoose.Schema({
   joinedAt: Date,
   optedOutAt: Date,
   lastError: String,
-  uploadedBy: String
+  uploadedBy: String,
+  // Profile read from the uploaded list — used to pick the right message for each person.
+  segment: { type: String, default: 'general', index: true }, // diabetes | bp | thyroid | heart | ivf | general
+  condition: String,
+  medicine: String,
+  city: String,
+  doctor: String,
+  age: String,
+  gender: String,
+  language: { type: String, default: 'en' },                // 'hi' when the list shows Hindi
+  templateUsed: String
 }, { timestamps: true }));
+
+// ---------- Lead profiling: what condition / medicine / city / language a contact has ----------
+const LEAD_SEGMENTS = [
+  { key: 'diabetes', label: 'Diabetes', hi: 'शुगर (डायबिटीज़)',
+    re: /\b(diabet\w*|sugar|madhumeh|t2dm|dm|dm2|type ?2|hba1c|metformin|glimepiride|gliclazide|sitagliptin|vildagliptin|teneligliptin|dapagliflozin|empagliflozin|voglibose|insulin|diabmexa)\b/i, dev: /मधुमेह|शुगर|डायबिटीज/ },
+  { key: 'bp', label: 'Blood pressure', hi: 'बीपी',
+    re: /\b(bp|b\.p|hypertension|htn|blood pressure|telmisartan|amlodipine|losartan|olmesartan|cilnidipine|ramipril|enalapril|metoprolol|atenolol|telmexa)\b/i, dev: /रक्तचाप|बीपी|ब्लड प्रेशर/ },
+  { key: 'thyroid', label: 'Thyroid', hi: 'थायराइड',
+    re: /\b(thyroid|hypothyroid\w*|hyperthyroid\w*|thyroxine|levothyroxine|eltroxin|thyronorm|carbimazole)\b/i, dev: /थायराइड/ },
+  { key: 'heart', label: 'Heart / cholesterol', hi: 'दिल / कोलेस्ट्रॉल',
+    re: /\b(cardiac|heart|cholesterol|lipid\w*|cad|angina|atorvastatin|rosuvastatin|statin|clopidogrel|ecosprin)\b/i, dev: /हृदय|दिल|कोलेस्ट्रॉल/ },
+  { key: 'ivf', label: 'IVF / fertility', hi: 'IVF',
+    re: /\b(ivf|iui|icsi|fertility|infertility|embryo|pcos|pcod)\b/i, dev: /आईवीएफ|बांझपन/ }
+];
+const SEGMENT_LABEL = Object.fromEntries([...LEAD_SEGMENTS.map(s => [s.key, s.label]), ['general', 'General']]);
+const KNOWN_MEDICINES = /\b(diabmexa[\w -]*?\d*|telmexa[\w -]*?(am)?|metformin|glimepiride|gliclazide|sitagliptin|vildagliptin|teneligliptin|dapagliflozin|empagliflozin|voglibose|insulin|telmisartan|amlodipine|losartan|olmesartan|cilnidipine|ramipril|metoprolol|atenolol|thyroxine|levothyroxine|eltroxin|thyronorm|atorvastatin|rosuvastatin|clopidogrel|ecosprin)\b/i;
+
+function leadProfile(c) {
+  const all = [c.condition, c.medicine, c.notes].filter(Boolean).join(' ');
+  const seg = LEAD_SEGMENTS.find(s => s.re.test(all) || s.dev.test(all));
+  let medicine = String(c.medicine || '').trim();
+  if (!medicine) { const m = all.match(KNOWN_MEDICINES); if (m) medicine = m[0].trim(); }
+  medicine = medicine.replace(/\s+/g, ' ').slice(0, 60);
+  if (medicine && medicine === medicine.toLowerCase()) medicine = medicine.replace(/\b\w/g, x => x.toUpperCase());
+  const langHint = String(c.language || '').toLowerCase();
+  const hindi = /hindi|हिं/.test(langHint) || (!/english/.test(langHint) && /[\u0900-\u097F]/.test([c.name, c.notes, c.condition].join(' ')));
+  const clip = (v, n) => String(v || '').replace(/\s+/g, ' ').trim().slice(0, n);
+  return {
+    segment: seg ? seg.key : 'general',
+    condition: clip(c.condition, 80),
+    medicine,
+    city: clip(c.city, 60),
+    doctor: clip(c.doctor, 60),
+    age: clip(c.age, 10),
+    gender: clip(c.gender, 12),
+    language: hindi ? 'hi' : 'en'
+  };
+}
 
 // Indian mobile → "91XXXXXXXXXX", or null if it isn't a valid mobile number.
 function leadPhone(raw) {
@@ -5776,7 +5838,8 @@ function istHour(d = new Date()) {
   return Number(new Intl.DateTimeFormat('en-US', { hour: 'numeric', hour12: false, timeZone: 'Asia/Kolkata' }).format(d)) % 24;
 }
 
-async function sendLeadTemplate(phone, name) {
+async function sendLeadTemplate(phone, segment) {
+  const tpl = leadTemplateFor(segment);
   try {
     const res = await fetch('https://api.msg91.com/api/v5/whatsapp/whatsapp-outbound-message/bulk/', {
       method: 'POST',
@@ -5788,12 +5851,12 @@ async function sendLeadTemplate(phone, name) {
           messaging_product: 'whatsapp',
           type: 'template',
           template: {
-            name: MSG91_LEAD_TEMPLATE_NAME,
+            name: tpl.name,
             language: { code: MSG91_TEMPLATE_LANG, policy: 'deterministic' },
             namespace: MSG91_LEAD_TEMPLATE_NAMESPACE,
             to_and_components: [{
               to: [phone],
-              components: LEAD_TEMPLATE_HAS_VARIABLE
+              components: tpl.hasVariable
                 ? { body_1: { type: 'text', value: LEAD_GREETING_WORD, parameter_name: 'patient_name' } }
                 : {}
             }]
@@ -5806,7 +5869,7 @@ async function sendLeadTemplate(phone, name) {
     if (!res.ok || data.hasError || data.status === 'fail') {
       return { ok: false, error: JSON.stringify(data).substring(0, 300) || `HTTP ${res.status}` };
     }
-    return { ok: true };
+    return { ok: true, template: tpl.name };
   } catch (err) {
     return { ok: false, error: err.message };
   }
@@ -5824,8 +5887,8 @@ async function runLeadCampaign(items) {
       // Re-check: they may have replied STOP or signed up since the list was analysed.
       const fresh = await Lead.findById(item.leadId).lean();
       if (!fresh || ['optout', 'joined'].includes(fresh.status)) continue;
-      r = await sendLeadTemplate(fresh.phone, fresh.name);
-      if (r.ok) await Lead.updateOne({ _id: fresh._id }, { status: 'sent', sentAt: new Date(), lastError: '' });
+      r = await sendLeadTemplate(fresh.phone, fresh.segment);
+      if (r.ok) await Lead.updateOne({ _id: fresh._id }, { status: 'sent', sentAt: new Date(), lastError: '', templateUsed: r.template });
       else await Lead.updateOne({ _id: fresh._id }, { status: 'failed', lastError: r.error });
       if (r.ok) leadJob.invites++;
     } else {
@@ -5876,14 +5939,58 @@ async function handleLeadReply(phone, buttonText, freeText) {
   }
   if (isStart) {
     if (lead.status !== 'joined') await Lead.updateOne({ _id: lead._id }, { status: 'replied', repliedAt: new Date(), optedOutAt: null });
-    await sendWhatsAppFree(phone,
-      `🙏 Thank you! Let's set up your free medicine reminders.\n\n` +
-      `👉 Tap to sign up and add your medicine (takes 1 minute):\n${SIGNUP_SITE_URL}/reminders.html?product=other&phone=${last10(phone)}\n\n` +
-      `Your WhatsApp number is already filled in, so your reminders come right here.\n\n` +
-      `Have a question? Just reply here. — Team Biomexa 💙`);
+    await sendWhatsAppFree(phone, leadWelcomeMessage(lead, phone));
     return true;
   }
   return false;
+}
+
+// Sign-up link that opens the right form: their own Biomexa product pre-selected, or their
+// medicine name typed in for them, and their WhatsApp number filled in. IVF leads go to IVF Care.
+function leadSignupLink(lead, phone) {
+  if (lead.segment === 'ivf') return `${SIGNUP_SITE_URL}/ivf-auth.html`;
+  const med = String(lead.medicine || '');
+  const product = /diabmexa/i.test(med) ? 'diabmexa-m-500' : /telmexa/i.test(med) ? 'telmexa-am' : 'other';
+  const medParam = product === 'other' && med ? `&med=${encodeURIComponent(med)}` : '';
+  return `${SIGNUP_SITE_URL}/reminders.html?product=${product}${medParam}&phone=${last10(phone)}`;
+}
+
+// The reply after "Start Reminders" is free text (the lead opened the chat), so it is written
+// for each person from what their list said: condition, medicine and language. No name is used.
+function leadWelcomeMessage(lead, phone) {
+  const hi = lead.language === 'hi';
+  const med = lead.medicine ? (hi ? ` (${lead.medicine})` : ` (${lead.medicine})`) : '';
+  const lines = {
+    en: {
+      diabetes: `We'll remind you to take your diabetes medicine${med} on time, and you can send your sugar readings right here on WhatsApp.`,
+      bp: `We'll remind you to take your BP medicine${med} on time, and you can send your BP readings right here on WhatsApp.`,
+      thyroid: `We'll remind you to take your thyroid medicine${med} at the same time every day.`,
+      heart: `We'll remind you to take your heart / cholesterol medicine${med} on time, every day.`,
+      ivf: `Biomexa IVF Care keeps track of your injections, scans and clinic visits, with reminders on WhatsApp.`,
+      general: `We'll remind you to take your medicine${med} on time, every day.`
+    },
+    hi: {
+      diabetes: `हम आपको शुगर की दवा${med} समय पर लेने की याद दिलाएंगे, और आप अपनी शुगर रीडिंग यहीं WhatsApp पर भेज सकते हैं।`,
+      bp: `हम आपको बीपी की दवा${med} समय पर लेने की याद दिलाएंगे, और आप अपनी बीपी रीडिंग यहीं WhatsApp पर भेज सकते हैं।`,
+      thyroid: `हम आपको थायराइड की दवा${med} रोज़ एक ही समय पर लेने की याद दिलाएंगे।`,
+      heart: `हम आपको दिल / कोलेस्ट्रॉल की दवा${med} रोज़ समय पर लेने की याद दिलाएंगे।`,
+      ivf: `Biomexa IVF Care आपके इंजेक्शन, स्कैन और क्लिनिक विज़िट का ध्यान रखता है, WhatsApp पर रिमाइंडर के साथ।`,
+      general: `हम आपको आपकी दवा${med} रोज़ समय पर लेने की याद दिलाएंगे।`
+    }
+  };
+  const L = lines[hi ? 'hi' : 'en'];
+  const what = L[lead.segment] || L.general;
+  const link = leadSignupLink(lead, phone);
+  if (hi) {
+    return `🙏 धन्यवाद! चलिए आपके मुफ़्त दवा रिमाइंडर शुरू करते हैं।\n\n${what}\n\n` +
+      `👉 साइन अप करने के लिए टैप करें (1 मिनट):\n${link}\n\n` +
+      (lead.segment === 'ivf' ? '' : `आपका WhatsApp नंबर पहले से भरा हुआ है।\n\n`) +
+      `कोई सवाल? यहीं जवाब दें। — टीम Biomexa 💙`;
+  }
+  return `🙏 Thank you! Let's set up your free medicine reminders.\n\n${what}\n\n` +
+    `👉 Tap to sign up (takes 1 minute):\n${link}\n\n` +
+    (lead.segment === 'ivf' ? '' : `Your WhatsApp number is already filled in, so your reminders come right here.\n\n`) +
+    `Have a question? Just reply here. — Team Biomexa 💙`;
 }
 
 // Business-initiated WhatsApp messages in the last 24h (lead invites + patient offers) —
@@ -5897,33 +6004,70 @@ async function sentLast24hTotal() {
   return a + b;
 }
 
-// Finds the number and name columns in any CSV — with or without a header row, whatever the
-// columns are called — by looking at what the values actually look like.
+// Reads any contact table (CSV text from the browser — Excel, Word, PDF, VCF, photos etc. are
+// turned into CSV on the admin page first). Finds the number column from the values, and the
+// name / condition / medicine / city / doctor / age / gender / language columns from the header.
+const LEAD_MAX_CONTACTS = 50000;
+const COLUMN_ROLES = [
+  ['doctor', /doctor|\bdr\b|physician|consultant|referred|reference|prescriber/],
+  ['number', /number|phone|mobile|contact|whatsapp|cell|\bmob\b|\bph\b|\btel\b/],
+  ['notes', /notes?|remarks?|comments?|details|description|line/],
+  ['medicine', /medicine|medication|drug|\brx\b|prescri|tablet|product|brand|molecule|treatment/],
+  ['condition', /condition|disease|diagnos|illness|problem|complaint|ailment|indication|therapy|speciality|specialty|department/],
+  ['name', /name|patient|customer|client|person/],
+  ['city', /city|town|location|area|district|address|place|village|state|pin|locality/],
+  ['age', /\bage\b|dob|birth|years/],
+  ['gender', /gender|\bsex\b/],
+  ['language', /language|\blang\b/]
+];
+
 function parseContactsCsv(csv) {
   const rows = parseCsvText(csv);
   if (!rows.length) throw new Error('The file is empty.');
   const first = rows[0].map(h => String(h).trim().toLowerCase());
-  const hasHeader = !first.some(v => leadPhone(v)) && first.some(v => /[a-z]/.test(v));
+  const hasHeader = !first.some(v => leadPhone(v)) && first.some(v => /[a-zऀ-ॿ]/.test(v));
   const body = hasHeader ? rows.slice(1) : rows;
   if (!body.length) throw new Error('The file has a header row but no contacts.');
-  if (body.length > 5000) throw new Error('Please upload at most 5,000 contacts at a time.');
+  if (body.length > LEAD_MAX_CONTACTS) throw new Error(`This file has ${body.length.toLocaleString('en-IN')} rows — please split it into files of up to ${LEAD_MAX_CONTACTS.toLocaleString('en-IN')}.`);
   const width = Math.max(...rows.map(r => r.length));
-  const score = (col, test) => body.reduce((n, r) => n + (test(String(r[col] || '').trim()) ? 1 : 0), 0);
-  const pick = (test, exclude = -1) => {
+  const sample = body.length > 2000 ? body.filter((_, i) => i % Math.ceil(body.length / 2000) === 0) : body;
+  const score = (col, test) => sample.reduce((n, r) => n + (test(String(r[col] || '').trim()) ? 1 : 0), 0);
+  const pick = (test, exclude) => {
     let best = -1, bestScore = 0;
-    for (let c = 0; c < width; c++) { if (c === exclude) continue; const s = score(c, test); if (s > bestScore) { best = c; bestScore = s; } }
+    for (let c = 0; c < width; c++) { if (exclude.has(c)) continue; const s = score(c, test); if (s > bestScore) { best = c; bestScore = s; } }
     return best;
   };
-  let numCol = hasHeader ? first.findIndex(h => /number|phone|mobile|contact|whatsapp|cell/.test(h)) : -1;
-  if (numCol === -1 || score(numCol, v => !!leadPhone(v)) < body.length * 0.3) numCol = pick(v => !!leadPhone(v));
-  if (numCol === -1) throw new Error('Could not find any Indian mobile numbers in this file.');
+  const cols = {};
+  if (hasHeader) {
+    first.forEach((h, i) => {
+      const role = COLUMN_ROLES.find(([r, re]) => cols[r] === undefined && re.test(h));
+      if (role) cols[role[0]] = i;
+    });
+  }
+  const taken = () => new Set(Object.values(cols));
+  if (cols.number === undefined || score(cols.number, v => !!leadPhone(v)) < sample.length * 0.3) {
+    const t = taken(); if (cols.number !== undefined) t.delete(cols.number);
+    cols.number = pick(v => !!leadPhone(v), t);
+  }
+  if (cols.number === -1) throw new Error('Could not find any Indian mobile numbers in this file.');
   const isName = v => /^[A-Za-zऀ-ॿ][A-Za-zऀ-ॿ .'-]{1,59}$/.test(v);
-  let nameCol = hasHeader ? first.findIndex((h, i) => i !== numCol && /name|patient|customer/.test(h)) : -1;
-  if (nameCol === -1) nameCol = pick(isName, numCol);
-  return body.map(r => ({ rawNumber: String(r[numCol] || '').trim(), name: nameCol >= 0 ? String(r[nameCol] || '').trim().slice(0, 60) : '' }));
+  if (cols.name === undefined) { const n = pick(isName, taken()); if (n >= 0) cols.name = n; }
+  const get = (r, role) => cols[role] !== undefined && cols[role] >= 0 ? String(r[cols[role]] || '').trim() : '';
+  return {
+    columns: Object.fromEntries(Object.entries(cols).filter(([, i]) => i >= 0).map(([role, i]) => [role, hasHeader ? String(rows[0][i]).trim() : `column ${i + 1}`])),
+    contacts: body.map(r => ({
+      rawNumber: get(r, 'number'),
+      name: get(r, 'name').slice(0, 60),
+      condition: get(r, 'condition'), medicine: get(r, 'medicine'), city: get(r, 'city'), doctor: get(r, 'doctor'),
+      age: get(r, 'age'), gender: get(r, 'gender'), language: get(r, 'language'),
+      // Everything else on the row is still searched for conditions / medicines.
+      notes: r.join(' ').slice(0, 600)
+    }))
+  };
 }
 
-// Sorts every contact into: invite (new to Biomexa), offer (registered patient), or skipped (why).
+// Sorts every contact into: invite (new to Biomexa), offer (registered patient), or skipped (why),
+// and works out each new contact's profile and the message they will get.
 async function analyzeContacts(contacts, gapDays) {
   const cutoff = new Date(Date.now() - gapDays * 86400000);
   const fmt = d => new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'Asia/Kolkata' });
@@ -5931,33 +6075,70 @@ async function analyzeContacts(contacts, gapDays) {
   const byKey = new Map();
   for (const p of patients) { const k = last10(p.phone); if (!byKey.has(k)) byKey.set(k, []); byKey.get(k).push(p); }
   const phones = contacts.map(c => leadPhone(c.rawNumber)).filter(Boolean);
-  const leads = new Map((await Lead.find({ phone: { $in: phones } }).lean()).map(l => [l.phone, l]));
+  const leads = new Map();
+  for (let i = 0; i < phones.length; i += 5000) {
+    (await Lead.find({ phone: { $in: phones.slice(i, i + 5000) } }).lean()).forEach(l => leads.set(l.phone, l));
+  }
   const out = [];
   const seen = new Set();
   for (const c of contacts) {
     const phone = leadPhone(c.rawNumber);
-    const name = c.name;
-    if (!phone) { out.push({ group: 'skipped', name, phone: c.rawNumber, reason: 'Not a valid mobile number' }); continue; }
-    if (seen.has(phone)) { out.push({ group: 'skipped', name, phone, reason: 'Duplicate in this file' }); continue; }
+    const profile = leadProfile(c);
+    const base = { name: c.name, ...profile };
+    if (!phone) { if (c.rawNumber || c.name) out.push({ ...base, group: 'skipped', phone: c.rawNumber, reason: 'Not a valid mobile number' }); continue; }
+    if (seen.has(phone)) { out.push({ ...base, group: 'skipped', phone, reason: 'Duplicate in this file' }); continue; }
     seen.add(phone);
     const twins = byKey.get(last10(phone));
     if (twins) {
       const main = twins.find(p => !/\s/.test(p.phone)) || twins[0];
-      const pname = main.name || name;
+      const pname = main.name || c.name;
       const last = twins.map(p => p.lastAdSentAt).filter(Boolean).sort((a, b) => b - a)[0];
-      if (twins.some(p => p.adOptOut)) out.push({ group: 'skipped', name: pname, phone: main.phone, reason: 'Patient replied STOP to offers' });
-      else if (last && last > cutoff) out.push({ group: 'skipped', name: pname, phone: main.phone, reason: `Patient — already got an offer on ${fmt(last)}` });
-      else out.push({ group: 'offer', name: pname, phone: main.phone, patientId: main._id, reason: 'Registered patient → Biomexa Care offer' });
+      if (twins.some(p => p.adOptOut)) out.push({ ...base, group: 'skipped', name: pname, phone: main.phone, reason: 'Patient replied STOP to offers' });
+      else if (last && last > cutoff) out.push({ ...base, group: 'skipped', name: pname, phone: main.phone, reason: `Patient — already got an offer on ${fmt(last)}` });
+      else out.push({ ...base, group: 'offer', name: pname, phone: main.phone, patientId: main._id, reason: 'Registered patient → Biomexa Care offer (based on their plan)', template: MSG91_AD_TEMPLATE_NAME });
       continue;
     }
     const lead = leads.get(phone);
-    if (lead && lead.status === 'optout') out.push({ group: 'skipped', name: lead.name || name, phone, reason: 'Replied STOP to our invite' });
-    else if (lead && lead.sentAt && lead.sentAt > cutoff) out.push({ group: 'skipped', name: lead.name || name, phone, reason: `Already invited on ${fmt(lead.sentAt)}` });
-    else out.push({ group: 'invite', name: (lead && lead.name) || name, phone, leadId: lead ? lead._id : null, reason: 'New contact → invite to Biomexa' });
+    if (lead && lead.status === 'optout') out.push({ ...base, group: 'skipped', phone, reason: 'Replied STOP to our invite' });
+    else if (lead && lead.status === 'joined') out.push({ ...base, group: 'skipped', phone, reason: 'Already signed up' });
+    else if (lead && lead.sentAt && lead.sentAt > cutoff) out.push({ ...base, group: 'skipped', phone, reason: `Already invited on ${fmt(lead.sentAt)}` });
+    else {
+      const tpl = leadTemplateFor(profile.segment);
+      out.push({ ...base, group: 'invite', phone, leadId: lead ? lead._id : null, template: tpl.name,
+        reason: `New contact → ${SEGMENT_LABEL[profile.segment]} invite` + (profile.medicine ? ` · reply mentions ${profile.medicine}` : '') + (profile.language === 'hi' ? ' · Hindi reply' : '') });
+    }
   }
   const order = { offer: 0, invite: 1, skipped: 2 };
-  out.sort((a, b) => order[a.group] - order[b.group] || String(a.name).localeCompare(String(b.name)));
+  out.sort((a, b) => order[a.group] - order[b.group] || String(a.segment).localeCompare(String(b.segment)) || String(a.name).localeCompare(String(b.name)));
   return out;
+}
+
+// What the list contains — shown above the send button.
+function summarizeAnalysis(rows) {
+  const summary = { total: rows.length, invite: 0, offer: 0, skipped: 0 };
+  const segments = {}, cities = {}, skipReasons = {};
+  let withName = 0, withMedicine = 0, withCity = 0, hindi = 0;
+  for (const r of rows) {
+    summary[r.group]++;
+    if (r.group === 'skipped') { const k = r.reason.replace(/ on \d.*$/, '').replace(/—.*$/, '').trim(); skipReasons[k] = (skipReasons[k] || 0) + 1; continue; }
+    segments[r.segment] = (segments[r.segment] || 0) + 1;
+    if (r.city) { const k = r.city.split(/[,-]/)[0].trim().replace(/\b\w/g, x => x.toUpperCase()); cities[k] = (cities[k] || 0) + 1; }
+    if (r.name) withName++;
+    if (r.medicine) withMedicine++;
+    if (r.city) withCity++;
+    if (r.language === 'hi') hindi++;
+  }
+  const top = (o, n) => Object.entries(o).sort((a, b) => b[1] - a[1]).slice(0, n).map(([k, v]) => ({ key: k, count: v }));
+  const reach = summary.invite + summary.offer;
+  return {
+    summary,
+    insights: {
+      segments: top(segments, 10).map(s => ({ ...s, label: SEGMENT_LABEL[s.key] || s.key })),
+      cities: top(cities, 6),
+      skipReasons: top(skipReasons, 6),
+      withName, withMedicine, withCity, hindi, reach
+    }
+  };
 }
 
 async function campaignContext() {
@@ -5989,7 +6170,7 @@ app.get('/api/admin/leads', adminAuth, async (req, res) => {
     grouped.forEach(g => { counts[g._id] = g.n; });
     res.json({
       counts, ...ctx, job: leadJob,
-      leads: leads.map(l => ({ id: l._id, name: l.name, phone: l.phone, source: l.source, status: l.status, sentAt: l.sentAt, repliedAt: l.repliedAt, createdAt: l.createdAt, lastError: l.lastError || '' }))
+      leads: leads.map(l => ({ id: l._id, name: l.name, phone: l.phone, source: l.source, status: l.status, segment: l.segment || 'general', medicine: l.medicine || '', city: l.city || '', language: l.language || 'en', sentAt: l.sentAt, repliedAt: l.repliedAt, createdAt: l.createdAt, lastError: l.lastError || '' }))
     });
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -5999,20 +6180,76 @@ app.get('/api/admin/leads', adminAuth, async (req, res) => {
 // Step 1 — Body: { csv, gapDays }. Reads and sorts the list; nothing is saved or sent.
 app.post('/api/admin/leads/analyze', adminAuth, async (req, res) => {
   try {
-    let contacts;
-    try { contacts = parseContactsCsv(req.body?.csv); } catch (e) { return res.status(400).json({ message: e.message }); }
+    let parsed;
+    try { parsed = parseContactsCsv(req.body?.csv); } catch (e) { return res.status(400).json({ message: e.message }); }
     const gapDays = clampGap(req.body?.gapDays);
-    const rows = await analyzeContacts(contacts, gapDays);
-    const summary = { total: rows.length, invite: 0, offer: 0, skipped: 0 };
-    rows.forEach(r => summary[r.group]++);
-    res.json({ summary, gapDays, ...(await campaignContext()), rows: rows.map(({ patientId, leadId, ...r }) => r) });
+    const rows = await analyzeContacts(parsed.contacts, gapDays);
+    const { summary, insights } = summarizeAnalysis(rows);
+    const MAX_ROWS = 5000; // the page shows a sample; counts above cover everyone
+    res.json({
+      summary, insights, columns: parsed.columns, gapDays, ...(await campaignContext()),
+      rowsTruncated: rows.length > MAX_ROWS,
+      rows: rows.slice(0, MAX_ROWS).map(({ patientId, leadId, ...r }) => r)
+    });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
 
-// Step 2 — Body: { csv, gapDays, source, consent: true }. One click: saves new contacts as leads and
-// sends each person the right WhatsApp template in the background.
+// Turns a photo or scanned PDF of a contact list into CSV with AI vision (Gemini, then Claude).
+// Body: { fileData: base64, fileType: 'image/jpeg' | 'application/pdf' | ... }
+const CONTACT_EXTRACT_PROMPT = `This file is a list of people (patients / customers / contacts), possibly a photo of a handwritten or printed register. Extract EVERY person with an Indian mobile number.
+Return ONLY JSON, no prose: {"contacts":[{"name":"","phone":"","condition":"","medicine":"","city":"","doctor":"","age":"","gender":"","notes":""}]}
+Rules: copy phone numbers digit-for-digit exactly as written (never guess or complete missing digits; skip a person if the number is unreadable). Leave a field "" if it is not in the file. "condition" = disease / problem written for that person; "medicine" = medicine names written for them; "notes" = anything else on their row. Keep names as written (Hindi stays Hindi).`;
+
+app.post('/api/admin/leads/extract', adminAuth, async (req, res) => {
+  try {
+    const fileType = String(req.body?.fileType || '');
+    const fileData = String(req.body?.fileData || '');
+    if (!/^(image\/(jpeg|png|webp|heic|heif|gif)|application\/pdf)$/.test(fileType) || !fileData) {
+      return res.status(400).json({ message: 'Send a photo (JPG / PNG / WEBP / HEIC) or a PDF.' });
+    }
+    if (fileData.length > 20 * 1024 * 1024) return res.status(400).json({ message: 'File is too big for AI reading — please keep photos / scans under 15 MB.' });
+    if (!GEMINI_API_KEY && !ANTHROPIC_API_KEY) return res.status(400).json({ message: 'AI reading of photos and scans isn\'t switched on — add GEMINI_API_KEY (free) on Render, or upload the list as Excel / CSV.' });
+    let text = null;
+    if (GEMINI_API_KEY) {
+      const parts = [{ text: CONTACT_EXTRACT_PROMPT }, { inline_data: { mime_type: fileType, data: fileData } }];
+      for (let i = 0; i < GEMINI_MODELS.length && !text; i++) {
+        try { const r = await callGeminiModel(GEMINI_MODELS[i], parts, i === GEMINI_MODELS.length - 1 ? 2 : 1); if (r.ok && r.analysis.includes('{')) text = r.analysis; }
+        catch (err) { console.log(`⚠️ ${GEMINI_MODELS[i]} contact extraction error:`, err.message); }
+      }
+    }
+    if (!text && ANTHROPIC_API_KEY && fileType !== 'image/heic' && fileType !== 'image/heif') {
+      try {
+        const block = fileType === 'application/pdf'
+          ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: fileData } }
+          : { type: 'image', source: { type: 'base64', media_type: fileType, data: fileData } };
+        const r = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+          body: JSON.stringify({ model: 'claude-sonnet-5', max_tokens: 16000, messages: [{ role: 'user', content: [block, { type: 'text', text: CONTACT_EXTRACT_PROMPT }] }] }),
+          signal: AbortSignal.timeout(120000)
+        });
+        const d = await r.json();
+        if (r.ok) text = d.content?.find(b => b.type === 'text')?.text || null;
+      } catch (err) { console.log('⚠️ Claude contact extraction error:', err.message); }
+    }
+    if (!text) return res.status(502).json({ message: 'The AI couldn\'t read this file right now. Try a clearer photo, or upload the list as Excel / CSV.' });
+    let list = [];
+    try { const j = JSON.parse(text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1)); list = Array.isArray(j.contacts) ? j.contacts : []; } catch { list = []; }
+    const fields = ['name', 'phone', 'condition', 'medicine', 'city', 'doctor', 'age', 'gender', 'notes'];
+    const q = v => '"' + String(v ?? '').replace(/"/g, '""').replace(/[\r\n]+/g, ' ') + '"';
+    const rowsOut = list.filter(c => c && c.phone).map(c => fields.map(f => q(c[f])).join(','));
+    if (!rowsOut.length) return res.status(400).json({ message: 'No mobile numbers could be read from this file.' });
+    res.json({ count: rowsOut.length, csv: fields.join(',') + '\n' + rowsOut.join('\n') });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Step 2 — one click. Body: { csv, gapDays, source, consent: true } to send to a new list, or
+// { waitingOnly: true, consent: true, retryFailed } to continue with contacts still waiting from
+// earlier uploads (the daily limit leaves the rest for the next day).
 app.post('/api/admin/leads/campaign', adminAuth, async (req, res) => {
   try {
     if (req.body?.consent !== true) return res.status(400).json({ message: 'Please tick the box confirming these people agreed to be contacted by Biomexa on WhatsApp.' });
@@ -6021,46 +6258,66 @@ app.post('/api/admin/leads/campaign', adminAuth, async (req, res) => {
     if (hour < LEAD_SEND_START_HOUR || hour >= LEAD_SEND_END_HOUR) {
       return res.status(400).json({ message: `WhatsApp promotions only go out between ${LEAD_SEND_START_HOUR} AM and ${LEAD_SEND_END_HOUR - 12} PM (India time). Please try again then.` });
     }
-    let contacts;
-    try { contacts = parseContactsCsv(req.body?.csv); } catch (e) { return res.status(400).json({ message: e.message }); }
-    const gapDays = clampGap(req.body?.gapDays);
-    const source = String(req.body?.source || '').trim().slice(0, 80);
     const ctx = await campaignContext();
-    const rows = await analyzeContacts(contacts, gapDays);
-
-    // New contacts are always saved as leads (so they show up below), even if today's limit is used up.
-    let invites = rows.filter(r => r.group === 'invite');
-    const newDocs = invites.filter(r => !r.leadId).map(r => ({ name: r.name, phone: r.phone, source, uploadedBy: req.admin?.username || 'admin' }));
-    if (newDocs.length) {
-      try { await Lead.insertMany(newDocs, { ordered: false }); } catch (e) { /* a duplicate raced in — fine */ }
-      const ids = new Map((await Lead.find({ phone: { $in: newDocs.map(d => d.phone) } }).select('phone').lean()).map(l => [l.phone, l._id]));
-      invites = invites.map(r => ({ ...r, leadId: r.leadId || ids.get(r.phone) }));
-    }
-
     const notes = [];
-    let offers = rows.filter(r => r.group === 'offer');
-    if (!ctx.offerTemplateReady && offers.length) { notes.push(`${offers.length} patient offer${offers.length === 1 ? '' : 's'} not sent — offer template not set up.`); offers = []; }
-    if (!ctx.inviteTemplateReady && invites.length) { notes.push(`${invites.length} new contact${invites.length === 1 ? '' : 's'} saved but not invited — invite template not set up.`); invites = []; }
+    let queue;
 
-    const queue = [
-      ...offers.map(r => ({ kind: 'offer', patientId: r.patientId, gapDays })),
-      ...invites.filter(r => r.leadId).map(r => ({ kind: 'invite', leadId: r.leadId }))
-    ];
-    const batch = queue.slice(0, ctx.remainingToday);
-    const waiting = queue.length - batch.length;
-    if (waiting) notes.push(`${waiting} will wait for tomorrow (daily limit ${ctx.dailyLimit}) — just press Send again then.`);
-    if (!batch.length) {
-      return res.status(400).json({ message: (queue.length ? `Today's limit of ${ctx.dailyLimit} messages is used up.` : 'Nobody in this list needs a message right now — see the reasons in the table.') + (notes.length ? ' ' + notes.join(' ') : '') });
+    if (req.body?.waitingOnly) {
+      if (!ctx.inviteTemplateReady) return res.status(400).json({ message: 'The invite template isn\'t set up yet.' });
+      await syncJoinedLeads();
+      const statuses = req.body?.retryFailed ? ['new', 'failed'] : ['new'];
+      const waiting = await Lead.find({ status: { $in: statuses } }).sort({ createdAt: 1 }).limit(ctx.remainingToday).select('_id').lean();
+      queue = waiting.map(l => ({ kind: 'invite', leadId: l._id }));
+      const totalWaiting = await Lead.countDocuments({ status: { $in: statuses } });
+      if (totalWaiting > queue.length && queue.length) notes.push(`${totalWaiting - queue.length} still waiting for tomorrow (daily limit ${ctx.dailyLimit}).`);
+      if (!totalWaiting) return res.status(400).json({ message: 'No contacts are waiting.' });
+    } else {
+      let parsed;
+      try { parsed = parseContactsCsv(req.body?.csv); } catch (e) { return res.status(400).json({ message: e.message }); }
+      const gapDays = clampGap(req.body?.gapDays);
+      const source = String(req.body?.source || '').trim().slice(0, 80);
+      const rows = await analyzeContacts(parsed.contacts, gapDays);
+      const profileOf = r => ({ segment: r.segment, condition: r.condition, medicine: r.medicine, city: r.city, doctor: r.doctor, age: r.age, gender: r.gender, language: r.language });
+
+      // New contacts are always saved (with their profile), even if today's limit is used up.
+      let invites = rows.filter(r => r.group === 'invite');
+      const newDocs = invites.filter(r => !r.leadId).map(r => ({ name: r.name, phone: r.phone, source, uploadedBy: req.admin?.username || 'admin', ...profileOf(r) }));
+      for (let i = 0; i < newDocs.length; i += 2000) {
+        try { await Lead.insertMany(newDocs.slice(i, i + 2000), { ordered: false }); } catch (e) { /* a duplicate raced in — fine */ }
+      }
+      // Existing leads in the list: keep their profile up to date with what this file says.
+      const updates = invites.filter(r => r.leadId).map(r => ({ updateOne: { filter: { _id: r.leadId }, update: { $set: Object.fromEntries(Object.entries({ ...profileOf(r), ...(source ? { source } : {}) }).filter(([, v]) => v)) } } }));
+      for (let i = 0; i < updates.length; i += 2000) await Lead.bulkWrite(updates.slice(i, i + 2000), { ordered: false });
+      if (newDocs.length) {
+        const ids = new Map();
+        for (let i = 0; i < newDocs.length; i += 5000) {
+          (await Lead.find({ phone: { $in: newDocs.slice(i, i + 5000).map(d => d.phone) } }).select('phone').lean()).forEach(l => ids.set(l.phone, l._id));
+        }
+        invites = invites.map(r => ({ ...r, leadId: r.leadId || ids.get(r.phone) }));
+      }
+
+      let offers = rows.filter(r => r.group === 'offer');
+      if (!ctx.offerTemplateReady && offers.length) { notes.push(`${offers.length} patient offer${offers.length === 1 ? '' : 's'} not sent — offer template not set up.`); offers = []; }
+      if (!ctx.inviteTemplateReady && invites.length) { notes.push(`${invites.length} new contact${invites.length === 1 ? '' : 's'} saved but not invited — invite template not set up.`); invites = []; }
+      const all = [
+        ...offers.map(r => ({ kind: 'offer', patientId: r.patientId, gapDays })),
+        ...invites.filter(r => r.leadId).map(r => ({ kind: 'invite', leadId: r.leadId }))
+      ];
+      queue = all.slice(0, ctx.remainingToday);
+      if (all.length > queue.length) notes.push(`${all.length - queue.length} saved and waiting for tomorrow (daily limit ${ctx.dailyLimit}) — press "Send to waiting contacts" then, no need to upload again.`);
+      if (!all.length) return res.status(400).json({ message: 'Nobody in this list needs a message right now — see the reasons in the table.' + (notes.length ? ' ' + notes.join(' ') : '') });
     }
 
-    leadJob = { running: true, total: batch.length, sent: 0, failed: 0, invites: 0, offers: 0, errors: [], startedAt: new Date(), finishedAt: null, by: req.admin?.username || 'admin' };
-    runLeadCampaign(batch)
+    if (!queue.length) return res.status(400).json({ message: `Today's limit of ${ctx.dailyLimit} messages is used up.` + (notes.length ? ' ' + notes.join(' ') : '') });
+
+    leadJob = { running: true, total: queue.length, sent: 0, failed: 0, invites: 0, offers: 0, errors: [], startedAt: new Date(), finishedAt: null, by: req.admin?.username || 'admin' };
+    runLeadCampaign(queue)
       .catch(err => console.log('⚠️ Campaign error:', err.message))
       .finally(() => {
         leadJob.running = false; leadJob.finishedAt = new Date();
         console.log(`📨 WhatsApp campaign by ${leadJob.by}: ${leadJob.offers} offers + ${leadJob.invites} invites sent, ${leadJob.failed} failed of ${leadJob.total}`);
       });
-    const nOffer = batch.filter(b => b.kind === 'offer').length, nInvite = batch.length - nOffer;
+    const nOffer = queue.filter(b => b.kind === 'offer').length, nInvite = queue.length - nOffer;
     res.status(202).json({
       message: `Sending now: ${nOffer} patient offer${nOffer === 1 ? '' : 's'} and ${nInvite} new-contact invite${nInvite === 1 ? '' : 's'}.` + (notes.length ? ' ' + notes.join(' ') : ''),
       job: leadJob
@@ -6078,7 +6335,7 @@ app.get('/api/admin/leads/analytics', adminAuth, async (req, res) => {
     const days = [7, 30, 90, 365].includes(parseInt(req.query.days, 10)) ? parseInt(req.query.days, 10) : 30;
     const now = new Date();
     const since = new Date(now.getTime() - days * 86400000);
-    const leads = await Lead.find().select('name phone source status createdAt sentAt repliedAt joinedAt optedOutAt lastError').lean();
+    const leads = await Lead.find().select('name phone source status segment medicine city createdAt sentAt repliedAt joinedAt optedOutAt lastError').lean();
     const inRange = d => d && d >= since;
     // A lead is "in range" when it was invited in the period (or uploaded, if never invited).
     const scoped = leads.filter(l => inRange(l.sentAt) || (!l.sentAt && inRange(l.createdAt)));
@@ -6118,6 +6375,10 @@ app.get('/api/admin/leads/analytics', adminAuth, async (req, res) => {
     }
     const bySource = [...bySourceMap.entries()].map(([source, list]) => ({ source, ...metrics(list) }))
       .sort((a, b) => b.invited - a.invited || b.uploaded - a.uploaded);
+    const bySegMap = new Map();
+    for (const l of scoped) { const k = l.segment || 'general'; if (!bySegMap.has(k)) bySegMap.set(k, []); bySegMap.get(k).push(l); }
+    const bySegment = [...bySegMap.entries()].map(([segment, list]) => ({ segment, label: SEGMENT_LABEL[segment] || segment, ...metrics(list) }))
+      .sort((a, b) => b.invited - a.invited || b.uploaded - a.uploaded);
 
     // Day-by-day (India time).
     const dayKey = d => new Date(d).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
@@ -6135,11 +6396,32 @@ app.get('/api/admin/leads/analytics', adminAuth, async (req, res) => {
     // Latest button taps / sign-ups.
     const events = [];
     for (const l of leads) {
-      if (l.repliedAt) events.push({ type: 'start', at: l.repliedAt, name: l.name, phone: l.phone, source: l.source, status: l.status });
-      if (l.optedOutAt) events.push({ type: 'stop', at: l.optedOutAt, name: l.name, phone: l.phone, source: l.source, status: l.status });
-      if (l.joinedAt) events.push({ type: 'joined', at: l.joinedAt, name: l.name, phone: l.phone, source: l.source, status: l.status });
+      if (l.repliedAt) events.push({ type: 'start', at: l.repliedAt, name: l.name, phone: l.phone, source: l.source, status: l.status, segment: l.segment || 'general' });
+      if (l.optedOutAt) events.push({ type: 'stop', at: l.optedOutAt, name: l.name, phone: l.phone, source: l.source, status: l.status, segment: l.segment || 'general' });
+      if (l.joinedAt) events.push({ type: 'joined', at: l.joinedAt, name: l.name, phone: l.phone, source: l.source, status: l.status, segment: l.segment || 'general' });
     }
     events.sort((a, b) => b.at - a.at);
+    const shown = events.slice(0, 100);
+    // For sign-ups, show what the person entered in their own account — not the name on the list.
+    const joinedKeys = new Set(shown.filter(e => e.type === 'joined').map(e => last10(e.phone)));
+    if (joinedKeys.size) {
+      const accounts = await Patient.find().select('name phone age gender city medicines createdAt').lean();
+      const byKey = new Map();
+      accounts.forEach(p => { const k = last10(p.phone); if (joinedKeys.has(k) && (!byKey.has(k) || p.createdAt < byKey.get(k).createdAt)) byKey.set(k, p); });
+      shown.forEach(e => {
+        const p = e.type === 'joined' && byKey.get(last10(e.phone));
+        if (!p) return;
+        e.listName = e.name;
+        e.name = p.name || e.name;
+        e.signup = {
+          age: p.age || null, gender: p.gender || '', city: p.city || '',
+          medicines: [...new Set((p.medicines || []).filter(m => m.active !== false).map(m => m.name).filter(Boolean))].slice(0, 4),
+          at: p.createdAt
+        };
+        if (p.createdAt) e.at = p.createdAt;
+      });
+      shown.sort((a, b) => new Date(b.at) - new Date(a.at));
+    }
 
     // Registered-patient offers (biomexa_care_offer) — sends in the period + total opted out.
     const [offersSent, patientsOptedOut] = await Promise.all([
@@ -6147,7 +6429,7 @@ app.get('/api/admin/leads/analytics', adminAuth, async (req, res) => {
       Patient.countDocuments({ adOptOut: true })
     ]);
 
-    res.json({ days, totals, bySource, daily, recent: events.slice(0, 100), patientOffers: { sent: offersSent, optedOut: patientsOptedOut } });
+    res.json({ days, totals, bySource, bySegment, daily, recent: shown, patientOffers: { sent: offersSent, optedOut: patientsOptedOut } });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

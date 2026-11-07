@@ -108,6 +108,14 @@
         <div id="accountStep">
           <div class="step"><span class="n">3</span>Create your free account</div>
           <div class="field"><label class="fl" for="name">Your name</label><input type="text" id="name" autocomplete="name" placeholder="e.g. Ramesh Gupta"></div>
+          <div class="field">
+            <label class="fl">About you <span style="font-weight:400;color:var(--muted)">(optional)</span></label>
+            <div style="display:grid;grid-template-columns:72px 1fr 1.3fr;gap:8px">
+              <input type="number" id="age" inputmode="numeric" min="1" max="120" placeholder="Age" aria-label="Age">
+              <select id="gender" aria-label="Gender" style="width:100%;padding:0 10px;border:1px solid #cfd8e6;border-radius:12px;font:inherit;background:#fff;color:inherit;min-height:48px"><option value="">Gender</option><option value="male">Male</option><option value="female">Female</option><option value="other">Other</option></select>
+              <input type="text" id="city" autocomplete="address-level2" placeholder="City" maxlength="60" aria-label="City">
+            </div>
+          </div>
           <div class="field"><label class="fl" for="phone">WhatsApp number</label>
             <div class="phone"><span class="cc">+91</span><input type="tel" id="phone" inputmode="numeric" autocomplete="tel-national" placeholder="98765 43210" maxlength="14"></div>
             <div class="hint">Reminders are sent to this number. You'll also use it to log in.</div>
@@ -178,6 +186,8 @@
   // ?phone=9876543210 (from the WhatsApp invite reply) pre-fills the number so signing up is one step.
   const prefillPhone = String(params.get('phone') || '').replace(/\D/g, '').slice(-10);
   if (/^[6-9]\d{9}$/.test(prefillPhone)) document.getElementById('phone').value = prefillPhone;
+  // ?med=Glimepiride%201mg (from a lead's list) pre-fills the medicine name on the "Other" form.
+  const prefillMed = String(params.get('med') || '').slice(0, 60);
 
   function renderMed() {
     const p = PRODUCTS[medKey];
@@ -206,6 +216,7 @@
   }
   $('medPick').addEventListener('change', (e) => { medKey = e.target.value; renderMed(); });
   renderMed();
+  if (prefillMed && medKey === 'other') $('otherName').value = prefillMed;
 
   function readMedicine() {
     const p = PRODUCTS[medKey];
@@ -261,7 +272,7 @@
     const btn = $('submitBtn'); btn.disabled = true; const label = $('submitLabel').textContent; $('submitLabel').textContent = 'Setting up…';
     try {
       if (!token) {
-        const reg = await api('/api/auth/register', { method: 'POST', body: JSON.stringify({ name, phone: '+91' + phone10, password }) });
+        const reg = await api('/api/auth/register', { method: 'POST', body: JSON.stringify({ name, phone: '+91' + phone10, password, age: $('age').value, gender: $('gender').value, city: $('city').value.trim() }) });
         token = reg.token;
         localStorage.setItem('token', reg.token);
         localStorage.setItem('user', JSON.stringify(reg.patient));

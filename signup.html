@@ -55,6 +55,8 @@
       padding: 12px 16px; color: #13213d; font-size: 14px; outline: none; width: 100%; font-family: inherit;
     }
     input:focus { border-color: #27b566; }
+    .about-select { width: 100%; padding: 12px 10px; border: 1px solid #e2e8f2; border-radius: 8px; font: inherit; font-size: 14px; background: #fff; color: #13213d; }
+    .about-select:focus { border-color: #27b566; outline: none; }
     input::placeholder { color: #64748b; }
     button {
       width: 100%; background: linear-gradient(135deg, #1c9a55, #27b566); color: white; border: none;
@@ -116,6 +118,15 @@
       <div class="form-group">
         <label>Full Name <span class="required">*</span></label>
         <input type="text" id="name" placeholder="e.g., Ramesh Gupta" required>
+      </div>
+
+      <div class="form-group">
+        <label>About you <span class="optional">(optional)</span></label>
+        <div style="display:grid;grid-template-columns:72px 1fr 1.3fr;gap:8px">
+          <input type="number" id="age" min="1" max="120" placeholder="Age" aria-label="Age" style="padding:12px 10px">
+          <select id="gender" aria-label="Gender" class="about-select"><option value="">Gender</option><option value="male">Male</option><option value="female">Female</option><option value="other">Other</option></select>
+          <input type="text" id="city" placeholder="City" maxlength="60" aria-label="City">
+        </div>
       </div>
 
       <div class="form-group">
@@ -184,7 +195,7 @@
         const res = await fetch(`${API_URL}/api/auth/register`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name, phone, email, password })
+          body: JSON.stringify({ name, phone, email, password, age: document.getElementById('age').value, gender: document.getElementById('gender').value, city: document.getElementById('city').value.trim() })
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.message || 'Registration failed');
