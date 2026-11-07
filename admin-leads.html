@@ -90,6 +90,12 @@ td .err { color: var(--danger); font-size: .74rem; margin-top: 3px; max-width: 3
 .sendbar small { color: var(--muted); font-size: .8rem; display: block; margin-top: .2rem; }
 .inline { display: flex; gap: .75rem; flex-wrap: wrap; align-items: flex-end; }
 .inline .field { flex: 1; min-width: 200px; margin-bottom: 0; }
+.switch { display: inline-flex; align-items: center; gap: .55rem; cursor: pointer; font-weight: 700; font-size: .88rem; color: var(--navy); white-space: nowrap; }
+.switch input { display: none; }
+.switch .slider { width: 44px; height: 24px; background: #cfd6e2; border-radius: 999px; position: relative; transition: background .2s; flex: none; }
+.switch .slider::after { content: ''; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; background: #fff; border-radius: 50%; transition: transform .2s; box-shadow: 0 1px 3px rgba(0,0,0,.2); }
+.switch input:checked + .slider { background: #1fa855; }
+.switch input:checked + .slider::after { transform: translateX(20px); }
 .insights { display: grid; grid-template-columns: repeat(3, 1fr); gap: .8rem; margin: 0 0 1rem; }
 .ins { background: var(--inner); border-radius: 12px; padding: .85rem .95rem; font-size: .82rem; }
 .ins h4 { font-size: .8rem; color: #34425e; margin-bottom: .45rem; display: flex; gap: .4rem; align-items: center; }
@@ -123,16 +129,25 @@ details summary { cursor: pointer; font-weight: 700; color: var(--navy); font-si
 
 <div class="container">
   <h1><i class="fab fa-whatsapp"></i> WhatsApp Campaigns</h1>
-  <p class="sub">Upload any contact list — Excel, CSV, Word, PDF, a photo of a register, or phone contacts. Biomexa reads it, finds the names and numbers, and sorts everyone: <b>registered patients</b> get the Biomexa Care offer, <b>new contacts</b> get the invite to start free reminders, and anyone messaged recently, opted out or with a wrong number is skipped. Then one click sends it all.</p>
+  <p class="sub">Upload contact lists any time — they line up in one queue and are invited automatically, oldest first, up to the daily limit. Upload any contact list — Excel, CSV, Word, PDF, a photo of a register, or phone contacts. Biomexa reads it, finds the names and numbers, and sorts everyone: <b>registered patients</b> get the Biomexa Care offer, <b>new contacts</b> get the invite to start free reminders, and anyone messaged recently, opted out or with a wrong number is skipped. Then one click sends it all.</p>
 
   <div class="warn" id="tplWarn"></div>
 
   <div class="card wa" id="waitCard" style="display:none">
-    <div class="sendbar" style="border:0;padding:0;background:none">
-      <div><b><span id="waitN">0</span> contacts are waiting</b><small>Saved from earlier uploads but not invited yet (daily limit). No need to upload again — each still gets the message for their condition.</small></div>
-      <button class="btn wa" id="waitBtn" onclick="sendWaiting()"><i class="fab fa-whatsapp"></i> Send to waiting contacts</button>
+    <div class="sendbar" style="border:0;padding:0;background:none;align-items:flex-start">
+      <div>
+        <b style="font-size:1.05rem"><i class="fas fa-list-ol"></i> Invite queue: <span id="waitN">0</span> waiting</b>
+        <small id="queueTxt" style="font-size:.85rem;margin-top:.35rem"></small>
+      </div>
+      <label class="switch" title="Send the queue automatically every day">
+        <input type="checkbox" id="autoToggle" onchange="toggleAuto(this.checked)">
+        <span class="slider"></span><span class="switch-lbl" id="autoLbl">Auto-send</span>
+      </label>
     </div>
-    <label class="check" style="margin:.8rem 0 0"><input type="checkbox" id="wconsent"> These people agreed to be contacted by Biomexa on WhatsApp.</label>
+    <div style="display:flex;gap:.6rem;flex-wrap:wrap;margin-top:.9rem">
+      <button class="btn wa sm" id="waitBtn" onclick="sendWaiting(false)"><i class="fab fa-whatsapp"></i> Send now</button>
+      <button class="btn ghost sm" id="retryBtn" onclick="sendWaiting(true)" style="display:none"><i class="fas fa-rotate-right"></i> <span id="failN">Retry failed</span></button>
+    </div>
     <div id="waitResult" class="result"></div>
   </div>
 
@@ -162,7 +177,7 @@ details summary { cursor: pointer; font-weight: 700; color: var(--navy); font-si
 
     <div class="sendbar">
       <div><b id="sendSummary">–</b><small id="limitTxt"></small></div>
-      <button class="btn wa" id="sendBtn" onclick="send()"><i class="fab fa-whatsapp"></i> Send WhatsApp</button>
+      <button class="btn wa" id="sendBtn" onclick="send()"><i class="fab fa-whatsapp"></i> Send &amp; queue</button>
     </div>
     <div class="progress" id="prog"><div id="progBar"></div></div>
     <div id="sendResult" class="result"></div>
@@ -534,15 +549,23 @@ function renderPlan() {
   document.querySelectorAll('.big .tile, #planCard .tab').forEach(b => b.classList.toggle('on', b.dataset.g === group));
   renderInsights();
   const offers = plan.offerTemplateReady ? s.offer : 0, invites = plan.inviteTemplateReady ? s.invite : 0;
-  const toSend = offers + invites, now = Math.min(toSend, plan.remainingToday);
+  const toSend = offers + invites;
+  const room = plan.withinSendHours ? plan.remainingToday : 0;
+  const ahead = (data.queue && data.queue.waiting) || 0;           // older uploads go first
+  const nowOffers = Math.min(offers, room), nowInvites = Math.max(0, Math.min(invites, room - nowOffers - ahead));
+  const later = toSend - nowOffers - nowInvites;
   document.getElementById('sendSummary').textContent = toSend
-    ? `${n(now)} WhatsApp message${now === 1 ? '' : 's'} will go out now` + (toSend > now ? ` (${n(toSend - now)} saved for the next days)` : '')
+    ? `${n(nowOffers + Math.min(room - nowOffers, ahead + invites))} go out now` + (ahead && room > nowOffers ? ` (oldest in the queue first)` : '')
+      + (later ? ` · ${n(later)} from this list join the queue` + (ahead ? ` behind ${n(ahead)} already waiting` : '') : '')
     : 'Nobody in this list needs a message right now';
-  document.getElementById('limitTxt').textContent = `Daily limit ${plan.dailyLimit} · ${plan.sentLast24h} sent in the last 24h · ${plan.remainingToday} left today · sends 9 AM–9 PM`
+  const auto = data.queue ? data.queue.autoQueue : true;
+  const days = Math.ceil((later + ahead) / plan.dailyLimit);
+  document.getElementById('limitTxt').textContent = `Daily limit ${plan.dailyLimit} · ${plan.sentLast24h} sent in the last 24h · sends 9 AM–9 PM`
+    + (later ? (auto ? ` · the queue sends itself every day (≈ ${days} day${days === 1 ? '' : 's'} to finish)` : ' · auto-send is OFF') : '')
     + (!plan.offerTemplateReady && s.offer ? ' · offer template not set up' : '') + (!plan.inviteTemplateReady && s.invite ? ' · invite template not set up' : '')
-    + (!plan.withinSendHours ? ' · outside sending hours now' : '');
+    + (!plan.withinSendHours ? ' · outside sending hours — everything is queued' : '');
   const btn = document.getElementById('sendBtn');
-  if (!leadJobRunning) btn.disabled = !now || !plan.withinSendHours;
+  if (!leadJobRunning) btn.disabled = !toSend;
 
   const qq = document.getElementById('pq').value.trim().toLowerCase();
   const rows = plan.rows.filter(r => (group === 'all' || r.group === group) && (!qq || [r.name, r.phone, r.city, r.medicine, SEG[r.segment]].join(' ').toLowerCase().includes(qq)));
@@ -561,15 +584,16 @@ function downloadPlan() {
 }
 
 // ---------- waiting contacts (saved earlier, not yet invited) ----------
-function sendWaiting() {
-  if (!document.getElementById('wconsent').checked) return showResult('waitResult', 'err', 'Please tick the box confirming these people agreed to be contacted.');
-  const w = data.counts.new || 0, m = Math.min(w, data.remainingToday);
-  if (!m) return showResult('waitResult', 'err', w ? 'Today\'s limit is used up — try again tomorrow.' : 'No contacts are waiting.');
-  if (!confirm(`Send the invite to ${m} waiting contact${m === 1 ? '' : 's'} now?\n\nWhatsApp charges for each message.`)) return;
-  const btn = document.getElementById('waitBtn'); btn.disabled = true;
-  post('/api/admin/leads/campaign', { waitingOnly: true, consent: true })
+function sendWaiting(retry) {
+  const w = (data.counts.new || 0) + (retry ? (data.counts.failed || 0) : 0), m = Math.min(w, data.remainingToday);
+  if (!data.withinSendHours) return showResult('waitResult', 'err', 'Messages only go out 9 AM–9 PM India time.');
+  if (!m) return showResult('waitResult', 'err', w ? 'Today\'s limit is used up — the queue continues tomorrow.' : 'Nothing is waiting.');
+  if (!confirm(`Send the invite to the next ${m} contact${m === 1 ? '' : 's'} in the queue now?`)) return;
+  const btn = document.getElementById(retry ? 'retryBtn' : 'waitBtn'); btn.disabled = true;
+  post('/api/admin/leads/campaign', { waitingOnly: true, consent: true, retryFailed: !!retry })
     .then(({ ok, d }) => {
-      if (!ok) { showResult('waitResult', 'err', d.message); btn.disabled = false; return; }
+      btn.disabled = false;
+      if (!ok) return showResult('waitResult', 'err', d.message);
       showResult('waitResult', 'info', d.message);
       document.getElementById('planCard').style.display = 'block';
       renderJob(d.job);
@@ -577,20 +601,52 @@ function sendWaiting() {
     .catch(e => { showResult('waitResult', 'err', e.message); btn.disabled = false; });
 }
 
+function toggleAuto(on) {
+  post('/api/admin/leads/auto', { enabled: on }).then(({ ok, d }) => {
+    if (!ok) { document.getElementById('autoToggle').checked = !on; return showResult('waitResult', 'err', d.message); }
+    data.queue = { ...data.queue, ...d };
+    renderQueue();
+    showResult('waitResult', on ? 'ok' : 'info', on
+      ? (d.kicked && d.kicked.started ? `Auto-send is ON — sending the next ${d.kicked.count} now.` : `Auto-send is ON. ${d.kicked ? d.kicked.reason : ''}`)
+      : 'Auto-send is OFF — the queue waits until you press "Send now" or turn it back on.');
+    if (d.job && d.job.running) { document.getElementById('planCard').style.display = 'block'; renderJob(d.job); }
+  });
+}
+
+function renderQueue() {
+  const d = data, qd = d.queue || { waiting: d.counts.new || 0, failed: d.counts.failed || 0, autoQueue: true, daysToFinish: 0 };
+  const wc = document.getElementById('waitCard');
+  wc.style.display = (qd.waiting || qd.failed || leadJobRunning) && d.inviteTemplateReady ? 'block' : 'none';
+  document.getElementById('waitN').textContent = Number(qd.waiting).toLocaleString('en-IN');
+  document.getElementById('autoToggle').checked = !!qd.autoQueue;
+  document.getElementById('autoLbl').textContent = qd.autoQueue ? 'Auto-send ON' : 'Auto-send OFF';
+  document.getElementById('failN').textContent = `Retry failed (${qd.failed})`;
+  document.getElementById('retryBtn').style.display = qd.failed ? '' : 'none';
+  const today = Math.max(0, d.remainingToday);
+  document.getElementById('queueTxt').innerHTML = !qd.waiting ? 'The queue is empty. Upload a list and new contacts join it automatically.'
+    : qd.autoQueue
+      ? `Oldest uploads go first. Up to <b>${d.dailyLimit}</b> are invited automatically every day between 9 AM and 9 PM — about <b>${qd.daysToFinish} day${qd.daysToFinish === 1 ? '' : 's'}</b> to finish. ` + (d.withinSendHours ? (today ? `${today} more can go today.` : 'Today\'s limit is used — it continues as the 24-hour limit frees up.') : 'Next sending starts at 9 AM.')
+      : 'Auto-send is OFF. Press <b>Send now</b> each day, or turn auto-send on.';
+  if (!leadJobRunning) document.getElementById('waitBtn').disabled = !today || !d.withinSendHours || !qd.waiting;
+}
+
+
 // ---------- step 2: one click send ----------
 let leadJobRunning = false;
 function send() {
   if (!plan) return;
   if (!document.getElementById('consent').checked) return showResult('sendResult', 'err', 'Please tick the box confirming these people agreed to be contacted.');
   const label = document.getElementById('sendSummary').textContent;
-  if (!confirm(`${label}.\n\nWhatsApp charges for each message. Send now?`)) return;
+  if (!confirm(`${label}.\n\nNew contacts are saved to the invite queue and sent automatically, oldest first. WhatsApp charges for each message. Continue?`)) return;
   const btn = document.getElementById('sendBtn');
   btn.disabled = true;
   post('/api/admin/leads/campaign', { csv: csvText, gapDays: document.getElementById('gap').value, source: document.getElementById('source').value.trim(), consent: true })
     .then(({ ok, d }) => {
       if (!ok) { showResult('sendResult', 'err', d.message); btn.disabled = false; return; }
+      if (d.queued) { showResult('sendResult', 'ok', d.message); btn.disabled = false; load(true); return; }
       showResult('sendResult', 'info', d.message);
       renderJob(d.job);
+      load(true);
     })
     .catch(e => { showResult('sendResult', 'err', e.message); btn.disabled = false; });
 }
@@ -631,10 +687,8 @@ function load(quiet) {
     if (!d.inviteTemplateReady) miss.push('<b>MSG91_LEAD_TEMPLATE_NAME</b> (new-contact invite)');
     if (miss.length) { w.style.display = 'block'; w.innerHTML = '<i class="fas fa-circle-info"></i> Not set on Render yet: ' + miss.join(' and ') + '. That group will be shown but not sent.'; }
     else w.style.display = 'none';
-    const wc = document.getElementById('waitCard');
-    wc.style.display = (d.counts.new || 0) > 0 && d.inviteTemplateReady ? 'block' : 'none';
-    document.getElementById('waitN').textContent = Number(d.counts.new || 0).toLocaleString('en-IN');
-    if (!leadJobRunning) document.getElementById('waitBtn').disabled = !d.remainingToday || !d.withinSendHours;
+    renderQueue();
+    if (plan) renderPlan();
     if (d.job && (d.job.running || pollTimer)) renderJob(d.job);
     render();
   }).catch(e => { if (!quiet) document.getElementById('list').innerHTML = `<div class="empty">Couldn't load — ${esc(e.message)}</div>`; });
