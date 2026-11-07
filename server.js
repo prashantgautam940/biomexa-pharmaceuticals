@@ -5750,7 +5750,7 @@ const Lead = mongoose.model('Lead', new mongoose.Schema({
   name: { type: String, default: '' },
   phone: { type: String, required: true, unique: true }, // canonical 91XXXXXXXXXX
   source: { type: String, default: '' },                  // e.g. "Dr Sharma clinic", "Pharmacy camp"
-  status: { type: String, enum: ['new', 'sent', 'failed', 'replied', 'joined', 'optout'], default: 'new', index: true },
+  status: { type: String, enum: ['new', 'sending', 'sent', 'failed', 'replied', 'joined', 'optout'], default: 'new', index: true },
   sentAt: Date,
   repliedAt: Date,
   joinedAt: Date,
@@ -5885,8 +5885,9 @@ async function runLeadCampaign(items) {
     let r = { ok: false, error: 'skipped' };
     if (item.kind === 'invite') {
       // Re-check: they may have replied STOP or signed up since the list was analysed.
-      const fresh = await Lead.findById(item.leadId).lean();
-      if (!fresh || ['optout', 'joined'].includes(fresh.status)) continue;
+      // Claim it first so two sends (or two servers) can never message the same person twice.
+      const fresh = await Lead.findOneAndUpdate({ _id: item.leadId, status: { $in: ['new', 'failed'] } }, { status: 'sending' }, { new: true }).lean();
+      if (!fresh) continue;
       r = await sendLeadTemplate(fresh.phone, fresh.segment);
       if (r.ok) await Lead.updateOne({ _id: fresh._id }, { status: 'sent', sentAt: new Date(), lastError: '', templateUsed: r.template });
       else await Lead.updateOne({ _id: fresh._id }, { status: 'failed', lastError: r.error });
@@ -6037,21 +6038,47 @@ function parseContactsCsv(csv) {
     for (let c = 0; c < width; c++) { if (exclude.has(c)) continue; const s = score(c, test); if (s > bestScore) { best = c; bestScore = s; } }
     return best;
   };
+  // Each role: header candidates are checked against what the column actually contains, so
+  // "statname" (state) isn't taken as Name and "EmailAddress" isn't taken as City.
+  const isName = v => /^[A-Za-z\u0900-\u097F][A-Za-z\u0900-\u097F .'-]{1,59}$/.test(v) && !/\d|@/.test(v);
+  const VALID = {
+    number: v => !!leadPhone(v),
+    name: isName,
+    city: v => /^[A-Za-z\u0900-\u097F][A-Za-z\u0900-\u097F .,'()\/-]{1,80}$/.test(v),
+    age: v => { const n = parseInt(v, 10); return (n >= 1 && n <= 120) || /\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}/.test(v); },
+    gender: v => /^(m|f|o|male|female|other|1|2|3|पुरुष|महिला)$/i.test(v)
+  };
+  const NOT_ROLE = {
+    name: /stat|state|father|mother|husband|wife|guardian|parent|e-?mail|user|login|doctor|\bdr\b|company|org|file|hospital|clinic|city|district|village|block|tehsil|school|college|relation|nominee|\bid\b/,
+    number: /e-?mail|aadha|pin ?code|zip|account|amount|serial|\bs\.? ?no\b|\bsr\b|\bid\b|landline|fax/,
+    city: /e-?mail|mail|web|url|ip/,
+    condition: /e-?mail/, medicine: /e-?mail/
+  };
+  const EXACT = { name: /^(full ?name|name|patient ?name|candidate ?name|customer ?name|client ?name|person ?name|first ?name)$/ };
   const cols = {};
+  const taken = () => new Set(Object.values(cols).filter(i => i >= 0));
   if (hasHeader) {
-    first.forEach((h, i) => {
-      const role = COLUMN_ROLES.find(([r, re]) => cols[r] === undefined && re.test(h));
-      if (role) cols[role[0]] = i;
-    });
+    for (const [role, re] of COLUMN_ROLES) {
+      const t = taken();
+      const cands = first.map((h, i) => i).filter(i => !t.has(i) && re.test(first[i]) && !(NOT_ROLE[role] && NOT_ROLE[role].test(first[i])));
+      if (!cands.length) continue;
+      const ranked = cands.map(i => ({ i, exact: EXACT[role] && EXACT[role].test(first[i]) ? 1 : 0, fit: VALID[role] ? score(i, VALID[role]) / Math.max(1, score(i, v => v !== '')) : 1 }))
+        .filter(c => !VALID[role] || c.fit >= 0.5)
+        .sort((a, b) => b.exact - a.exact || b.fit - a.fit);
+      if (ranked.length) cols[role] = ranked[0].i;
+    }
   }
-  const taken = () => new Set(Object.values(cols));
-  if (cols.number === undefined || score(cols.number, v => !!leadPhone(v)) < sample.length * 0.3) {
+  if (cols.number === undefined || score(cols.number, VALID.number) < sample.length * 0.3) {
     const t = taken(); if (cols.number !== undefined) t.delete(cols.number);
-    cols.number = pick(v => !!leadPhone(v), t);
+    cols.number = pick(VALID.number, t);
   }
   if (cols.number === -1) throw new Error('Could not find any Indian mobile numbers in this file.');
-  const isName = v => /^[A-Za-zऀ-ॿ][A-Za-zऀ-ॿ .'-]{1,59}$/.test(v);
-  if (cols.name === undefined) { const n = pick(isName, taken()); if (n >= 0) cols.name = n; }
+  if (cols.name === undefined) {
+    const t = taken();
+    first.forEach((h, i) => { if (hasHeader && NOT_ROLE.name.test(h)) t.add(i); });
+    const n = pick(isName, t);
+    if (n >= 0 && score(n, isName) >= sample.length * 0.3) cols.name = n;
+  }
   const get = (r, role) => cols[role] !== undefined && cols[role] >= 0 ? String(r[cols[role]] || '').trim() : '';
   return {
     columns: Object.fromEntries(Object.entries(cols).filter(([, i]) => i >= 0).map(([role, i]) => [role, hasHeader ? String(rows[0][i]).trim() : `column ${i + 1}`])),
@@ -6169,9 +6196,86 @@ app.get('/api/admin/leads', adminAuth, async (req, res) => {
     const counts = { new: 0, sent: 0, failed: 0, replied: 0, joined: 0, optout: 0 };
     grouped.forEach(g => { counts[g._id] = g.n; });
     res.json({
-      counts, ...ctx, job: leadJob,
+      counts, ...ctx, job: leadJob, queue: await queueStatus(),
       leads: leads.map(l => ({ id: l._id, name: l.name, phone: l.phone, source: l.source, status: l.status, segment: l.segment || 'general', medicine: l.medicine || '', city: l.city || '', language: l.language || 'en', sentAt: l.sentAt, repliedAt: l.repliedAt, createdAt: l.createdAt, lastError: l.lastError || '' }))
     });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// ========== Automatic invite queue ==========
+// Every upload adds its new contacts to one first-in-first-out queue. While auto-send is ON
+// (the default), the server checks every 10 minutes during sending hours and invites the oldest
+// waiting contacts, up to the daily limit — so list after list goes out on its own, day by day.
+const AppSetting = mongoose.model('AppSetting', new mongoose.Schema({ key: { type: String, unique: true }, value: mongoose.Schema.Types.Mixed }, { timestamps: true }));
+let autoQueueCache = null;
+async function getAutoQueue() {
+  if (autoQueueCache === null) {
+    const row = await AppSetting.findOne({ key: 'leadAutoQueue' }).lean();
+    autoQueueCache = row ? !!row.value : true;
+  }
+  return autoQueueCache;
+}
+async function setAutoQueue(on) {
+  autoQueueCache = !!on;
+  await AppSetting.updateOne({ key: 'leadAutoQueue' }, { value: !!on }, { upsert: true });
+}
+
+function startLeadJob(items, by) {
+  leadJob = { running: true, total: items.length, sent: 0, failed: 0, invites: 0, offers: 0, errors: [], startedAt: new Date(), finishedAt: null, by };
+  runLeadCampaign(items)
+    .catch(err => console.log('⚠️ Campaign error:', err.message))
+    .finally(() => {
+      leadJob.running = false; leadJob.finishedAt = new Date();
+      console.log(`📨 WhatsApp campaign (${leadJob.by}): ${leadJob.offers} offers + ${leadJob.invites} invites sent, ${leadJob.failed} failed of ${leadJob.total}`);
+    });
+}
+
+// Oldest waiting contacts first, up to `room` of them.
+async function nextQueueBatch(room, retryFailed = false) {
+  if (room <= 0) return [];
+  await syncJoinedLeads();
+  const statuses = retryFailed ? ['new', 'failed'] : ['new'];
+  const batch = await Lead.find({ status: { $in: statuses } }).sort({ createdAt: 1, _id: 1 }).limit(room).select('_id').lean();
+  return batch.map(l => ({ kind: 'invite', leadId: l._id }));
+}
+
+async function processLeadQueue(by) {
+  if (leadJob.running) return { started: false, reason: 'A campaign is already sending.' };
+  if (!(MSG91_CONFIGURED && MSG91_LEAD_TEMPLATE_NAME)) return { started: false, reason: 'Invite template not set up.' };
+  const hour = istHour();
+  if (hour < LEAD_SEND_START_HOUR || hour >= LEAD_SEND_END_HOUR) return { started: false, reason: 'Outside sending hours.' };
+  // A send interrupted by a restart: don't risk a duplicate — mark it failed (retry from the page).
+  await Lead.updateMany({ status: 'sending', updatedAt: { $lt: new Date(Date.now() - 30 * 60000) } }, { status: 'failed', lastError: 'Interrupted by a server restart — use "Retry failed" to send again' });
+  const room = LEAD_DAILY_LIMIT - await sentLast24hTotal();
+  if (room <= 0) return { started: false, reason: 'Daily limit reached.' };
+  const items = await nextQueueBatch(room);
+  if (!items.length) return { started: false, reason: 'Queue is empty.' };
+  startLeadJob(items, by);
+  return { started: true, count: items.length };
+}
+
+setInterval(async () => {
+  try {
+    if (mongoose.connection.readyState !== 1 || !(await getAutoQueue())) return;
+    const r = await processLeadQueue('auto queue');
+    if (r.started) console.log(`🤖 Auto queue: inviting the next ${r.count} waiting contact(s)`);
+  } catch (err) { console.log('⚠️ Auto queue error:', err.message); }
+}, 10 * 60 * 1000);
+
+async function queueStatus() {
+  const [waiting, failed] = await Promise.all([Lead.countDocuments({ status: 'new' }), Lead.countDocuments({ status: 'failed' })]);
+  return { autoQueue: await getAutoQueue(), waiting, failed, daysToFinish: waiting ? Math.ceil(waiting / LEAD_DAILY_LIMIT) : 0 };
+}
+
+app.post('/api/admin/leads/auto', adminAuth, async (req, res) => {
+  try {
+    await setAutoQueue(req.body?.enabled === true);
+    let kicked = null;
+    if (req.body?.enabled === true) kicked = await processLeadQueue('auto queue');
+    console.log(`🤖 Auto queue turned ${req.body?.enabled === true ? 'ON' : 'OFF'} by ${req.admin?.username || 'admin'}`);
+    res.json({ ...(await queueStatus()), kicked, job: leadJob });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -6255,22 +6359,22 @@ app.post('/api/admin/leads/campaign', adminAuth, async (req, res) => {
     if (req.body?.consent !== true) return res.status(400).json({ message: 'Please tick the box confirming these people agreed to be contacted by Biomexa on WhatsApp.' });
     if (leadJob.running) return res.status(409).json({ message: 'A campaign is already sending. Please wait for it to finish.' });
     const hour = istHour();
-    if (hour < LEAD_SEND_START_HOUR || hour >= LEAD_SEND_END_HOUR) {
+    const inHours = hour >= LEAD_SEND_START_HOUR && hour < LEAD_SEND_END_HOUR;
+    if (!inHours && req.body?.waitingOnly) {
       return res.status(400).json({ message: `WhatsApp promotions only go out between ${LEAD_SEND_START_HOUR} AM and ${LEAD_SEND_END_HOUR - 12} PM (India time). Please try again then.` });
     }
     const ctx = await campaignContext();
+    if (!inHours) ctx.remainingToday = 0; // outside hours a new list is only saved to the queue
     const notes = [];
     let queue;
 
     if (req.body?.waitingOnly) {
       if (!ctx.inviteTemplateReady) return res.status(400).json({ message: 'The invite template isn\'t set up yet.' });
-      await syncJoinedLeads();
-      const statuses = req.body?.retryFailed ? ['new', 'failed'] : ['new'];
-      const waiting = await Lead.find({ status: { $in: statuses } }).sort({ createdAt: 1 }).limit(ctx.remainingToday).select('_id').lean();
-      queue = waiting.map(l => ({ kind: 'invite', leadId: l._id }));
-      const totalWaiting = await Lead.countDocuments({ status: { $in: statuses } });
-      if (totalWaiting > queue.length && queue.length) notes.push(`${totalWaiting - queue.length} still waiting for tomorrow (daily limit ${ctx.dailyLimit}).`);
-      if (!totalWaiting) return res.status(400).json({ message: 'No contacts are waiting.' });
+      const retry = !!req.body?.retryFailed;
+      if (!(await Lead.countDocuments({ status: { $in: retry ? ['new', 'failed'] : ['new'] } }))) return res.status(400).json({ message: retry ? 'Nothing waiting or failed.' : 'No contacts are waiting.' });
+      queue = await nextQueueBatch(ctx.remainingToday, retry);
+      const left = await Lead.countDocuments({ status: 'new' }) - queue.length;
+      if (left > 0 && queue.length) notes.push(`${left} more stay in the queue${(await getAutoQueue()) ? ' and go out automatically on the next days' : ''}.`);
     } else {
       let parsed;
       try { parsed = parseContactsCsv(req.body?.csv); } catch (e) { return res.status(400).json({ message: e.message }); }
@@ -6299,24 +6403,23 @@ app.post('/api/admin/leads/campaign', adminAuth, async (req, res) => {
       let offers = rows.filter(r => r.group === 'offer');
       if (!ctx.offerTemplateReady && offers.length) { notes.push(`${offers.length} patient offer${offers.length === 1 ? '' : 's'} not sent — offer template not set up.`); offers = []; }
       if (!ctx.inviteTemplateReady && invites.length) { notes.push(`${invites.length} new contact${invites.length === 1 ? '' : 's'} saved but not invited — invite template not set up.`); invites = []; }
-      const all = [
-        ...offers.map(r => ({ kind: 'offer', patientId: r.patientId, gapDays })),
-        ...invites.filter(r => r.leadId).map(r => ({ kind: 'invite', leadId: r.leadId }))
-      ];
-      queue = all.slice(0, ctx.remainingToday);
-      if (all.length > queue.length) notes.push(`${all.length - queue.length} saved and waiting for tomorrow (daily limit ${ctx.dailyLimit}) — press "Send to waiting contacts" then, no need to upload again.`);
-      if (!all.length) return res.status(400).json({ message: 'Nobody in this list needs a message right now — see the reasons in the table.' + (notes.length ? ' ' + notes.join(' ') : '') });
+      // Patient offers go now; new contacts join the back of the queue (oldest uploads go first).
+      const offerItems = offers.map(r => ({ kind: 'offer', patientId: r.patientId, gapDays })).slice(0, ctx.remainingToday);
+      const inviteItems = invites.length || (await Lead.countDocuments({ status: 'new' })) ? await nextQueueBatch(ctx.inviteTemplateReady ? ctx.remainingToday - offerItems.length : 0) : [];
+      queue = [...offerItems, ...inviteItems];
+      const all = offers.length + invites.length;
+      const waitingAfter = (await Lead.countDocuments({ status: 'new' })) - inviteItems.length;
+      if (waitingAfter > 0) notes.push(`${waitingAfter.toLocaleString('en-IN')} contact${waitingAfter === 1 ? '' : 's'} in the queue` + ((await getAutoQueue()) ? ` — they go out automatically, about ${LEAD_DAILY_LIMIT} a day (≈ ${Math.ceil(waitingAfter / LEAD_DAILY_LIMIT)} day${Math.ceil(waitingAfter / LEAD_DAILY_LIMIT) === 1 ? '' : 's'}).` : '. Auto-send is OFF — turn it on or press "Send now" each day.'));
+      if (!all && !queue.length) return res.status(400).json({ message: 'Nobody in this list needs a message right now — see the reasons in the table.' + (notes.length ? ' ' + notes.join(' ') : '') });
     }
 
-    if (!queue.length) return res.status(400).json({ message: `Today's limit of ${ctx.dailyLimit} messages is used up.` + (notes.length ? ' ' + notes.join(' ') : '') });
+    if (!queue.length) {
+      // Nothing can go out right now (limit used up) — but new contacts are saved in the queue.
+      if (!req.body?.waitingOnly) return res.json({ message: `Added to the queue. Today's limit of ${ctx.dailyLimit} is used up, so nothing goes out right now.` + (notes.length ? ' ' + notes.join(' ') : ''), job: leadJob, queued: true });
+      return res.status(400).json({ message: `Today's limit of ${ctx.dailyLimit} messages is used up.` + (notes.length ? ' ' + notes.join(' ') : '') });
+    }
 
-    leadJob = { running: true, total: queue.length, sent: 0, failed: 0, invites: 0, offers: 0, errors: [], startedAt: new Date(), finishedAt: null, by: req.admin?.username || 'admin' };
-    runLeadCampaign(queue)
-      .catch(err => console.log('⚠️ Campaign error:', err.message))
-      .finally(() => {
-        leadJob.running = false; leadJob.finishedAt = new Date();
-        console.log(`📨 WhatsApp campaign by ${leadJob.by}: ${leadJob.offers} offers + ${leadJob.invites} invites sent, ${leadJob.failed} failed of ${leadJob.total}`);
-      });
+    startLeadJob(queue, req.admin?.username || 'admin');
     const nOffer = queue.filter(b => b.kind === 'offer').length, nInvite = queue.length - nOffer;
     res.status(202).json({
       message: `Sending now: ${nOffer} patient offer${nOffer === 1 ? '' : 's'} and ${nInvite} new-contact invite${nInvite === 1 ? '' : 's'}.` + (notes.length ? ' ' + notes.join(' ') : ''),
