@@ -1607,8 +1607,26 @@ mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/biomexa')
   .then(async () => {
     console.log('✅ MongoDB connected');
     await bootstrapAdmin();
+    await resetFailedOffers_2026_11_09();
   })
   .catch(err => console.log('❌ MongoDB connection error:', err.message));
+
+// ONE-OFF (safe to delete after 11 Nov 2026): the 9 Nov 11 AM biomexa_care_offer run was rejected
+// by Meta (3 params sent, template has 2) but those patients were still marked as sent, which would
+// hold them back for AD_INTERVAL_DAYS. Clear that mark so the next run sends them the offer.
+// Idempotent: once cleared they no longer match, and new sends fall outside the window.
+async function resetFailedOffers_2026_11_09() {
+  if (Date.now() > new Date('2026-11-11T00:00:00+05:30').getTime()) return;
+  try {
+    const r = await Patient.updateMany(
+      { lastAdSentAt: { $gte: new Date('2026-11-09T10:55:00+05:30'), $lte: new Date('2026-11-09T11:05:00+05:30') } },
+      { $unset: { lastAdSentAt: '' } }
+    );
+    if (r.modifiedCount) console.log(`🔁 Reset ${r.modifiedCount} patient(s) from the failed 9 Nov offer run`);
+  } catch (err) {
+    console.log('⚠️ Failed-offer reset error:', err.message);
+  }
+}
 
 // Creates the one admin account from ADMIN_USERNAME/ADMIN_PASSWORD/ADMIN_EMAIL env vars if no
 // admin account exists yet in the database. Runs once per deploy — if an admin already exists,
