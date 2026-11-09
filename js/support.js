@@ -78,7 +78,7 @@
       <p class="sub">Tell us what went wrong. You'll get a ticket number, and we'll reply on WhatsApp. Never include passwords or OTP codes.</p>
       <div class="bxs-row">
         <div class="bxs-f"><label for="bxsName">Your name</label><input id="bxsName" autocomplete="off" required></div>
-        <div class="bxs-f"><label for="bxsPhone">WhatsApp number</label><input id="bxsPhone" type="tel" inputmode="tel" autocomplete="off" placeholder="98765 43210" required></div>
+        <div class="bxs-f"><label for="bxsPhone">WhatsApp number</label><input id="bxsPhone" type="tel" inputmode="tel" autocomplete="off" placeholder="10-digit mobile number" required></div>
       </div>
       <div class="bxs-row">
         <div class="bxs-f"><label for="bxsRole">I am a</label><select id="bxsRole">${roles.map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select></div>

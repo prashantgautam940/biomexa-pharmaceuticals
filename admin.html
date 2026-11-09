@@ -56,6 +56,31 @@ header { background: rgba(255,255,255,0.95); backdrop-filter: blur(10px); border
 .ai-status-item .value.untrained { color: var(--accent); font-size: 1rem; }
 .train-btn { padding: 12px 24px; background: linear-gradient(135deg, var(--primary), var(--primary-light)); color: white; border: none; border-radius: 10px; font-size: 0.95rem; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 0.5rem; }
 .train-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.train-btn.light { background: #fff !important; color: #16336b !important; border: 1px solid #e2e8f2 !important; }
+/* Product orders — text wraps inside its own column (the global "td { nowrap }" made long addresses
+   run over Qty / Prescription); on phones each order becomes a card. */
+.orders-table { width: 100%; border-collapse: collapse; }
+.orders-table th { padding: 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.orders-table td { padding: 12px 10px; vertical-align: top; white-space: normal; font-size: .85rem; overflow-wrap: anywhere; }
+.orders-table tbody tr { border-bottom: 1px solid var(--border); }
+.orders-table td.nw { white-space: nowrap; }
+.orders-table td.addr { min-width: 200px; max-width: 280px; }
+.orders-table td.notes { min-width: 140px; max-width: 220px; }
+.orders-table td.qty { text-align: center; }
+.orders-table .rx-btn { background: var(--bg-light); border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; font-size: .78rem; cursor: pointer; margin: 0 4px 4px 0; color: var(--text); white-space: nowrap; }
+.orders-table .rx-later { color: #b45309; font-weight: 600; font-size: .8rem; }
+.orders-table select { background: var(--bg-light); border: 1px solid var(--border); border-radius: 6px; font-weight: 600; padding: 6px 8px; font-size: .8rem; }
+@media (max-width: 760px) {
+  .orders-table thead { display: none; }
+  .orders-table, .orders-table tbody, .orders-table tr, .orders-table td { display: block; width: 100%; }
+  .orders-table tbody tr { border: 1px solid var(--border); border-radius: 12px; padding: 6px 12px; margin-bottom: 12px; background: #fff; }
+  .orders-table td { display: grid; grid-template-columns: 96px 1fr; gap: 10px; align-items: start; padding: 8px 0; border-bottom: 1px dashed var(--border); max-width: none !important; min-width: 0 !important; text-align: left !important; white-space: normal !important; }
+  .orders-table td:last-child { border-bottom: 0; }
+  .orders-table td::before { content: attr(data-label); font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: var(--text-muted); padding-top: 2px; }
+  .orders-table td.empty { display: block; }
+  .orders-table td.empty::before { content: none; }
+  .orders-table select { width: 100%; }
+}
 .ai-msg { margin-top: 1rem; padding: 12px 14px; border-radius: 10px; font-size: 0.88rem; display: none; }
 .ai-msg.ok { display: block; background: rgba(16,185,129,0.12); color: #11663a; border: 1px solid rgba(16,185,129,0.3); }
 .ai-msg.err { display: block; background: rgba(239,68,68,0.12); color: #c0262d; border: 1px solid rgba(239,68,68,0.3); }
@@ -405,22 +430,15 @@ tbody tr:hover { background: #f6f8fc !important; }
         <h2><i class="fas fa-shopping-cart"></i> Product Orders</h2>
         <p>Orders placed from the public product pages. This is order-intake only — no payment is processed here — follow up with the customer directly (call, WhatsApp, invoice, delivery) and update the status below.</p>
       </div>
-      <button class="train-btn" onclick="loadOrders()" style="background: linear-gradient(135deg,#f6f8fc,#f6f8fc);"><i class="fas fa-sync-alt"></i> Refresh</button>
+      <button class="train-btn light" onclick="loadOrders()"><i class="fas fa-sync-alt"></i> Refresh</button>
     </div>
     <div id="ordersMsg" class="ai-msg"></div>
     <div style="overflow-x:auto;">
-      <table style="width:100%;border-collapse:collapse;">
+      <table class="orders-table">
         <thead>
-          <tr style="text-align:left;font-size:0.78rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.04em;">
-            <th style="padding:8px 10px;border-bottom:1px solid var(--border);">Date</th>
-            <th style="padding:8px 10px;border-bottom:1px solid var(--border);">Product</th>
-            <th style="padding:8px 10px;border-bottom:1px solid var(--border);">Customer</th>
-            <th style="padding:8px 10px;border-bottom:1px solid var(--border);">Phone</th>
-            <th style="padding:8px 10px;border-bottom:1px solid var(--border);">Address</th>
-            <th style="padding:8px 10px;border-bottom:1px solid var(--border);">Qty</th>
-            <th style="padding:8px 10px;border-bottom:1px solid var(--border);">Prescription</th>
-            <th style="padding:8px 10px;border-bottom:1px solid var(--border);">Notes / discount</th>
-            <th style="padding:8px 10px;border-bottom:1px solid var(--border);">Status</th>
+          <tr>
+            <th>Date</th><th>Product</th><th>Customer</th><th>Phone</th><th>Address</th>
+            <th>Qty</th><th>Prescription</th><th>Notes / discount</th><th>Status</th>
           </tr>
         </thead>
         <tbody id="ordersTable"></tbody>
@@ -971,26 +989,26 @@ function loadOrders() {
 function renderOrders(orders) {
   const tbody = document.getElementById('ordersTable');
   if (!orders || orders.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="9" style="padding:16px;color:var(--text-muted);font-size:0.85rem;">No orders yet.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="9" class="empty" style="padding:16px;color:var(--text-muted);font-size:0.85rem;">No orders yet.</td></tr>';
     return;
   }
   tbody.innerHTML = orders.map(o => {
     const date = new Date(o.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
     const color = ORDER_STATUS_COLORS[o.status] || 'var(--text-muted)';
     return `
-      <tr style="border-bottom:1px solid var(--border);font-size:0.85rem;">
-        <td style="padding:10px;white-space:nowrap;">${date}</td>
-        <td style="padding:10px;">${escapeHtml(o.productName)}</td>
-        <td style="padding:10px;">${escapeHtml(o.customerName)}</td>
-        <td style="padding:10px;white-space:nowrap;">${escapeHtml(o.phone)}</td>
-        <td style="padding:10px;max-width:220px;">${escapeHtml(o.address)}</td>
-        <td style="padding:10px;text-align:center;">${o.quantity}</td>
-        <td style="padding:10px;white-space:nowrap;">${(o.prescriptionFiles || []).length
-          ? o.prescriptionFiles.map((f, i) => `<button onclick="viewPrescription('${o._id}', ${i})" title="${escapeHtml(f.fileName)}" style="background:var(--bg-light);border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:0.78rem;cursor:pointer;margin:0 4px 4px 0;color:var(--text);">📄 View ${i + 1}</button>`).join('')
-          : `<span style="color:#f59e0b;font-weight:600;font-size:0.8rem;">${o.prescriptionLater ? 'Will share on call' : 'Not attached'}</span>`}</td>
-        <td style="padding:10px;max-width:200px;">${o.promoCode ? `<span style="color:var(--success);font-weight:700;">${escapeHtml(o.promoCode)} −${o.discountPct}%</span><br>` : ''}${escapeHtml((o.notes || '').replace(/^\[Discount [^\]]*\]\s*/, ''))}</td>
-        <td style="padding:10px;">
-          <select onchange="updateOrderStatus('${o._id}', this.value)" style="background:var(--bg-light);border:1px solid var(--border);border-radius:6px;color:${color};font-weight:600;padding:6px 8px;font-size:0.8rem;">
+      <tr>
+        <td class="nw" data-label="Date">${date}</td>
+        <td data-label="Product">${escapeHtml(o.productName)}</td>
+        <td data-label="Customer">${escapeHtml(o.customerName)}</td>
+        <td class="nw" data-label="Phone"><a href="tel:${escapeHtml(o.phone)}" style="color:inherit">${escapeHtml(o.phone)}</a></td>
+        <td class="addr" data-label="Address">${escapeHtml(o.address)}</td>
+        <td class="qty" data-label="Qty">${o.quantity}</td>
+        <td data-label="Prescription"><div>${(o.prescriptionFiles || []).length
+          ? o.prescriptionFiles.map((f, i) => `<button class="rx-btn" onclick="viewPrescription('${o._id}', ${i})" title="${escapeHtml(f.fileName)}">📄 View ${i + 1}</button>`).join('')
+          : `<span class="rx-later">${o.prescriptionLater ? 'Will share on call' : 'Not attached'}</span>`}</div></td>
+        <td class="notes" data-label="Notes"><div>${o.promoCode ? `<span style="color:var(--success);font-weight:700;">${escapeHtml(o.promoCode)} −${o.discountPct}%</span><br>` : ''}${escapeHtml((o.notes || '').replace(/^\[Discount [^\]]*\]\s*/, '')) || (o.promoCode ? '' : '—')}</div></td>
+        <td data-label="Status">
+          <select onchange="updateOrderStatus('${o._id}', this.value)" style="color:${color};">
             <option value="new" ${o.status === 'new' ? 'selected' : ''}>New</option>
             <option value="confirmed" ${o.status === 'confirmed' ? 'selected' : ''}>Confirmed</option>
             <option value="shipped" ${o.status === 'shipped' ? 'selected' : ''}>Shipped</option>

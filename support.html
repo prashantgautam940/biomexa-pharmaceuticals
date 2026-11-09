@@ -73,8 +73,8 @@ details p { color: var(--muted); margin-top: 8px; line-height: 1.55; font-size: 
       <h2>Check a ticket</h2>
       <p>Enter your ticket number and the WhatsApp number you used.</p>
       <form id="statusForm" novalidate>
-        <div class="f"><label for="tNo">Ticket number</label><input id="tNo" placeholder="BX-123456" autocomplete="off"></div>
-        <div class="f"><label for="tPhone">WhatsApp number</label><input id="tPhone" type="tel" inputmode="tel" placeholder="98765 43210"></div>
+        <div class="f"><label for="tNo">Ticket number</label><input id="tNo" placeholder="Ticket number, e.g. BX-…" autocomplete="off"></div>
+        <div class="f"><label for="tPhone">WhatsApp number</label><input id="tPhone" type="tel" inputmode="tel" placeholder="10-digit mobile number"></div>
         <button class="btn" type="submit" id="tBtn">Check status</button>
         <p class="err" id="tErr" role="alert"></p>
       </form>
