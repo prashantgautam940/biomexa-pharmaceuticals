@@ -125,12 +125,15 @@ class EffectivenessAnalyzer:
 
     def _set_targets(self):
         targets = {
+            # Same ranges as vitals/calibration.js (VITAL_TARGETS), so the report and the charts
+            # agree. The old 120–140 / 80–90 band scored well-controlled BP (e.g. 115/75) as
+            # "out of range" and pulled the effectiveness score down for doing well.
             'hypertension': {
-                'bp_systolic': {'target': 130, 'acceptable_range': [120, 140]},
-                'bp_diastolic': {'target': 85, 'acceptable_range': [80, 90]}
+                'bp_systolic': {'target': 120, 'acceptable_range': [90, 139]},
+                'bp_diastolic': {'target': 80, 'acceptable_range': [60, 89]}
             },
             'diabetes': {
-                'glucose': {'target': 140, 'acceptable_range': [80, 180]}
+                'glucose': {'target': 140, 'acceptable_range': [70, 180]}
             },
             'infection': {
                 'temperature': {'target': 98.6, 'acceptable_range': [97, 99.5]}
@@ -179,15 +182,36 @@ class EffectivenessAnalyzer:
             'blood_test_comparison': self._compare_blood_tests(patient_data)
         }
 
+    # Normal band per vital (matches vitals/calibration.js) and the smallest change that counts as
+    # real movement rather than measurement noise.
+    TREND_BANDS = {
+        'bp_systolic': (90, 139, 5), 'bp_diastolic': (60, 89, 3),
+        'glucose': (70, 180, 10), 'temperature': (97, 99.5, 0.3)
+    }
+
+    @staticmethod
+    def _day_index(date_str, first):
+        try:
+            return (datetime.strptime(date_str, "%Y-%m-%d") - first).days
+        except (TypeError, ValueError):
+            return None
+
     def _calculate_trends(self, daily_logs, baseline):
         results = {}
         vitals_to_track = ['bp_systolic', 'bp_diastolic', 'glucose', 'temperature']
 
         for vital in vitals_to_track:
-            values = [log[vital] for log in daily_logs if log[vital] is not None]
+            pts = [(log.get('date'), log[vital]) for log in daily_logs if log.get(vital) is not None]
+            values = [v for _, v in pts]
             if len(values) >= 2:
-                x = np.arange(len(values))
-                slope = np.polyfit(x, values, 1)[0]
+                # Slope against real calendar days (readings are irregular — three readings on
+                # one day and none for a week must not look like a three-day trend).
+                try:
+                    first_day = min(datetime.strptime(d, "%Y-%m-%d") for d, _ in pts)
+                    x = np.array([self._day_index(d, first_day) for d, _ in pts], dtype=float)
+                except (TypeError, ValueError):
+                    x = np.arange(len(values), dtype=float)
+                slope = np.polyfit(x, values, 1)[0] if np.ptp(x) > 0 else 0.0
 
                 baseline_val = baseline.get(vital)
                 if baseline_val:
@@ -200,10 +224,10 @@ class EffectivenessAnalyzer:
                 cv = (np.std(values) / np.mean(values)) * 100 if np.mean(values) != 0 else 0
                 avg_value = np.mean(values)
 
-                trend_dir = self._get_trend_direction(vital, slope, absolute_change)
+                trend_dir = self._get_trend_direction(vital, values)
 
                 results[vital] = {
-                    'slope_per_day': round(slope, 4),
+                    'slope_per_day': round(float(slope), 4),
                     'trend_direction': trend_dir,
                     'baseline_value': baseline_val,
                     'latest_value': round(values[-1], 2),
@@ -217,16 +241,21 @@ class EffectivenessAnalyzer:
 
         return results
 
-    def _get_trend_direction(self, vital, slope, absolute_change):
-        threshold = 0.3
-        if vital in ['bp_systolic', 'bp_diastolic', 'glucose']:
-            if slope < -threshold: return 'improving'
-            elif slope > threshold: return 'worsening'
-            else: return 'stable'
-        elif vital == 'temperature':
-            if slope < -threshold: return 'improving'
-            elif slope > threshold: return 'worsening'
-            else: return 'stable'
+    def _get_trend_direction(self, vital, values):
+        """Improving = moving toward the normal band; worsening = moving away from it.
+        Compares the first few readings with the last few, so one odd reading can't flip it.
+        Low BP falling further is worsening, not improving."""
+        band = self.TREND_BANDS.get(vital)
+        if not band or len(values) < 2:
+            return 'stable'
+        lo, hi, tol = band
+        dist = lambda v: (lo - v) if v < lo else (v - hi) if v > hi else 0.0
+        k = max(1, min(3, len(values) // 2))
+        start = float(np.mean(values[:k]))
+        end = float(np.mean(values[-k:]))
+        d0, d1 = dist(start), dist(end)
+        if d1 < d0 - tol: return 'improving'
+        if d1 > d0 + tol: return 'worsening'
         return 'stable'
 
     def _analyze_symptoms(self, daily_logs):
@@ -300,8 +329,11 @@ class EffectivenessAnalyzer:
 
         trend_scores = []
         for vital, trend_data in trends.items():
+            band = self.TREND_BANDS.get(vital)
+            settled_in_range = band and band[0] <= trend_data['latest_value'] <= band[1]
             if trend_data['trend_direction'] == 'improving': trend_scores.append(90)
-            elif trend_data['trend_direction'] == 'stable': trend_scores.append(60)
+            # Holding steady inside the normal band is a good result, not a middling one.
+            elif trend_data['trend_direction'] == 'stable': trend_scores.append(85 if settled_in_range else 60)
             else: trend_scores.append(25)
         trend_score = np.mean(trend_scores) if trend_scores else 50
 
@@ -348,7 +380,7 @@ class EffectivenessAnalyzer:
 
         for vital, trend in trends.items():
             vital_name = vital.replace('_', ' ').upper()
-            if trend['trend_direction'] == 'improving' and trend['percent_change'] <= -2:
+            if trend['trend_direction'] == 'improving' and abs(trend['percent_change']) >= 2:
                 insights.append(f"IMPROVING {vital_name}: {trend['percent_change']}% change from the first reading.")
             elif trend['trend_direction'] == 'worsening' and abs(trend['percent_change']) > 5:
                 insights.append(f"WORSENING {vital_name}: {trend['percent_change']}% change from the first reading. Consider dose adjustment or add-on therapy.")

@@ -119,6 +119,9 @@ const ivfDoseSchema = new mongoose.Schema({
   isTrigger: { type: Boolean, default: false },
   status: { type: String, default: 'pending' }, // pending | taken | missed
   remindersSent: { type: [String], default: [] }, // e.g. ["t-120", "t-30", "t0", "escalated"]
+  // "Remind me later": when to send the reminder again. scheduledAt itself never moves — it is the
+  // dose's identity (unique index below), so moving it let the daily generator re-create the dose.
+  snoozeUntil: Date,
   takenAt: Date,
   createdAt: { type: Date, default: Date.now }
 }, { collection: 'ivf_doses' });

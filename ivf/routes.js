@@ -208,7 +208,7 @@ async function handleWhatsAppReply({ phone, convo, buttonText, freeText }) {
 
   if (/remind.*later|later|snooze/.test(reply)) {
     const nextAt = new Date(Date.now() + 20 * 60 * 1000);
-    await IvfDose.updateOne({ _id: dose._id }, { scheduledAt: dose.isTrigger ? dose.scheduledAt : nextAt, $pull: { remindersSent: 't0' } });
+    await IvfDose.updateOne({ _id: dose._id }, dose.isTrigger ? { $pull: { remindersSent: 't0' } } : { snoozeUntil: nextAt, $pull: { remindersSent: 't0' } });
     await D.sendWhatsAppFree(phone, dose.isTrigger
       ? '⚠️ The trigger shot is time-critical — please take it as close to the planned time as possible. We\'ll remind you again shortly.'
       : '⏰ No problem — we\'ll remind you again in about 20 minutes.');
@@ -403,7 +403,12 @@ async function ivfTick() {
   }
 
   // Daily medicine reminders (catch up anything due in the last 3 hours).
-  const due = await IvfDose.find({ isTrigger: false, status: 'pending', scheduledAt: { $lte: now, $gte: new Date(now - 3 * 36e5) }, remindersSent: { $ne: 't0' } }).limit(200);
+  // A snoozed dose ("remind me later") waits for snoozeUntil instead of its scheduled time.
+  const since = new Date(now - 3 * 36e5);
+  const due = await IvfDose.find({
+    isTrigger: false, status: 'pending', remindersSent: { $ne: 't0' },
+    $or: [{ snoozeUntil: null, scheduledAt: { $lte: now, $gte: since } }, { snoozeUntil: { $lte: now, $gte: since } }]
+  }).limit(200);
   for (const dose of due) {
     const claimed = await IvfDose.findOneAndUpdate({ _id: dose._id, remindersSent: { $ne: 't0' } }, { $push: { remindersSent: 't0' } });
     if (claimed) fire(sendIvfDoseReminder(dose, 't0'));

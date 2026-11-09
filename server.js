@@ -2791,7 +2791,9 @@ app.post('/api/patient/change-password', loginLimiter, auth, async (req, res) =>
 // not just have it silently feed the AI risk model behind the scenes.
 app.get('/api/patient/vitals-history', auth, async (req, res) => {
   try {
-    const logs = await VitalsLog.find({ patientPhone: req.user.phone }).sort({ recordedAt: -1 }).limit(30);
+    // All saved formats of the number — WhatsApp readings arrive as 91XXXXXXXXXX even when the
+    // account is saved as "+91 XXXXX…", and the dashboard charts already count both.
+    const logs = await VitalsLog.find({ patientPhone: { $in: phoneVariants(req.user.phone) } }).sort({ recordedAt: -1 }).limit(30);
     res.json(logs);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -2953,7 +2955,7 @@ app.post('/api/patient/uploaded-reports/:id/send-whatsapp', auth, requirePremium
 // their doctor) needs to actually see the pattern, not just an aggregate adherence percentage.
 app.get('/api/patient/missed-doses', auth, async (req, res) => {
   try {
-    const missed = await Dose.find({ patientPhone: req.user.phone, status: 'missed' })
+    const missed = await Dose.find({ patientPhone: { $in: phoneVariants(req.user.phone) }, status: 'missed' })
       .sort({ scheduledDate: -1, scheduledTime: -1 })
       .limit(60);
     res.json(missed);
@@ -3035,10 +3037,13 @@ async function buildPatientTreatmentReport(phone) {
   const patient = await Patient.findOne({ phone });
   if (!patient) return { error: 'Patient not found', status: 404 };
 
-  const doses = await Dose.find({ patientPhone: phone }).sort({ scheduledDate: 1 });
+  // Every saved format of the number, same as the charts (loadVitalsProgress) — otherwise
+  // WhatsApp readings saved as 91XXXXXXXXXX were missing from the report but on the charts.
+  const phones = phoneVariants(patient.phone);
+  const doses = await Dose.find({ patientPhone: { $in: phones } }).sort({ scheduledDate: 1 });
   if (!doses.length) return { error: 'No dose history yet — add a medicine and confirm a few doses first, then check back.', status: 400 };
 
-  const vitalsLogs = await VitalsLog.find({ patientPhone: phone }).sort({ recordedAt: 1 });
+  const vitalsLogs = await VitalsLog.find({ patientPhone: { $in: phones } }).sort({ recordedAt: 1 });
   const { payload, byDay, relevant, usedRealVitals } = buildAnalysisInput(patient, doses, vitalsLogs);
   if (!relevant.length) return { error: 'All your doses so far are still pending — check back once you\'ve confirmed a few.', status: 400 };
   const dose_history = payload.dose_history;
@@ -4613,7 +4618,7 @@ app.get('/api/doctor/patient/:phone/vitals', staffAuth, async (req, res) => {
     const phone = patient?.phone;
     if (!patient) return res.status(404).json({ message: 'Patient not found' });
 
-    const allVitals = await VitalsLog.find({ patientPhone: phone }).sort({ recordedAt: 1 });
+    const allVitals = await VitalsLog.find({ patientPhone: { $in: phoneVariants(phone) } }).sort({ recordedAt: 1 });
 
     const today = new Date();
     const days = [];
@@ -4673,13 +4678,13 @@ app.get('/api/doctor/patient/:phone/effectiveness', staffAuth, async (req, res) 
   try {
     const patient = await findAccountByPhone('patient', req.params.phone);
     if (!patient) return res.status(404).json({ message: 'Patient not found' });
-    const phone = patient.phone;
+    const phones = phoneVariants(patient.phone);
 
-    const doses = await Dose.find({ patientPhone: phone }).sort({ scheduledDate: 1 });
+    const doses = await Dose.find({ patientPhone: { $in: phones } }).sort({ scheduledDate: 1 });
     if (!doses.length) {
       return res.status(400).json({ message: 'No dose history yet for this patient — nothing to analyze.' });
     }
-    const vitalsLogs = await VitalsLog.find({ patientPhone: phone }).sort({ recordedAt: 1 });
+    const vitalsLogs = await VitalsLog.find({ patientPhone: { $in: phones } }).sort({ recordedAt: 1 });
     // Same builder as the patient's own report, so doctor and patient always see the same numbers.
     const { payload, relevant, usedRealVitals } = buildAnalysisInput(patient, doses, vitalsLogs);
     if (!relevant.length) {
@@ -4728,7 +4733,7 @@ app.patch('/api/doctor/alerts/:id/acknowledge', staffAuth, async (req, res) => {
 // urgent state on their "Talk to a Doctor" card, same treatment as low-adherence urgency.
 app.get('/api/patient/latest-alert', auth, async (req, res) => {
   try {
-    const alert = await RiskAlert.findOne({ patientPhone: req.user.phone, acknowledged: false }).sort({ createdAt: -1 });
+    const alert = await RiskAlert.findOne({ patientPhone: { $in: phoneVariants(req.user.phone) }, acknowledged: false }).sort({ createdAt: -1 });
     res.json(alert || null);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -4877,7 +4882,8 @@ async function computeRiskScore(patient) {
   const missed = due.filter(d => d.status === 'missed').length;
   const adherence = due.length ? taken / due.length : null;
 
-  const weekAgo = localDateStr(new Date(Date.now() - 7 * 86400000));
+  // Last 7 calendar days including today (6 days back) — 7 days back made it an 8-day window.
+  const weekAgo = localDateStr(new Date(Date.now() - 6 * 86400000));
   const recent = due.filter(d => d.scheduledDate >= weekAgo);
   const recentMissed = recent.filter(d => d.status !== 'taken').length;
   const recentMissRate = recent.length ? recentMissed / recent.length : (adherence !== null ? 1 - adherence : 0);
@@ -5355,7 +5361,9 @@ app.get('/api/admin/subscriptions', adminAuth, async (req, res) => {
       return { name: main.name, phone: main.phone, tier: a.tier, planName: a.planName, expiresAt: a.expiresAt, trialEndsAt: a.trialEndsAt, daysLeft: a.daysLeft };
     });
     const payments = await Payment.find({ status: 'paid' }).sort({ paidAt: -1 }).limit(100).lean();
-    const revenue = payments.reduce((s, p) => s + (p.amount || 0), 0) / 100;
+    // Total of ALL paid payments (the list above is only the latest 100). Amounts are in paise.
+    const [sum] = await Payment.aggregate([{ $match: { status: 'paid' } }, { $group: { _id: null, total: { $sum: '$amount' } } }]);
+    const revenue = (sum?.total || 0) / 100;
     const counts = { subscribed: 0, trial: 0, free: 0 };
     rows.forEach(r => counts[r.tier]++);
     res.json({ counts, revenue, paymentsEnabled: PAYMENTS_CONFIGURED, enforced: SUBSCRIPTION_ENFORCED, reminderEveryDays: SUB_REMINDER_EVERY_DAYS, patients: rows, payments });
@@ -6722,17 +6730,6 @@ app.get('/api/admin/export/patients', adminAuth, async (req, res) => {
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
-});
-
-// ========== ADMIN ROUTES (legacy mock, kept for backward compatibility) ==========
-app.get('/stats', async (req, res) => {
-  const total = await Patient.countDocuments();
-  res.json({
-    total_patients: total,
-    high_risk_patients: Math.floor(total * 0.2),
-    average_adherence: Math.floor(70 + Math.random() * 25),
-    total_interactions: Math.floor(total * 10 + Math.random() * 100)
-  });
 });
 
 // Public status check — lets the frontend know whether MSG91 (Biomexa's sole WhatsApp
