@@ -3717,6 +3717,26 @@ const AD_INTERVAL_DAYS = Math.max(1, parseInt(process.env.AD_INTERVAL_DAYS, 10) 
 const AD_NEW_PATIENT_WAIT_DAYS = Math.max(0, parseInt(process.env.AD_NEW_PATIENT_WAIT_DAYS, 10) || 1);
 // Set to 'false' only if the approved template has just {{patient_name}} (the older version).
 const AD_TEMPLATE_HAS_ACCESS_LINE = process.env.AD_TEMPLATE_HAS_ACCESS_LINE !== 'false';
+// The exact variables in the APPROVED template, in body order. Meta rejects the whole message if the
+// count differs ("number of localizable_params (3) does not match the expected number of params (2)").
+// e.g. AD_TEMPLATE_PARAMS=patient_name,access_line  — any of: patient_name, access_line, offer_line.
+const AD_TEMPLATE_PARAMS = (process.env.AD_TEMPLATE_PARAMS
+  ? process.env.AD_TEMPLATE_PARAMS.split(',').map(x => x.trim().replace(/[{}]/g, '')).filter(Boolean)
+  : (AD_TEMPLATE_HAS_ACCESS_LINE ? ['patient_name', 'access_line', 'offer_line'] : ['patient_name']));
+
+function adTemplateComponents(patientName, accessLine) {
+  const values = {
+    patient_name: () => sanitizeTemplateParam(String(patientName || 'there').split(' ')[0], 40),
+    access_line: () => sanitizeTemplateParam(accessLine || 'welcome to Biomexa Care.', 250),
+    offer_line: () => sanitizeTemplateParam(adOfferLine(), 250)
+  };
+  const out = {};
+  AD_TEMPLATE_PARAMS.forEach((name, i) => {
+    if (!values[name]) { console.log(`⚠️ AD_TEMPLATE_PARAMS: unknown variable "${name}" — skipped`); return; }
+    out[`body_${i + 1}`] = { type: 'text', value: values[name](), parameter_name: name };
+  });
+  return out;
+}
 const AD_SEND_HOUR = 11;
 const AD_MAX_PER_RUN = 300;
 const AD_STOP_RE = /^\s*(stop|unsubscribe|stop ads|no ads)\s*[.!]?\s*$/i;
@@ -3753,13 +3773,7 @@ async function sendAdTemplate(phone, patientName, accessLine) {
             namespace: MSG91_AD_TEMPLATE_NAMESPACE,
             to_and_components: [{
               to: [phone.replace(/\D/g, '')],
-              components: {
-                body_1: { type: 'text', value: sanitizeTemplateParam(String(patientName || 'there').split(' ')[0], 40), parameter_name: 'patient_name' },
-                ...(AD_TEMPLATE_HAS_ACCESS_LINE ? {
-                  body_2: { type: 'text', value: sanitizeTemplateParam(accessLine || 'welcome to Biomexa Care.', 250), parameter_name: 'access_line' },
-                  body_3: { type: 'text', value: sanitizeTemplateParam(adOfferLine(), 250), parameter_name: 'offer_line' }
-                } : {})
-              }
+              components: adTemplateComponents(patientName, accessLine)
             }]
           }
         }
