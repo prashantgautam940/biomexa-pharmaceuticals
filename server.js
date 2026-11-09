@@ -1835,6 +1835,8 @@ const orderSchema = new mongoose.Schema({
   promoCode: String,      // accepted discount code, e.g. BIOMEXA15
   discountPct: Number,    // discount the team applies when confirming the order on the call
   status: { type: String, default: 'new' }, // new | confirmed | shipped | cancelled
+  // WhatsApp updates sent to the customer, newest last: { status, at, delivered (accepted by MSG91), via }
+  whatsappUpdates: [{ status: String, at: Date, delivered: Boolean, via: String, _id: false }],
   createdAt: { type: Date, default: Date.now }
 });
 
@@ -2247,6 +2249,100 @@ app.post('/api/quick-vitals', signupLimiter, async (req, res) => {
   }
 });
 
+// ========== ORDER UPDATES ON WHATSAPP (to the customer) ==========
+// Setup: create + get Meta approval for a UTILITY template in MSG91 named e.g. biomexa_order_update:
+//   Body: "Hi {{1}}, {{2}}
+//
+//          Order {{3}}
+//
+//          Reply to this message if you have any questions. — Biomexa Pharmaceuticals"
+//   Variables: {{1}} = first name, {{2}} = status line, {{3}} = order details. No buttons.
+//   Samples: {{1}} Ravi · {{2}} we have received your order. Our team will call you shortly to confirm it.
+//            {{3}} BX-4F2A91: Diabmexa M 500 × 2 strips. Delivery to Sector 62, Noida 201301
+// then set MSG91_ORDER_TEMPLATE_NAME (and MSG91_ORDER_TEMPLATE_NAMESPACE if different).
+// Most buyers have never messaged the Biomexa number, so free text (which Meta only delivers inside
+// the 24-hour window) can't be relied on; the template is used whenever that window is closed.
+const MSG91_ORDER_TEMPLATE_NAME = process.env.MSG91_ORDER_TEMPLATE_NAME || null;
+const MSG91_ORDER_TEMPLATE_NAMESPACE = process.env.MSG91_ORDER_TEMPLATE_NAMESPACE || MSG91_TEMPLATE_NAMESPACE;
+async function sendOrderTemplate(phone, firstName, statusLine, details) {
+  if (!MSG91_CONFIGURED || !MSG91_ORDER_TEMPLATE_NAME) return { success: false, provider: 'msg91_order_template_not_configured' };
+  try {
+    const res = await fetch('https://api.msg91.com/api/v5/whatsapp/whatsapp-outbound-message/bulk/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'authkey': MSG91_AUTH_KEY },
+      body: JSON.stringify({
+        integrated_number: MSG91_INTEGRATED_NUMBER,
+        content_type: 'template',
+        payload: {
+          messaging_product: 'whatsapp', type: 'template',
+          template: {
+            name: MSG91_ORDER_TEMPLATE_NAME,
+            language: { code: MSG91_TEMPLATE_LANG, policy: 'deterministic' },
+            namespace: MSG91_ORDER_TEMPLATE_NAMESPACE,
+            to_and_components: [{
+              to: [phone.replace(/\D/g, '')],
+              components: {
+                body_1: { type: 'text', value: sanitizeTemplateParam(firstName, 40) || 'there' },
+                body_2: { type: 'text', value: sanitizeTemplateParam(statusLine, 250) || 'there is an update on your order.' },
+                body_3: { type: 'text', value: sanitizeTemplateParam(details, 300) || '-' }
+              }
+            }]
+          }
+        }
+      }),
+      signal: AbortSignal.timeout(10000)
+    });
+    const data = await res.json();
+    if (!res.ok) { console.log('⚠️ MSG91 order template send failed:', JSON.stringify(data).substring(0, 500)); return { success: false, provider: 'msg91', detail: data }; }
+    console.log('✅ MSG91 order template sent to', phone);
+    return { success: true, provider: 'msg91_template' };
+  } catch (err) {
+    console.log('⚠️ MSG91 order template send error:', err.message);
+    return { success: false, provider: 'msg91', detail: err.message };
+  }
+}
+
+const orderRef = order => 'BX-' + String(order._id).slice(-6).toUpperCase();
+const ORDER_STATUS_LINES = {
+  new: 'we have received your order. Our team will call you shortly to confirm it.',
+  confirmed: 'your order is confirmed and is being packed for delivery.',
+  shipped: 'your order is on its way. Please keep your phone handy for the delivery call.',
+  cancelled: 'your order has been cancelled. If this is a mistake, just reply and we will help.'
+};
+function orderDetailsLine(order) {
+  const q = order.quantity || 1;
+  // Short address (last part — area, city, PIN) so the full address isn't repeated in every message.
+  const addr = String(order.address || '').replace(/\s+/g, ' ').trim();
+  const shortAddr = addr.length > 70 ? '…' + addr.slice(-68) : addr;
+  const rx = order.status === 'new' && order.prescriptionLater ? ' Please keep your prescription ready for the call.' : '';
+  const disc = order.discountPct ? ` ${order.discountPct}% discount (${order.promoCode}) applied.` : '';
+  return `${orderRef(order)}: ${order.productName} × ${q} strip${q > 1 ? 's' : ''}. Delivery to ${shortAddr}.${disc}${rx}`;
+}
+// Sends the update for the order's current status; never throws. Records the attempt on the order.
+async function notifyOrderCustomer(order) {
+  const status = order.status || 'new';
+  const first = String(order.customerName || '').trim().split(/\s+/)[0] || 'there';
+  const statusLine = ORDER_STATUS_LINES[status];
+  if (!statusLine) return { success: false };
+  const details = orderDetailsLine(order);
+  let result;
+  try {
+    if (await whatsappWindowOpen(order.phone)) {
+      const icon = { new: '🛒', confirmed: '✅', shipped: '🚚', cancelled: '❌' }[status];
+      result = await sendWhatsAppFree(order.phone, `${icon} Hi ${first}, ${statusLine}\n\n*Order ${details}*\n\nReply here if you have any questions.\n- Biomexa Pharmaceuticals`);
+      if (result.success) result.provider = 'msg91_text';
+    }
+    if (!result || !result.success) result = await sendOrderTemplate(order.phone, first, statusLine, details);
+    if (!result.success && result.provider === 'msg91_order_template_not_configured') {
+      console.log(`⚠️ Order ${orderRef(order)}: set MSG91_ORDER_TEMPLATE_NAME to WhatsApp customers who haven't messaged in 24h`);
+    }
+  } catch (err) {
+    result = { success: false, provider: 'error', detail: err.message };
+  }
+  await Order.updateOne({ _id: order._id }, { $push: { whatsappUpdates: { status, at: new Date(), delivered: !!result.success, via: result.provider } } }).catch(() => {});
+  return result;
+}
+
 // ========== PRODUCT ORDERS (public product pages) ==========
 // Plain order-intake, not a payment transaction — no payment gateway is wired up. Saves the
 // order, then notifies the pharmacy by email and (if configured) WhatsApp so someone can follow
@@ -2313,11 +2409,17 @@ app.post('/api/orders', orderLimiter, async (req, res) => {
     if (process.env.ADMIN_NOTIFY_PHONE) {
       sendWhatsAppFree(
         process.env.ADMIN_NOTIFY_PHONE,
-        `🛒 *New Order*\n\n${order.productName} × ${order.quantity}\n${order.customerName} — ${order.phone}\n${order.address}${order.notes ? '\n\nNotes: ' + order.notes : ''}\n${rxText}\n\n- Biomexa Team`
+        `🛒 *New Order ${orderRef(order)}*\n\n${order.productName} × ${order.quantity}\n${order.customerName} — ${order.phone}\n${order.address}${order.notes ? '\n\nNotes: ' + order.notes : ''}\n${rxText}\n\n- Biomexa Team`
       ).catch(() => {});
     }
 
-    res.json({ message: `Order received!${promo ? ` ${code} applied: ${promo.pct}% off.` : ''} Our team will contact you shortly to confirm and arrange delivery.`, orderId: order._id, discountPct: order.discountPct || 0 });
+    // Confirmation to the customer on WhatsApp — awaited (≤10 s) so the page can say whether it went.
+    const wa = await notifyOrderCustomer(order);
+
+    res.json({
+      message: `Order received!${promo ? ` ${code} applied: ${promo.pct}% off.` : ''} Our team will contact you shortly to confirm and arrange delivery.`,
+      orderId: order._id, orderRef: orderRef(order), discountPct: order.discountPct || 0, whatsappSent: !!wa.success
+    });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -2354,9 +2456,14 @@ app.patch('/api/admin/orders/:id', adminAuth, async (req, res) => {
     if (!validStatuses.includes(status)) {
       return res.status(400).json({ message: `status must be one of: ${validStatuses.join(', ')}` });
     }
-    const order = await Order.findByIdAndUpdate(req.params.id, { status }, { new: true });
-    if (!order) return res.status(404).json({ message: 'Order not found.' });
-    res.json({ message: 'Order updated.', order });
+    if (!mongoose.isValidObjectId(req.params.id)) return res.status(404).json({ message: 'Order not found.' });
+    const before = await Order.findById(req.params.id).select('status');
+    if (!before) return res.status(404).json({ message: 'Order not found.' });
+    const order = await Order.findByIdAndUpdate(req.params.id, { status }, { new: true }).select('-prescriptionFiles.fileData');
+    // Tell the customer on WhatsApp when the status actually changes (confirmed / shipped / cancelled).
+    let whatsappSent = null;
+    if (before.status !== status && status !== 'new') whatsappSent = !!(await notifyOrderCustomer(order)).success;
+    res.json({ message: whatsappSent === false ? 'Order updated — but the WhatsApp update to the customer could not be sent.' : 'Order updated.', order, whatsappSent });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

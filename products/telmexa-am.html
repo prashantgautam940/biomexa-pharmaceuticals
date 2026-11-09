@@ -48,49 +48,81 @@
     </div>
   </section>
 
-  <a class="section card scan-banner" href="ai/telmexa-am-ai.html">
-    <span class="qr"><i class="fas fa-qrcode"></i></span>
-    <div><strong>Taking Telmexa AM? Your free AI Pharmacist is ready</strong><span>Scan the QR on your pack or tap here — voice guide, WhatsApp dose reminders, health tips and progress tracking.</span></div>
-    <i class="fas fa-chevron-right go"></i>
-  </a>
+  <section class="section card order-card" id="order">
+    <div class="order-head">
+      <img src="../images/products/telmexa-am-box.jpg" alt="" width="96" height="58">
+      <div>
+        <h2 style="margin:0">Order Telmexa AM</h2>
+        <p class="lead" style="margin:2px 0 0">Strip of 10 tablets · Home delivery</p>
+      </div>
+    </div>
+    <ul class="order-perks">
+      <li><i class="fas fa-phone"></i> No online payment — we confirm by phone</li>
+      <li><i class="fab fa-whatsapp"></i> Order updates on WhatsApp</li>
+      <li><i class="fas fa-prescription"></i> Prescription needed</li>
+    </ul>
+
+    <form id="orderForm" novalidate>
+      <div class="field"><label class="fl" for="orderQuantity">How many strips?</label>
+        <div class="qty"><button type="button" data-q="-1" aria-label="Less">−</button><input type="number" id="orderQuantity" min="1" max="50" value="1" inputmode="numeric"><button type="button" data-q="1" aria-label="More">+</button></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label class="fl" for="orderName">Your name</label><input type="text" id="orderName" autocomplete="name" placeholder="Full name"></div>
+        <div class="field"><label class="fl" for="orderPhone">WhatsApp number</label>
+          <div class="phone"><span class="cc">+91</span><input type="tel" id="orderPhone" inputmode="numeric" autocomplete="tel-national" placeholder="10-digit mobile" maxlength="14"></div>
+        </div>
+      </div>
+      <div class="field"><label class="fl" for="orderAddress">Delivery address</label><textarea id="orderAddress" rows="2" autocomplete="street-address" placeholder="House no., street, area, city"></textarea></div>
+      <div class="field" style="max-width:200px"><label class="fl" for="orderPin">PIN code</label><input type="text" id="orderPin" inputmode="numeric" autocomplete="postal-code" maxlength="6" placeholder="6 digits"></div>
+
+      <div class="field"><span class="fl">Prescription</span>
+        <div class="rx-choice" role="radiogroup">
+          <label><input type="radio" name="rxMode" value="upload" checked><span><i class="fas fa-camera"></i> Upload a photo</span></label>
+          <label><input type="radio" name="rxMode" value="later"><span><i class="fas fa-phone"></i> Show it on the call</span></label>
+        </div>
+        <div id="rxUploadBox" class="rx-upload">
+          <input type="file" id="orderRx" accept="image/jpeg,image/png,image/webp,application/pdf" multiple>
+          <small>Photo or PDF · up to 3 files · 5 MB each</small>
+        </div>
+      </div>
+
+      <details class="promo"><summary>Have a discount code?</summary>
+        <input type="text" id="orderPromo" autocomplete="off" placeholder="Enter code" style="text-transform:uppercase;margin-top:8px">
+      </details>
+
+      <button class="btn btn-primary btn-block" id="orderBtn"><i class="fas fa-check"></i> Place order</button>
+      <div class="form-msg" id="orderMsg" role="status"></div>
+    </form>
+
+    <div id="orderDone" class="order-done" hidden>
+      <div class="tick"><i class="fas fa-check"></i></div>
+      <h3>Order placed</h3>
+      <p class="ref" id="doneRef"></p>
+      <p id="doneText"></p>
+      <ol class="next">
+        <li>Our team calls you to confirm the order and see your prescription.</li>
+        <li>Your medicine is packed and sent to your address.</li>
+        <li>You get each update on WhatsApp.</li>
+      </ol>
+      <div class="done-actions">
+        <a class="btn btn-wa" href="../reminders.html?product=telmexa-am"><i class="fab fa-whatsapp"></i> Set dose reminders</a>
+        <button type="button" class="btn btn-ghost" id="orderAgain">Place another order</button>
+      </div>
+    </div>
+  </section>
+
 
   <section class="section card" id="info">
     <h2><span class="ico navy"><i class="fas fa-circle-info"></i></span>Product information</h2>
     <div class="info-grid"><div class="info"><div class="k">Composition</div><div class="v">Telmisartan 40 mg</div><div class="s">Amlodipine besylate 5 mg</div></div><div class="info"><div class="k">Category</div><div class="v">Antihypertensive</div><div class="s">ARB + calcium channel blocker</div></div><div class="info"><div class="k">Pack size</div><div class="v">10 × 10 tablets</div><div class="s">Blister packs</div></div><div class="info"><div class="k">Storage</div><div class="v">15–30 °C</div><div class="s">Protect from moisture & light</div></div></div>
   </section>
 
-  <div class="grid-2 section">
-    <section class="card" id="how">
+  <section class="section card" id="how">
       <h2><span class="ico green"><i class="fas fa-clock"></i></span>Your daily routine</h2>
       <p class="lead" style="margin-bottom:0">When to take Telmexa AM — and what to do the rest of the day.</p>
       <ul class="timeline"><li><span class="dot dose"><i class="fas fa-sun"></i></span><div><div class="when">6–8 AM</div><h3>Take your tablet</h3><p>One tablet with breakfast and a full glass of water. Morning dosing covers the natural early-morning rise in BP.</p></div></li><li><span class="dot rest"><i class="fas fa-heart-pulse"></i></span><div><div class="when">12–2 PM</div><h3>Check your BP</h3><p>No dose needed. Check your BP if you can, keep lunch low in salt, and drink enough water.</p></div></li><li><span class="dot no"><i class="fas fa-ban"></i></span><div><div class="when">6–8 PM</div><h3>No evening dose</h3><p>Telmexa AM is taken once a day only. Don't take a second tablet in the evening.</p></div></li><li><span class="dot rest"><i class="fas fa-moon"></i></span><div><div class="when">10 PM</div><h3>Rest well</h3><p>Aim for 7–8 hours of sleep — poor sleep can push your BP up.</p></div></li></ul>
       <a class="btn btn-wa btn-block" href="../reminders.html?product=telmexa-am" style="margin-top:10px"><i class="fab fa-whatsapp"></i> Get free WhatsApp dose reminders</a>
     </section>
-
-    <section class="card" id="order">
-      <h2><span class="ico navy"><i class="fas fa-cart-shopping"></i></span>Order Telmexa AM</h2>
-      <p class="lead">Request home delivery — our team will call you to confirm.</p>
-      <div class="order-note"><i class="fas fa-circle-info"></i><span>No payment online. A valid prescription is required — upload it below, or share it when our team calls.</span></div>
-      <form id="orderForm" novalidate>
-        <div class="field"><label class="fl" for="orderName">Your name</label><input type="text" id="orderName" data-fill="name" autocomplete="name" placeholder="Your full name"></div>
-        <div class="field"><label class="fl" for="orderPhone">Phone number</label>
-          <div class="phone"><span class="cc">+91</span><input type="tel" id="orderPhone" data-fill="phone" inputmode="numeric" autocomplete="tel-national" placeholder="10-digit mobile number" maxlength="14"></div>
-        </div>
-        <div class="field"><label class="fl" for="orderAddress">Delivery address</label><textarea id="orderAddress" rows="3" autocomplete="street-address" placeholder="House no., street, area, city, PIN code"></textarea></div>
-        <div class="field"><label class="fl" for="orderQuantity">Quantity (strips of 10)</label>
-          <div class="qty"><button type="button" data-q="-1" aria-label="Less">−</button><input type="number" id="orderQuantity" min="1" max="50" value="1"><button type="button" data-q="1" aria-label="More">+</button></div>
-        </div>
-        <div class="field"><label class="fl" for="orderRx">Upload prescription</label>
-          <input type="file" id="orderRx" accept="image/jpeg,image/png,image/webp,application/pdf" multiple>
-          <small style="display:block;color:#64748b;font-size:.8rem;margin-top:4px">Photo or PDF, up to 3 files, 5 MB each.</small>
-          <label style="display:flex;gap:10px;align-items:flex-start;margin-top:10px;font-size:.9rem;font-weight:400;line-height:1.4;cursor:pointer"><input type="checkbox" id="orderRxLater"> I'll share my prescription when the team calls</label>
-        </div>
-        <div class="field"><label class="fl" for="orderPromo">Discount code (optional)</label><input type="text" id="orderPromo" autocomplete="off" placeholder="e.g. BIOMEXA15" style="text-transform:uppercase"></div>
-        <button class="btn btn-primary btn-block" id="orderBtn"><i class="fas fa-paper-plane"></i> Request delivery</button>
-        <div class="form-msg" id="orderMsg" role="status"></div>
-      </form>
-    </section>
-  </div>
 
   <section class="section card" id="food">
     <h2><span class="ico amber"><i class="fas fa-apple-whole"></i></span>Food &amp; drug interactions</h2>
@@ -98,15 +130,6 @@
     <div class="inter-list"><div class="inter avoid"><span class="ico"><i class="fas fa-ban"></i></span><div><span class="tag">Avoid</span><h3>Grapefruit & grapefruit juice</h3><p>Raises amlodipine levels in the blood, which can cause very low BP, dizziness and ankle swelling. Avoid completely.</p></div></div><div class="inter avoid"><span class="ico"><i class="fas fa-ban"></i></span><div><span class="tag">Avoid</span><h3>High-salt foods</h3><p>Pickles, papad, chips, processed and packaged foods work against the medicine. Keep sodium under 2 g a day.</p></div></div><div class="inter caution"><span class="ico"><i class="fas fa-triangle-exclamation"></i></span><div><span class="tag">Caution</span><h3>Alcohol</h3><p>Adds to the BP-lowering effect and can cause dizziness or fainting. Best avoided — if you drink, keep it minimal.</p></div></div><div class="inter caution"><span class="ico"><i class="fas fa-triangle-exclamation"></i></span><div><span class="tag">Caution</span><h3>Potassium supplements & salt substitutes</h3><p>Telmisartan can raise potassium. Avoid supplements or "low-sodium" salts unless your doctor advises; your doctor may check potassium levels.</p></div></div><div class="inter good"><span class="ico"><i class="fas fa-circle-check"></i></span><div><span class="tag">Good for you</span><h3>DASH-style diet</h3><p>Vegetables, fruit, dal, oats, nuts and fish support healthy BP alongside your medicine.</p></div></div><div class="inter good"><span class="ico"><i class="fas fa-circle-check"></i></span><div><span class="tag">Good for you</span><h3>Beetroot & pomegranate</h3><p>Heart-friendly foods that fit well into a BP-friendly diet.</p></div></div></div>
   </section>
 
-  <section class="section card">
-    <h2><span class="ico navy"><i class="fas fa-hand-holding-medical"></i></span>More from Biomexa</h2>
-    <div class="help-grid" style="margin-top:14px">
-      <a class="help" href="ai/telmexa-am-ai.html#ask"><span class="ico green"><i class="fas fa-comments"></i></span><div><strong>Ask the AI Pharmacist</strong><span>Questions answered instantly</span></div></a>
-      <a class="help" href="../index.html#connect-doctor"><span class="ico navy"><i class="fas fa-user-doctor"></i></span><div><strong>Talk to a doctor</strong><span>Connect on WhatsApp</span></div></a>
-      <a class="help" href="../patient.html#upload-report"><span class="ico amber"><i class="fas fa-file-arrow-up"></i></span><div><strong>Upload prescription</strong><span>AI explains it simply</span></div></a>
-      <a class="help" href="../doctor-signup.html"><span class="ico navy"><i class="fas fa-stethoscope"></i></span><div><strong>For doctors</strong><span>Join the Biomexa network</span></div></a>
-    </div>
-  </section>
 </main>
 
 <footer>

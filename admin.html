@@ -1014,6 +1014,14 @@ function renderOrders(orders) {
             <option value="shipped" ${o.status === 'shipped' ? 'selected' : ''}>Shipped</option>
             <option value="cancelled" ${o.status === 'cancelled' ? 'selected' : ''}>Cancelled</option>
           </select>
+          ${(() => {
+            // Last WhatsApp update sent to the customer about this order.
+            const w = (o.whatsappUpdates || []).slice(-1)[0];
+            if (!w) return '';
+            return w.delivered
+              ? `<div style="font-size:.74rem;color:var(--success);margin-top:6px;white-space:nowrap">✓ WhatsApp sent (${escapeHtml(w.status)})</div>`
+              : `<div style="font-size:.74rem;color:#b45309;margin-top:6px;white-space:nowrap" title="${escapeHtml(w.via || '')}">⚠ WhatsApp not sent — call the customer</div>`;
+          })()}
         </td>
       </tr>
     `;
@@ -1038,6 +1046,7 @@ function updateOrderStatus(id, status) {
     .then(r => r.json().then(data => ({ ok: r.ok, data })))
     .then(({ ok, data }) => {
       if (!ok) throw new Error(data.message);
+      if (data.whatsappSent === false) alert(data.message);
       loadOrders();
     })
     .catch(e => alert(e.message));
