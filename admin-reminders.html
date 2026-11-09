@@ -25,6 +25,7 @@ h1 i { color: var(--green); }
 .stat.on { border-color: var(--navy); box-shadow: 0 0 0 2px rgba(22,51,107,.15), var(--shadow); }
 .stat .lbl { font-size: .8rem; color: var(--muted); font-weight: 600; display: flex; align-items: center; gap: .45rem; }
 .stat .num { font-size: 2rem; font-weight: 800; margin-top: .35rem; }
+.stat.started .num { color: #6d28d9; } .stat.campaign .num { color: var(--navy); }
 .stat.active .num { color: var(--green); } .stat.completed .num { color: var(--amber); } .stat.none .num { color: var(--muted); }
 .card { background: var(--card); border: 1px solid var(--line); border-radius: 18px; box-shadow: var(--shadow); padding: 1.4rem; margin-bottom: 1.5rem; }
 .invite { display: grid; grid-template-columns: 1fr auto; gap: 1.25rem; align-items: center; border-color: rgba(28,154,85,.35); background: linear-gradient(135deg, #fff 0%, #f1faf5 100%); }
@@ -55,6 +56,11 @@ select:focus, input:focus { outline: none; border-color: var(--navy); box-shadow
 .who .ph { color: var(--muted); font-size: .82rem; margin-top: 2px; }
 .who .meta { color: var(--muted); font-size: .76rem; margin-top: 6px; line-height: 1.5; }
 .pill { display: inline-flex; align-items: center; gap: 5px; font-size: .72rem; font-weight: 700; padding: 3px 9px; border-radius: 999px; margin-top: 8px; }
+.pill.started { background: #f1ebff; color: #6d28d9; } .pill.campaign { background: #e8eefb; color: var(--navy); margin-left: 4px; }
+.win { display: inline-flex; align-items: center; gap: 5px; font-size: .72rem; font-weight: 700; margin-top: 6px; }
+.win.open { color: #11663a; } .win.closed { color: var(--muted); }
+.actions { display: flex; flex-direction: column; gap: .45rem; align-items: stretch; }
+.invite.leads { border-color: rgba(109,40,217,.3); background: linear-gradient(135deg, #fff 0%, #f6f2ff 100%); }
 .pill.active { background: var(--green-soft); color: #11663a; } .pill.completed { background: var(--amber-soft); color: var(--amber); } .pill.none { background: var(--inner); color: var(--muted); }
 .meds { display: grid; gap: .45rem; }
 .med { display: flex; flex-wrap: wrap; gap: .35rem .75rem; align-items: baseline; font-size: .88rem; padding: .5rem .7rem; border-radius: 10px; background: var(--inner); }
@@ -105,13 +111,30 @@ select:focus, input:focus { outline: none; border-color: var(--navy); box-shadow
 
 <div class="container">
   <h1><i class="fas fa-bell"></i> Reminder Center</h1>
-  <p class="sub">Every patient on Biomexa reminders: who is getting reminders now, whose course has finished or was stopped, and who never set one up. Invite them all to add a reminder in one click, or add one for a patient yourself.</p>
+  <p class="sub">Every patient on Biomexa reminders: who is getting reminders now, whose course has finished or was stopped, who never set one up, and WhatsApp campaign leads who tapped START or signed up. Invite them all to add a reminder in one click, or add one for a patient yourself.</p>
 
   <div class="stats">
     <button class="stat active" data-f="active" onclick="setFilter('active')"><div class="lbl"><i class="fas fa-bell"></i> Getting reminders</div><div class="num" id="cActive">–</div></button>
     <button class="stat completed" data-f="completed" onclick="setFilter('completed')"><div class="lbl"><i class="fas fa-flag-checkered"></i> Course completed / stopped</div><div class="num" id="cCompleted">–</div></button>
     <button class="stat none" data-f="none" onclick="setFilter('none')"><div class="lbl"><i class="fas fa-user-clock"></i> No reminder set</div><div class="num" id="cNone">–</div></button>
     <button class="stat" data-f="all" onclick="setFilter('all')"><div class="lbl"><i class="fas fa-users"></i> All patients</div><div class="num" id="cAll">–</div></button>
+    <button class="stat started" data-f="started" onclick="setFilter('started')"><div class="lbl"><i class="fas fa-play"></i> Tapped START — not signed up</div><div class="num" id="cStarted">–</div></button>
+    <button class="stat campaign" data-f="campaign" onclick="setFilter('campaign')"><div class="lbl"><i class="fas fa-user-check"></i> Signed up from campaign</div><div class="num" id="cCampaign">–</div></button>
+  </div>
+
+  <div class="card invite leads">
+    <div>
+      <h2><i class="fab fa-whatsapp"></i> Message campaign leads</h2>
+      <p><b>Tapped START:</b> what they get by signing up, with their own sign-up link. <b>Signed up:</b> everything their Biomexa portal does and how to log in (reply RESET to set a password). Goes only to people who messaged Biomexa in the last 24 hours — WhatsApp blocks free messages after that. Nobody gets it more than once a day.</p>
+      <div id="leadResult" class="result"></div>
+    </div>
+    <div class="invite-controls">
+      <select id="leadAudience" aria-label="Which campaign leads">
+        <option value="started">Tapped START — not signed up</option>
+        <option value="campaign">Signed up from campaign</option>
+      </select>
+      <button class="btn wa" id="leadBtn" onclick="sendLeadMsg()"><i class="fab fa-whatsapp"></i> Send message</button>
+    </div>
   </div>
 
   <div class="card invite">
@@ -138,6 +161,8 @@ select:focus, input:focus { outline: none; border-color: var(--navy); box-shadow
         <button class="tab" data-f="completed" onclick="setFilter('completed')">Completed / stopped</button>
         <button class="tab" data-f="none" onclick="setFilter('none')">No reminder</button>
         <button class="tab" data-f="all" onclick="setFilter('all')">All</button>
+        <button class="tab" data-f="started" onclick="setFilter('started')">Tapped START</button>
+        <button class="tab" data-f="campaign" onclick="setFilter('campaign')">Signed up from campaign</button>
       </div>
       <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;">
         <div class="search"><i class="fas fa-search"></i><input id="q" placeholder="Search name, number or medicine" oninput="render()"></div>
@@ -177,7 +202,7 @@ const authHeader = sessionStorage.getItem('adminAuthHeader') || '';
 if (!authHeader) location.href = 'admin.html';
 
 let data = { patients: [], counts: {} };
-let filter = 'active';
+let filter = ['active','completed','none','all','started','campaign'].includes(new URLSearchParams(location.search).get('f')) ? new URLSearchParams(location.search).get('f') : 'active';
 let modalPhone = null;
 
 function authFetch(path, opts = {}) {
@@ -201,6 +226,8 @@ function load() {
     document.getElementById('cCompleted').textContent = d.counts.completed;
     document.getElementById('cNone').textContent = d.counts.none;
     document.getElementById('cAll').textContent = d.total;
+    document.getElementById('cStarted').textContent = d.counts.started || 0;
+    document.getElementById('cCampaign').textContent = d.counts.campaign || 0;
     render();
   }).catch(e => { document.getElementById('list').innerHTML = `<div class="empty">Couldn't load patients — ${esc(e.message)}</div>`; });
 }
@@ -223,26 +250,78 @@ function medLine(m) {
 function render() {
   document.querySelectorAll('.stat, .tab').forEach(b => b.classList.toggle('on', b.dataset.f === filter));
   const q = document.getElementById('q').value.trim().toLowerCase();
-  const rows = data.patients.filter(p => (filter === 'all' || p.status === filter) &&
-    (!q || [p.name, p.phone, ...p.active.map(m => m.name), ...p.finished.map(m => m.name)].join(' ').toLowerCase().includes(q)));
+  const inFilter = p => filter === 'campaign' ? !!(p.campaign && !p.lead)
+    : filter === 'all' ? p.status !== 'started' : p.status === filter;
+  const rows = data.patients.filter(p => inFilter(p) &&
+    (!q || [p.name, p.phone, p.campaign?.medicine, p.campaign?.source, ...p.active.map(m => m.name), ...p.finished.map(m => m.name)].join(' ').toLowerCase().includes(q)));
   const el = document.getElementById('list');
   if (!rows.length) { el.innerHTML = '<div class="empty">No patients here.</div>'; return; }
-  const label = { active: 'Getting reminders', completed: 'Course completed / stopped', none: 'No reminder set' };
+  const label = { active: 'Getting reminders', completed: 'Course completed / stopped', none: 'No reminder set', started: 'Tapped START — not signed up' };
   el.innerHTML = rows.map(p => {
+    if (p.lead) return leadRow(p);
     const meta = [
       p.adherence != null ? `Adherence ${p.adherence}% (${p.dosesLogged} doses)` : 'No doses logged yet',
       p.lastReminder ? `Last reminder ${fmtDate(p.lastReminder.slice(0, 10))} ${fmtTime(p.lastReminder.slice(11, 16))}` : '',
       p.lastInviteAt ? `Invited ${fmtDate(p.lastInviteAt)}` : '',
+      p.campaign ? `Campaign${p.campaign.source ? ' (' + esc(p.campaign.source) + ')' : ''}: ${p.campaign.startedAt ? 'tapped START ' + fmtDate(p.campaign.startedAt) + ' · ' : ''}signed up` : '',
       p.otherPhones.length ? `Also saved as ${esc(p.otherPhones.join(', '))}` : ''
     ].filter(Boolean).join('<br>');
     const meds = [...p.active, ...p.finished];
     return `<div class="row">
       <div class="who"><strong>${esc(p.name)}</strong><div class="ph">${esc(p.phone)}</div>
-        <span class="pill ${p.status}">${label[p.status]}</span><div class="meta">${meta}</div></div>
+        <span class="pill ${p.status}">${label[p.status]}</span>${p.campaign ? '<span class="pill campaign"><i class="fab fa-whatsapp"></i> From campaign</span>' : ''}<div class="meta">${meta}</div>${p.campaign ? windowBadge(p) : ''}</div>
       <div class="meds">${meds.length ? meds.map(medLine).join('') : '<div class="none-txt">No medicines added yet.</div>'}</div>
-      <div><button class="btn sm" onclick="openModal('${encodeURIComponent(p.phone)}')"><i class="fas fa-plus"></i> Add reminder</button></div>
+      <div class="actions"><button class="btn sm" onclick="openModal('${encodeURIComponent(p.phone)}')"><i class="fas fa-plus"></i> Add reminder</button>
+        ${p.campaign ? `<button class="btn wa sm" ${p.campaign.windowClosesAt ? '' : 'disabled title="No message from them in the last 24 hours — WhatsApp would block it"'} onclick="sendLeadMsg('campaign', '${encodeURIComponent(p.phone)}', this)"><i class="fab fa-whatsapp"></i> Send portal message</button>` : ''}</div>
     </div>`;
   }).join('');
+}
+
+function windowBadge(p) {
+  const c = p.campaign.windowClosesAt;
+  if (!c) return '<div class="win closed"><i class="fas fa-lock"></i> 24h WhatsApp window closed</div>';
+  const h = Math.max(0, (new Date(c) - Date.now()) / 3600000);
+  return `<div class="win open"><i class="fas fa-circle-check"></i> Can message for ${h >= 1 ? Math.floor(h) + 'h ' : ''}${Math.round((h % 1) * 60)}m more</div>`;
+}
+
+function leadRow(p) {
+  const c = p.campaign;
+  const meta = [
+    `Tapped START ${fmtDate(c.startedAt)} ${new Date(c.startedAt).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })}`,
+    c.source ? `List: ${esc(c.source)}` : '',
+    p.lastInviteAt ? `Sign-up message sent ${fmtDate(p.lastInviteAt)}` : 'Sign-up message not sent yet'
+  ].filter(Boolean).join('<br>');
+  const fromList = [c.segment && c.segment !== 'general' ? esc(c.segment) : '', c.medicine ? esc(c.medicine) : ''].filter(Boolean).join(' · ');
+  return `<div class="row">
+    <div class="who"><strong>${esc(p.name)}</strong><div class="ph">${esc(p.phone)}</div>
+      <span class="pill started"><i class="fas fa-play"></i> Tapped START — not signed up</span><div class="meta">${meta}</div>${windowBadge(p)}</div>
+    <div class="meds"><div class="none-txt">No Biomexa account yet.${fromList ? ` From their list: <b>${fromList}</b>` : ''}</div></div>
+    <div class="actions"><button class="btn wa sm" ${c.windowClosesAt ? '' : 'disabled title="No message from them in the last 24 hours — WhatsApp would block it"'} onclick="sendLeadMsg('started', '${encodeURIComponent(p.phone)}', this)"><i class="fab fa-whatsapp"></i> Send sign-up message</button></div>
+  </div>`;
+}
+
+// Bulk (from the card) or one person (row button).
+function sendLeadMsg(audience, encPhone, rowBtn) {
+  audience = audience || document.getElementById('leadAudience').value;
+  const phone = encPhone ? decodeURIComponent(encPhone) : null;
+  const names = { started: 'leads who tapped START but haven\'t signed up', campaign: 'leads who signed up from the campaign' };
+  if (!phone) {
+    const n = data.counts[audience] || 0;
+    if (!n) { showResult('leadResult', false, 'There is nobody in that group yet.'); return; }
+    if (!confirm(`Send the ${audience === 'started' ? 'sign-up' : 'portal'} message to ${names[audience]} (${n})?\n\nOnly people who messaged Biomexa in the last 24 hours will get it. Anyone who got it in the last day is skipped.`)) return;
+  }
+  const btn = rowBtn || document.getElementById('leadBtn');
+  const old = btn.innerHTML;
+  btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending…';
+  authFetch('/api/admin/reminder-center/campaign-invite', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ audience, phone }) })
+    .then(r => r.json().then(d => ({ ok: r.ok, d })))
+    .then(({ ok, d }) => {
+      showResult('leadResult', ok, d.message);
+      if (phone) document.getElementById('leadResult').scrollIntoView({ behavior: 'smooth', block: 'center' });
+      if (ok) load();
+    })
+    .catch(e => showResult('leadResult', false, e.message))
+    .finally(() => { btn.disabled = false; btn.innerHTML = old; });
 }
 
 function sendInvite() {
