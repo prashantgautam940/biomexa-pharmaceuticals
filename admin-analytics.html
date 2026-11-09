@@ -113,6 +113,7 @@ td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; }
     <div class="tile"><div class="lbl"><i class="fas fa-play"></i> Tapped START</div><div class="num" id="tStart">–</div><div class="hint" id="tStartRate"></div></div>
     <div class="tile"><div class="lbl"><i class="fas fa-hand"></i> Tapped STOP</div><div class="num" id="tStop">–</div><div class="hint" id="tStopRate"></div></div>
     <div class="tile"><div class="lbl"><i class="fas fa-user-check"></i> Signed up (converted)</div><div class="num" id="tJoined">–</div><div class="hint" id="tConv"></div></div>
+    <div class="tile"><div class="lbl"><i class="fas fa-arrow-right-to-bracket"></i> Started → Joined</div><div class="num" id="tS2J">–</div><div class="hint" id="tS2JHint"></div></div>
     <div class="tile"><div class="lbl"><i class="far fa-clock"></i> Typical reply time</div><div class="num" id="tReply">–</div><div class="hint">median, invite → START</div></div>
     <div class="tile"><div class="lbl"><i class="fas fa-moon"></i> No reply after 48h</div><div class="num" id="tSilent">–</div><div class="hint">invited, never tapped</div></div>
   </div>
@@ -240,7 +241,11 @@ function render() {
   document.getElementById('tStop').textContent = n(t.stopped);
   document.getElementById('tStopRate').textContent = `${pct(t.stopRate)} of invited`;
   document.getElementById('tJoined').textContent = n(t.joined);
-  document.getElementById('tConv').textContent = `${pct(t.conversionRate)} conversion`;
+  document.getElementById('tConv').textContent = `${pct(t.conversionRate)} conversion` + (t.joinedViaWhatsApp ? ` · ${n(t.joinedViaWhatsApp)} on WhatsApp` : '');
+  document.getElementById('tS2J').textContent = t.started ? pct(t.startToJoin) : '–';
+  document.getElementById('tS2JHint').innerHTML = t.started
+    ? `${n(t.startedJoined)} of ${n(t.started)} who tapped START · <a href="admin-reminders.html?f=started" style="color:inherit">${n(t.startedWaiting)} still to sign up</a>`
+    : 'nobody has tapped START yet';
   document.getElementById('tReply').textContent = hours(t.medianReplyHours);
   document.getElementById('tSilent').textContent = n(t.silent48h);
 

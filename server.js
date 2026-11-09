@@ -1685,6 +1685,7 @@ const patientSchema = new mongoose.Schema({
   // Product message every AD_INTERVAL_DAYS (see processProductAds). Patients can reply STOP.
   lastAdSentAt: Date,
   lastReminderInviteAt: Date, // admin Reminder Center "invite to add a reminder" (max once a day)
+  lastPortalInviteAt: Date,   // admin Reminder Center "what you get on the portal" message to campaign sign-ups (max once a day)
   // Biomexa Care subscription (see SUBSCRIPTION section). One-time payments; each payment adds
   // its period on top of any time still left.
   subscription: {
@@ -1842,8 +1843,9 @@ const orderSchema = new mongoose.Schema({
 // "120/80" correctly, based on where the conversation currently is.
 const conversationStateSchema = new mongoose.Schema({
   patientPhone: { type: String, unique: true },
-  state: { type: String, default: null }, // 'awaiting_dose_confirm' | 'awaiting_vitals' | null
+  state: { type: String, default: null }, // 'awaiting_dose_confirm' | 'awaiting_vitals' | 'lead_signup_*' | null
   doseId: String,
+  draft: { type: mongoose.Schema.Types.Mixed, default: null }, // answers so far in the WhatsApp sign-up chat
   updatedAt: { type: Date, default: Date.now }
 });
 
@@ -5699,10 +5701,47 @@ app.get('/api/admin/reminder-center', adminAuth, async (req, res) => {
         lastReminder: lastSent, joinedAt: p.createdAt, lastInviteAt: p.lastReminderInviteAt || null
       };
     });
+    // WhatsApp campaign leads who tapped START. Those who then signed up are tagged on their
+    // patient row ("From campaign"); those who haven't signed up yet get a row of their own.
+    await syncJoinedLeads();
+    const campaignLeads = await Lead.find({ $or: [{ repliedAt: { $ne: null } }, { status: 'joined' }] })
+      .select('name phone source status segment medicine language repliedAt joinedAt lastSignupInviteAt').lean();
+    const rowByKey = new Map(rows.map(r => [last10(r.phone), r]));
+    const startedRows = [];
+    for (const l of campaignLeads) {
+      const key = last10(l.phone);
+      const row = rowByKey.get(key);
+      if (row) {
+        row.campaign = { listName: l.name || '', source: l.source || '', startedAt: l.repliedAt || null, joinedAt: l.joinedAt || null, language: l.language || 'en' };
+      } else if (l.status === 'replied') {
+        startedRows.push({
+          name: l.name || 'Unnamed contact', phone: '+91' + key, otherPhones: [], status: 'started', lead: true,
+          active: [], finished: [], adherence: null, dosesLogged: 0, lastReminder: null, joinedAt: null,
+          lastInviteAt: l.lastSignupInviteAt || null,
+          campaign: { listName: l.name || '', source: l.source || '', startedAt: l.repliedAt, segment: l.segment || 'general', medicine: l.medicine || '', language: l.language || 'en' }
+        });
+      }
+    }
+    // Free-text WhatsApp is only delivered within 24h of the person's last message to Biomexa,
+    // so show the admin whose window is still open (and for how long).
+    const campaignRows = [...rows.filter(r => r.campaign), ...startedRows];
+    if (campaignRows.length) {
+      const inbound = await WaInbound.find({ digits: { $in: campaignRows.map(r => last10(r.phone)) } }).lean().catch(() => []);
+      const lastIn = new Map(inbound.map(w => [w.digits, w.lastInboundAt]));
+      for (const r of campaignRows) {
+        const at = lastIn.get(last10(r.phone));
+        const closesAt = at ? new Date(new Date(at).getTime() + 23.5 * 3600e3) : null;
+        r.campaign.windowClosesAt = closesAt && closesAt > now ? closesAt : null;
+      }
+    }
+    startedRows.sort((a, b) => new Date(b.campaign.startedAt) - new Date(a.campaign.startedAt));
+
     rows.sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
     const counts = { active: 0, completed: 0, none: 0 };
     rows.forEach(r => counts[r.status]++);
-    res.json({ counts, total: rows.length, patients: rows });
+    counts.started = startedRows.length;
+    counts.campaign = rows.filter(r => r.campaign).length;
+    res.json({ counts, total: rows.length, patients: [...rows, ...startedRows] });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -5749,6 +5788,115 @@ app.post('/api/admin/reminder-center/invite', adminAuth, async (req, res) => {
     res.json({
       message: `Invite sent to ${results.sent} patient${results.sent === 1 ? '' : 's'}.` +
         (results.skippedRecent ? ` ${results.skippedRecent} already got one in the last day.` : '') +
+        (results.failed.length ? ` ${results.failed.length} could not be sent.` : ''),
+      ...results
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// ----- Campaign follow-ups from the Reminder Center -----
+// "started":  leads who tapped START but haven't signed up → why signing up is worth it + their sign-up link.
+// "campaign": leads who signed up → everything their Biomexa portal does + how to log in.
+// Both are free text, so they only go to people who messaged Biomexa in the last 24h (WhatsApp
+// rule — outside it Meta silently drops the message). Each person gets one at most once a day.
+function portalBenefitLines(lang, segment) {
+  const hi = lang === 'hi';
+  const vitals = segment === 'diabetes' || segment === 'bp' || segment === 'general';
+  const L = hi ? [
+    '⏰ दवा का रिमाइंडर यहीं WhatsApp पर — जवाब देकर डोज़ "ली" मार्क करें',
+    '📊 आपका अपना हेल्थ डैशबोर्ड — कितनी डोज़ लीं, आपका % रिकॉर्ड',
+    vitals && '🩸 शुगर / बीपी रीडिंग भेजें और अपने चार्ट देखें',
+    '📄 रिपोर्ट या पर्चा अपलोड करें — आसान भाषा में समझें',
+    '📋 डॉक्टर को दिखाने के लिए ट्रीटमेंट रिपोर्ट',
+    '🩺 डॉक्टर से बात करें, और दवा के सवालों के लिए AI असिस्टेंट',
+    '🛒 दवा खत्म होने से पहले रिफ़िल रिमाइंडर, घर पर डिलीवरी'
+  ] : [
+    '⏰ Medicine reminders right here on WhatsApp — reply to mark each dose taken',
+    '📊 Your own health dashboard — doses taken and your adherence %',
+    vitals && '🩸 Send your sugar / BP readings and see your charts',
+    '📄 Upload a report or prescription and get it explained in simple words',
+    '📋 A treatment report you can show your doctor',
+    '🩺 Talk to a doctor, plus an AI assistant for medicine questions',
+    '🛒 Refill reminders before you run out, with home delivery'
+  ];
+  return L.filter(Boolean).join('\n');
+}
+
+function signupNudgeMessage(lead, phone) {
+  const hi = lead.language === 'hi';
+  const link = leadSignupLink(lead, phone);
+  if (lead.segment === 'ivf') {
+    return hi
+      ? `🙏 नमस्ते! आपने START दबाया था — Biomexa IVF Care बस एक कदम दूर है।\n\nसाइन अप करने पर आपके इंजेक्शन, स्कैन और क्लिनिक विज़िट का पूरा ध्यान रखा जाएगा, WhatsApp पर रिमाइंडर के साथ।\n\n👉 यहाँ साइन अप करें:\n${link}\n\nकोई सवाल? यहीं जवाब दें। — टीम Biomexa 💙`
+      : `🙏 Hi! You tapped START — Biomexa IVF Care is one step away.\n\nOnce you sign up, we keep track of your injections, scans and clinic visits, with reminders right here on WhatsApp.\n\n👉 Sign up here:\n${link}\n\nHave a question? Just reply here. — Team Biomexa 💙`;
+  }
+  const benefits = portalBenefitLines(lead.language, lead.segment);
+  return hi
+    ? `🙏 नमस्ते! आपने START दबाया था — आपके मुफ़्त दवा रिमाइंडर बस एक कदम दूर हैं।\n\nसाइन अप (1 मिनट) करने पर आपको मिलेगा:\n${benefits}\n\n👉 यहाँ साइन अप करें:\n${link}\n\nया *START* लिखें — हम यहीं चैट में सेट कर देंगे। आपका WhatsApp नंबर पहले से भरा हुआ है। कोई सवाल? यहीं जवाब दें। — टीम Biomexa 💙`
+    : `🙏 Hi! You tapped START — your free medicine reminders are one step away.\n\nSign up (takes 1 minute) and you get:\n${benefits}\n\n👉 Sign up here:\n${link}\n\nOr just reply *START* and we'll set it up right here in the chat. Your WhatsApp number is already filled in. Have a question? Just reply here. — Team Biomexa 💙`;
+}
+
+function portalLoginMessage(name, lang, segment) {
+  const hi = lang === 'hi';
+  const first = String(name || '').trim().split(/\s+/)[0] || (hi ? 'जी' : 'there');
+  const login = `${SIGNUP_SITE_URL}/login.html`;
+  const benefits = portalBenefitLines(lang, segment);
+  return hi
+    ? `🎉 नमस्ते ${first}! आपके Biomexa रिमाइंडर चालू हैं। आपका अपना Biomexa हेल्थ पोर्टल भी तैयार है — लॉग इन करके यह सब इस्तेमाल करें:\n\n${benefits}\n\n🔐 लॉग इन करें: ${login}\nइसी WhatsApp नंबर से।\n\nपासवर्ड नहीं है? यहाँ *RESET* लिखकर भेजें, हम पासवर्ड सेट करने का लिंक भेज देंगे।\n\n— टीम Biomexa 💙`
+    : `🎉 Hi ${first}! Your Biomexa reminders are running. You also have your own Biomexa health portal — log in to use all of it:\n\n${benefits}\n\n🔐 Log in: ${login}\nUse this same WhatsApp number.\n\nNo password yet? Just reply *RESET* here and we'll send you a link to set one.\n\n— Team Biomexa 💙`;
+}
+
+// body: { audience: 'started' | 'campaign', phone?: one person only }
+app.post('/api/admin/reminder-center/campaign-invite', adminAuth, async (req, res) => {
+  try {
+    const audience = req.body?.audience === 'campaign' ? 'campaign' : 'started';
+    const only = req.body?.phone ? last10(req.body.phone) : null;
+    const now = new Date();
+    const dayAgo = new Date(now.getTime() - 20 * 3600000);
+    const results = { sent: 0, failed: [], skippedRecent: 0, skippedWindow: 0 };
+    await syncJoinedLeads();
+
+    if (audience === 'started') {
+      const leads = await Lead.find({ status: 'replied' });
+      for (const lead of leads) {
+        const key = last10(lead.phone);
+        if (only && key !== only) continue;
+        if (lead.lastSignupInviteAt && lead.lastSignupInviteAt > dayAgo) { results.skippedRecent++; continue; }
+        const phone = '+91' + key;
+        if (!(await whatsappWindowOpen(phone))) { results.skippedWindow++; continue; }
+        const r = await sendWhatsAppFree(phone, signupNudgeMessage(lead, phone));
+        if (r && r.success) { results.sent++; await Lead.updateOne({ _id: lead._id }, { lastSignupInviteAt: now }); }
+        else results.failed.push({ name: lead.name, phone });
+        await new Promise(r2 => setTimeout(r2, 250));
+      }
+    } else {
+      const leads = await Lead.find({ status: 'joined' }).select('phone language segment').lean();
+      const patients = await Patient.find({}).select('name phone lastPortalInviteAt');
+      const seen = new Set();
+      for (const lead of leads) {
+        const key = last10(lead.phone);
+        if (seen.has(key) || (only && key !== only)) continue;
+        seen.add(key);
+        const twins = patients.filter(p => last10(p.phone) === key);
+        if (!twins.length) continue;
+        if (twins.some(p => p.lastPortalInviteAt && p.lastPortalInviteAt > dayAgo)) { results.skippedRecent++; continue; }
+        const target = twins.find(p => !/\s/.test(p.phone)) || twins[0];
+        if (!(await whatsappWindowOpen(target.phone))) { results.skippedWindow++; continue; }
+        const r = await sendWhatsAppFree(target.phone, portalLoginMessage(target.name, lead.language, lead.segment));
+        if (r && r.success) { results.sent++; await Patient.updateMany({ _id: { $in: twins.map(p => p._id) } }, { lastPortalInviteAt: now }); }
+        else results.failed.push({ name: target.name, phone: target.phone });
+        await new Promise(r2 => setTimeout(r2, 250));
+      }
+    }
+
+    const who = audience === 'started' ? 'sign-up message' : 'portal message';
+    console.log(`📨 Campaign ${who} by ${req.admin?.username || 'admin'}${only ? ' (one person)' : ''}: ${results.sent} sent, ${results.failed.length} failed, ${results.skippedRecent} already sent today, ${results.skippedWindow} outside 24h window`);
+    res.json({
+      message: `${who[0].toUpperCase() + who.slice(1)} sent to ${results.sent} ${results.sent === 1 ? 'person' : 'people'}.` +
+        (results.skippedWindow ? ` ${results.skippedWindow} not sent — they haven't messaged Biomexa in the last 24 hours, so WhatsApp would block it.` : '') +
+        (results.skippedRecent ? ` ${results.skippedRecent} already got it in the last day.` : '') +
         (results.failed.length ? ` ${results.failed.length} could not be sent.` : ''),
       ...results
     });
@@ -5806,7 +5954,9 @@ const Lead = mongoose.model('Lead', new mongoose.Schema({
   age: String,
   gender: String,
   language: { type: String, default: 'en' },                // 'hi' when the list shows Hindi
-  templateUsed: String
+  templateUsed: String,
+  signupVia: String,                                        // 'whatsapp' when they signed up in the chat, else the web form
+  lastSignupInviteAt: Date                                  // admin Reminder Center "finish signing up" nudge (max once a day)
 }, { timestamps: true }));
 
 // ---------- Lead profiling: what condition / medicine / city / language a contact has ----------
@@ -5967,23 +6117,177 @@ async function syncJoinedLeads() {
 }
 
 // Inbound WhatsApp from a lead (not a registered patient). Returns true if handled.
+// START → sign-up right here in the chat (medicine → time → name → account + reminder created),
+// with the web sign-up link as a fallback. IVF leads still go to the IVF Care sign-up page.
 async function handleLeadReply(phone, buttonText, freeText) {
   const lead = await Lead.findOne({ phone: '91' + last10(phone) });
   if (!lead) return false;
   const said = (buttonText || freeText || '').trim().toLowerCase();
   const isStop = /^stop\b/.test(said) || AD_STOP_RE.test(said);
-  const isStart = /start/.test(said) || AD_START_RE.test(said) || /^(yes|haan|ha)\b/.test(said);
+  const convo = await ConversationState.findOne({ patientPhone: { $in: phoneVariants(phone) } }).sort({ updatedAt: -1 });
+  const inSignup = convo && typeof convo.state === 'string' && convo.state.startsWith('lead_signup_');
   if (isStop) {
+    if (inSignup) await ConversationState.updateOne({ _id: convo._id }, { state: null, draft: null, updatedAt: new Date() });
     await Lead.updateOne({ _id: lead._id }, { status: 'optout', optedOutAt: new Date() });
     await sendWhatsAppFree(phone, '✅ Done — Biomexa won\'t message you again. If you ever want free medicine reminders, just reply START.');
     return true;
   }
+  // Mid sign-up: every reply is an answer (checked before START so "yes" means "yes, that medicine").
+  if (inSignup && !buttonText) return handleLeadSignupStep(lead, convo, phone, (freeText || '').trim());
+
+  const isStart = /start/.test(said) || AD_START_RE.test(said) || /^(yes|haan|ha)\b/.test(said);
   if (isStart) {
     if (lead.status !== 'joined') await Lead.updateOne({ _id: lead._id }, { status: 'replied', repliedAt: new Date(), optedOutAt: null });
-    await sendWhatsAppFree(phone, leadWelcomeMessage(lead, phone));
+    if (lead.segment === 'ivf') { await sendWhatsAppFree(phone, leadWelcomeMessage(lead, phone)); return true; }
+    await ConversationState.findOneAndUpdate(
+      { patientPhone: (convo && convo.patientPhone) || phone },
+      { state: 'lead_signup_med', draft: {}, doseId: null, updatedAt: new Date() },
+      { upsert: true }
+    );
+    await sendWhatsAppFree(phone, leadChatStartMessage(lead, phone));
     return true;
   }
   return false;
+}
+
+const leadHi = lead => lead.language === 'hi';
+function leadChatStartMessage(lead, phone) {
+  const hi = leadHi(lead);
+  const L = hi ? 'hi' : 'en';
+  const what = {
+    en: { diabetes: 'your diabetes medicine', bp: 'your BP medicine', thyroid: 'your thyroid medicine', heart: 'your heart / cholesterol medicine' },
+    hi: { diabetes: 'शुगर की दवा', bp: 'बीपी की दवा', thyroid: 'थायराइड की दवा', heart: 'दिल / कोलेस्ट्रॉल की दवा' }
+  }[L][lead.segment] || (hi ? 'आपकी दवा' : 'your medicine');
+  const ask = lead.medicine
+    ? (hi ? `1️⃣ क्या आप *${lead.medicine}* लेते हैं? *YES* लिखें, या अपनी दवा का नाम लिखें।` : `1️⃣ Is it *${lead.medicine}*? Reply *YES*, or type your medicine's name.`)
+    : (hi ? `1️⃣ किस दवा का रिमाइंडर चाहिए? दवा का नाम लिखें (जैसे Diabmexa M 500)।` : `1️⃣ Which medicine should we remind you about? Type its name (e.g. Diabmexa M 500).`);
+  return hi
+    ? `🙏 धन्यवाद! चलिए ${what} के मुफ़्त रिमाइंडर यहीं WhatsApp पर सेट करते हैं — बस 3 छोटे सवाल।\n\n${ask}\n\n(फ़ॉर्म से करना है? यहाँ टैप करें: ${leadSignupLink(lead, phone)} )`
+    : `🙏 Thank you! Let's set up free reminders for ${what} right here on WhatsApp — just 3 quick questions.\n\n${ask}\n\n(Prefer a form? Tap here instead: ${leadSignupLink(lead, phone)} )`;
+}
+
+// "9", "9 am", "9:30 pm", "21:00", "8.30 PM", "subah 8", "raat 9" — up to 4, separated by , / and / &.
+// Returns { times: ['HH:MM', ...] } or { ambiguous: '9' } (no AM/PM given for 1–12) or null.
+function parseReminderTimes(text) {
+  const t = String(text || '').toLowerCase()
+    .replace(/a\.\s?m\.?/g, 'am').replace(/p\.\s?m\.?/g, 'pm')
+    .replace(/सुबह|subah|subha|morning/g, ' am ').replace(/शाम|रात|दोपहर|shaam|sham|raat|rat\b|night|evening|dopahar|afternoon/g, ' pm ')
+    .replace(/बजे|baje|o'?clock/g, ' ');
+  const parts = t.split(/,|\/|&|\band\b|\baur\b|और/).map(x => x.trim()).filter(Boolean);
+  const times = [];
+  for (const part of parts) {
+    const m = part.match(/(?:(am|pm)\s*)?(\d{1,2})(?:\s*[:.]\s*(\d{2}))?\s*(am|pm)?/);
+    if (!m) continue;
+    let h = parseInt(m[2], 10); const min = m[3] ? parseInt(m[3], 10) : 0;
+    const mer = m[4] || m[1];
+    if (h > 23 || min > 59) return null;
+    if (mer) { if (h < 1 || h > 12) return null; if (mer === 'pm' && h !== 12) h += 12; if (mer === 'am' && h === 12) h = 0; }
+    else if (h >= 1 && h <= 12) return { ambiguous: m[2] + (m[3] ? ':' + m[3] : '') };
+    const hhmm = `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
+    if (!times.includes(hhmm)) times.push(hhmm);
+  }
+  return times.length ? { times: times.slice(0, 4).sort() } : null;
+}
+const fmt12 = hhmm => { const [h, m] = hhmm.split(':').map(Number); return `${(h % 12) || 12}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`; };
+
+async function handleLeadSignupStep(lead, convo, phone, text) {
+  const hi = leadHi(lead);
+  const draft = Object.assign({}, convo.draft || {});
+  const save = (state) => ConversationState.updateOne({ _id: convo._id }, { state, draft, updatedAt: new Date() });
+
+  if (/^(cancel|exit|quit|band karo|रद्द)\b/i.test(text)) {
+    await ConversationState.updateOne({ _id: convo._id }, { state: null, draft: null, updatedAt: new Date() });
+    await sendWhatsAppFree(phone, hi ? `ठीक है, रोक दिया। जब चाहें *START* लिखें, या यहाँ साइन अप करें: ${leadSignupLink(lead, phone)}` : `Okay, stopped. Reply *START* any time, or sign up here: ${leadSignupLink(lead, phone)}`);
+    return true;
+  }
+
+  if (convo.state === 'lead_signup_med') {
+    let med = /^(yes|y|haan|ha|han|ji|हाँ|हां)\b/i.test(text) && lead.medicine ? lead.medicine : text;
+    med = med.replace(/\s+/g, ' ').trim().slice(0, 60);
+    if (med.length < 2 || /^(yes|y|no|haan|ha)$/i.test(med)) {
+      await sendWhatsAppFree(phone, hi ? 'कृपया अपनी दवा का नाम लिखें (जैसे Diabmexa M 500)।' : 'Please type your medicine\'s name (e.g. Diabmexa M 500).');
+      return true;
+    }
+    draft.medicine = med;
+    await save('lead_signup_time');
+    await sendWhatsAppFree(phone, hi
+      ? `👍 *${med}*\n\n2️⃣ आप यह दवा किस समय लेते हैं? जैसे *9 AM* या *8:30 PM*।\nदिन में दो बार? दोनों लिखें: *9 AM, 9 PM*`
+      : `👍 *${med}*\n\n2️⃣ What time do you take it? e.g. *9 AM* or *8:30 PM*.\nTwice a day? Send both: *9 AM, 9 PM*`);
+    return true;
+  }
+
+  if (convo.state === 'lead_signup_time') {
+    const r = parseReminderTimes(text);
+    if (!r || r.ambiguous) {
+      const n = r && r.ambiguous;
+      await sendWhatsAppFree(phone, n
+        ? (hi ? `${n} बजे सुबह या रात? *${n} AM* या *${n} PM* लिखें।` : `Is that ${n} in the morning or at night? Reply *${n} AM* or *${n} PM*.`)
+        : (hi ? 'समय समझ नहीं आया। ऐसे लिखें: *9 AM* या *8:30 PM*' : 'Sorry, I didn\'t get the time. Please send it like *9 AM* or *8:30 PM*.'));
+      return true;
+    }
+    draft.times = r.times;
+    await save('lead_signup_name');
+    await sendWhatsAppFree(phone, hi
+      ? `⏰ ${r.times.map(fmt12).join(', ')} — ठीक है।\n\n3️⃣ आख़िरी सवाल: आपका नाम क्या है?`
+      : `⏰ ${r.times.map(fmt12).join(', ')} — got it.\n\n3️⃣ Last one: what's your name?`);
+    return true;
+  }
+
+  if (convo.state === 'lead_signup_name') {
+    const name = text.replace(/[^\p{L}\p{M} .'-]/gu, '').replace(/\s+/g, ' ').trim().slice(0, 60);
+    if (name.length < 2) {
+      await sendWhatsAppFree(phone, hi ? 'कृपया अपना नाम लिखें।' : 'Please type your name.');
+      return true;
+    }
+    let result;
+    try {
+      result = await createWhatsAppSignup({ name, phone, medicineName: draft.medicine, times: draft.times || [] });
+    } catch (err) {
+      console.log('⚠️ WhatsApp sign-up failed for', phone, err.message);
+      await sendWhatsAppFree(phone, hi ? `माफ़ कीजिए, कुछ गड़बड़ हो गई। कृपया यहाँ साइन अप करें: ${leadSignupLink(lead, phone)}` : `Sorry, something went wrong on our side. Please sign up here instead: ${leadSignupLink(lead, phone)}`);
+      return true;
+    }
+    await ConversationState.updateOne({ _id: convo._id }, { state: null, draft: null, updatedAt: new Date() });
+    await Lead.updateOne({ _id: lead._id }, { status: 'joined', joinedAt: new Date(), signupVia: 'whatsapp' });
+    const first = name.split(' ')[0];
+    const when = draft.times.map(fmt12).join(hi ? ' और ' : ' and ');
+    const firstNote = result.deferred.length === draft.times.length
+      ? (hi ? 'पहला रिमाइंडर कल से आएगा।' : 'Your first reminder comes tomorrow.')
+      : (hi ? 'पहला रिमाइंडर आज ही आएगा।' : 'Your first reminder is today.');
+    console.log(`🗓️ Reminder set (WhatsApp sign-up): ${result.phone} — ${draft.medicine} at ${draft.times.join(', ')}${result.isNewAccount ? ', new account' : ''}`);
+    await sendWhatsAppFree(phone, hi
+      ? `🎉 हो गया, ${first}! *${draft.medicine}* का रिमाइंडर रोज़ ${when} पर यहीं WhatsApp पर आएगा। ${firstNote}\n\nरिमाइंडर आने पर जवाब देकर डोज़ "ली" मार्क करें।\n\nआपका Biomexa हेल्थ पोर्टल भी तैयार है — रिपोर्ट, चार्ट, डॉक्टर से बात और ज़्यादा दवाएँ जोड़ने के लिए: ${SIGNUP_SITE_URL}/login.html\nपासवर्ड सेट करने के लिए यहाँ *RESET* लिखें।\n\n— टीम Biomexa 💙`
+      : `🎉 All set, ${first}! You'll get a reminder for *${draft.medicine}* every day at ${when}, right here on WhatsApp. ${firstNote}\n\nWhen it arrives, just reply to mark the dose taken.\n\nYour Biomexa health portal is ready too — reports, charts, talking to a doctor and adding more medicines: ${SIGNUP_SITE_URL}/login.html\nReply *RESET* here to set your password.\n\n— Team Biomexa 💙`);
+    return true;
+  }
+  return false;
+}
+
+// Creates the account (or adds to an existing one) and the reminder(s) — same rules as
+// /api/quick-reminder: a time that has already passed today starts tomorrow.
+async function createWhatsAppSignup({ name, phone: rawPhone, medicineName, times }) {
+  let phone = normalizePhone(rawPhone);
+  let patient = await findAccountByPhone('patient', phone);
+  let isNewAccount = false;
+  if (!patient) {
+    isNewAccount = true;
+    const hashed = await bcrypt.hash(crypto.randomBytes(12).toString('hex'), 10);
+    patient = await Patient.create({ name, phone, password: hashed, medicines: [] });
+  }
+  phone = patient.phone;
+  const startDate = new Date();
+  for (const time of times) {
+    patient.medicines.push({ name: medicineName, dosage: '', time, frequency: 'daily', foodNote: '', active: true, durationDays: null, startDate, endDate: null });
+  }
+  await patient.save();
+  const now = new Date();
+  const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  const deferred = [];
+  for (const time of times) {
+    if (startsTomorrow(time, currentTime)) { deferred.push(time); continue; }
+    await Dose.create({ patientPhone: phone, medicineName, dosage: '', scheduledTime: time, scheduledDate: localDateStr(new Date()), foodNote: '', status: 'pending' });
+  }
+  return { phone, isNewAccount, deferred };
 }
 
 // Sign-up link that opens the right form: their own Biomexa product pre-selected, or their
@@ -6478,18 +6782,21 @@ app.get('/api/admin/leads/analytics', adminAuth, async (req, res) => {
     const days = [7, 30, 90, 365].includes(parseInt(req.query.days, 10)) ? parseInt(req.query.days, 10) : 30;
     const now = new Date();
     const since = new Date(now.getTime() - days * 86400000);
-    const leads = await Lead.find().select('name phone source status segment medicine city createdAt sentAt repliedAt joinedAt optedOutAt lastError').lean();
+    const leads = await Lead.find().select('name phone source status segment medicine city createdAt sentAt repliedAt joinedAt optedOutAt lastError signupVia').lean();
     const inRange = d => d && d >= since;
     // A lead is "in range" when it was invited in the period (or uploaded, if never invited).
     const scoped = leads.filter(l => inRange(l.sentAt) || (!l.sentAt && inRange(l.createdAt)));
 
     const metrics = list => {
-      const m = { uploaded: list.length, invited: 0, started: 0, stopped: 0, joined: 0, failed: 0, noReply: 0 };
+      const m = { uploaded: list.length, invited: 0, started: 0, stopped: 0, joined: 0, failed: 0, noReply: 0, startedJoined: 0, startedWaiting: 0, joinedViaWhatsApp: 0 };
       for (const l of list) {
         if (l.sentAt) m.invited++;
         if (l.repliedAt) m.started++;
         if (l.status === 'optout' || l.optedOutAt) m.stopped++;
         if (l.status === 'joined') m.joined++;
+        if (l.repliedAt && l.status === 'joined') m.startedJoined++;
+        if (l.repliedAt && l.status === 'replied') m.startedWaiting++;
+        if (l.status === 'joined' && l.signupVia === 'whatsapp') m.joinedViaWhatsApp++;
         if (l.status === 'failed') m.failed++;
         if (l.status === 'sent') m.noReply++;
       }
@@ -6498,7 +6805,7 @@ app.get('/api/admin/leads/analytics', adminAuth, async (req, res) => {
       m.startRate = pct(m.started, m.invited);
       m.stopRate = pct(m.stopped, m.invited);
       m.conversionRate = pct(m.joined, m.invited);              // invited → signed up
-      m.startToJoin = pct(m.joined, m.started);
+      m.startToJoin = pct(m.startedJoined, m.started);           // of those who tapped START, how many signed up
       return m;
     };
     const totals = metrics(scoped);
