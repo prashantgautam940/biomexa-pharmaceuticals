@@ -36,7 +36,7 @@
   const SUPPORT_EMAIL = 'biomexapharmaceuticals@gmail.com';
 
   const css = `
-  .bxs-fab{position:fixed;left:16px;bottom:16px;z-index:9990;display:inline-flex;align-items:center;gap:8px;padding:11px 16px;border-radius:999px;border:1px solid #d6e0f3;background:#fff;color:#16336b;font:600 14px/1 Inter,system-ui,sans-serif;cursor:pointer;box-shadow:0 10px 28px rgba(19,33,61,.16)}
+  .bxs-fab{position:fixed;left:16px;bottom:16px;width:auto;max-width:calc(100vw - 32px);margin:0;z-index:9990;display:inline-flex;align-items:center;gap:8px;padding:11px 16px;border-radius:999px;border:1px solid #d6e0f3;background:#fff;color:#16336b;font:600 14px/1 Inter,system-ui,sans-serif;cursor:pointer;box-shadow:0 10px 28px rgba(19,33,61,.16)}
   .bxs-fab:hover{border-color:#16336b}
   .bxs-fab:focus-visible,.bxs-modal button:focus-visible,.bxs-modal input:focus-visible,.bxs-modal select:focus-visible,.bxs-modal textarea:focus-visible{outline:3px solid #0aa6c9;outline-offset:2px}
   .bxs-bg{position:fixed;inset:0;z-index:9991;background:rgba(19,33,61,.5);display:none;align-items:center;justify-content:center;padding:16px}

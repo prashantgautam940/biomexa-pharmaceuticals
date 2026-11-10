@@ -1,0 +1,45 @@
+/* Biomexa — shared phone fixes. Loaded LAST on every page so it wins over page styles.
+   Only applies to phones / small tablets (≤ 760 px). */
+
+/* Elements hidden with the `hidden` attribute must stay hidden even when a class sets display. */
+[hidden] { display: none !important; }
+
+@media (max-width: 760px) {
+  /* 16 px form text: anything smaller makes iPhone Safari zoom in on every tap. */
+  input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]),
+  select, textarea { font-size: 16px !important; }
+
+  /* Comfortable tap targets (Apple/Google guidance ≈ 44 px; 40 px keeps dense admin rows usable). */
+  button:not(.gallery-dot):not(.bxs-fab):not([role=switch]),
+  .btn, a.btn, .tab, .logout-btn, input[type=submit] { min-height: 40px; }
+  .btn.sm, button.sm { min-height: 38px; }
+  .gallery-dot { position: relative; }
+  .gallery-dot::after { content: ''; position: absolute; inset: -14px -6px; }
+
+  /* Header links wrap onto a second line instead of hiding off-screen (Logout was hidden). */
+  body > header > nav, .site-header > nav, .site-nav, body > header > .nav-links, .navbar:not(#navbar) > .nav-links {
+    flex-wrap: wrap !important; overflow-x: visible !important; gap: 4px 16px !important; row-gap: 4px !important;
+  }
+  .nav-links .logout-btn, .navbar .logout-btn { padding: 6px 14px !important; }
+
+  /* Dashboard / admin number cards: two per row instead of one tall card each. */
+  .stats, .stats-row { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: .6rem !important; }
+  .stats .stat, .stats-row .stat-card { padding: .8rem .9rem !important; min-height: 0; }
+  .stats .stat .num { font-size: 1.6rem !important; }
+  .stats .stat .lbl { font-size: .75rem !important; }
+
+  /* Wide tables scroll inside their card instead of squashing columns. */
+  .table-wrap, .table-container, .tbl-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .table-wrap table, .table-container table, .tbl-wrap table { min-width: 560px; }
+
+  /* Long words, numbers and links never push the page sideways. */
+  h1, h2, h3, p, li, td, .card { overflow-wrap: break-word; }
+  img, video, canvas, svg { max-width: 100%; }
+
+  /* Button rows wrap and share the width. */
+  .done-actions .btn, .hero-actions .btn { flex: 1 1 auto; justify-content: center; }
+}
+
+@media (max-width: 400px) {
+  .stats .stat .num { font-size: 1.4rem !important; }
+}

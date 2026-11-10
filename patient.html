@@ -276,6 +276,7 @@ html { scroll-padding-top: 80px; }
 <link rel="stylesheet" href="css/biomexa-ui.css">
 <link rel="stylesheet" href="css/vitals-charts.css">
 <script src="js/biomexa-ui.js" defer></script>
+<link rel="stylesheet" href="css/mobile.css">
 </head>
 <body>
   <nav class="navbar">
@@ -639,7 +640,7 @@ html { scroll-padding-top: 80px; }
         })
         .then(profile => {
           localStorage.setItem('user', JSON.stringify({ name: profile.name, phone: profile.phone }));
-          document.getElementById('welcomeName').textContent = `Welcome, ${profile.name}!`;
+          document.getElementById('welcomeName').textContent = profile.name ? `Welcome, ${String(profile.name).split(' ')[0]}!` : 'Welcome!';
 
           document.getElementById('profName').value = profile.name || '';
           document.getElementById('profPhone').value = profile.phone || '';
@@ -674,7 +675,7 @@ html { scroll-padding-top: 80px; }
 
         msg.style.color = '#11663a';
         msg.textContent = 'Saved!';
-        document.getElementById('welcomeName').textContent = `Welcome, ${data.patient.name}!`;
+        document.getElementById('welcomeName').textContent = data.patient && data.patient.name ? `Welcome, ${String(data.patient.name).split(' ')[0]}!` : 'Welcome!';
         const cachedUser = JSON.parse(localStorage.getItem('user') || '{}');
         localStorage.setItem('user', JSON.stringify({ ...cachedUser, name: data.patient.name }));
       } catch (err) {
