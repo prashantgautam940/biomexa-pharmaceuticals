@@ -6798,27 +6798,59 @@ async function campaignContext() {
 
 const clampGap = v => Math.min(30, Math.max(1, parseInt(v, 10) || 7));
 
+// List with server-side filtering — there can be tens of thousands of contacts, so the page asks
+// for one slice: ?status=all|new|sent|failed|replied|joined|optout|stopped  &q=name/number/source
+// &d=arrived|read|failed|pending|none (WhatsApp delivery of the invite)  &limit=300 &skip=0
+const LEAD_DELIVERY_MATCH = {
+  arrived: { delivery: { $in: ['delivered', 'read'] } }, read: { delivery: 'read' }, failed: { delivery: 'failed' },
+  pending: { delivery: 'sent' }, none: { delivery: { $in: [null, ''] } }
+};
 app.get('/api/admin/leads', adminAuth, async (req, res) => {
   try {
     await syncJoinedLeads();
-    const [grouped, leads, ctx] = await Promise.all([
+    const status = String(req.query.status || 'all');
+    const q = String(req.query.q || '').trim().slice(0, 60);
+    const d = String(req.query.d || '');
+    const limit = Math.min(20000, Math.max(1, parseInt(req.query.limit, 10) || 300));
+    const skip = Math.max(0, parseInt(req.query.skip, 10) || 0);
+    const filter = {};
+    if (status !== 'all' && LABEL_STATUSES.includes(status)) filter.status = status;
+    if (LEAD_DELIVERY_MATCH[d]) Object.assign(filter, { sentAt: { $ne: null } }, LEAD_DELIVERY_MATCH[d]);
+    if (q) {
+      const rx = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+      const digits = q.replace(/\D/g, '');
+      filter.$or = [{ name: rx }, { source: rx }, { city: rx }, { medicine: rx }, ...(digits.length >= 3 ? [{ phone: { $regex: digits } }] : [])];
+    }
+    // Waiting → queue order (next to be sent first). Everything else → latest activity first.
+    const sort = status === 'new' ? { createdAt: 1, _id: 1 }
+      : status === 'replied' ? { repliedAt: -1 } : status === 'joined' ? { joinedAt: -1 }
+      : status === 'optout' ? { optedOutAt: -1 } : status === 'all' ? { updatedAt: -1 } : { sentAt: -1, updatedAt: -1 };
+    const [grouped, leads, total, dgroup, ctx] = await Promise.all([
       Lead.aggregate([{ $group: { _id: '$status', n: { $sum: 1 } } }]),
-      Lead.find().sort({ createdAt: -1 }).limit(2000).lean(),
+      Lead.find(filter).sort(sort).skip(skip).limit(limit).lean(),
+      Lead.countDocuments(filter),
+      Lead.aggregate([{ $match: { sentAt: { $ne: null } } }, { $group: { _id: { $ifNull: ['$delivery', ''] }, n: { $sum: 1 } } }]),
       campaignContext()
     ]);
     const counts = { new: 0, sent: 0, failed: 0, replied: 0, joined: 0, optout: 0, stopped: 0 };
-    grouped.forEach(g => { counts[g._id] = g.n; });
-    // Queue position of each waiting contact (the queue sends oldest upload first).
-    const queuePos = new Map((await Lead.find({ status: 'new' }).sort({ createdAt: 1, _id: 1 }).select('_id').lean()).map((l, i) => [String(l._id), i + 1]));
+    grouped.forEach(g => { if (g._id in counts) counts[g._id] = g.n; });
+    const delivery = { read: 0, delivered: 0, sent: 0, failed: 0, '': 0 };
+    dgroup.forEach(g => { delivery[g._id in delivery ? g._id : ''] += g.n; });
+    // Queue position of waiting contacts on this page.
+    let queuePos = new Map();
+    if (leads.some(l => l.status === 'new')) {
+      queuePos = new Map((await Lead.find({ status: 'new' }).sort({ createdAt: 1, _id: 1 }).select('_id').lean()).map((l, i) => [String(l._id), i + 1]));
+    }
     res.json({
-      counts, ...ctx, job: leadJob, queue: await queueStatus(),
+      counts, delivery, total, skip, limit, ...ctx, job: leadJob, queue: await queueStatus(),
       deliveryReportsOn: !!(await WaReport.exists({})),
-      leads: leads.map(l => ({ id: l._id, name: l.name, phone: l.phone, source: l.source, status: l.status, segment: l.segment || 'general', medicine: l.medicine || '', city: l.city || '', language: l.language || 'en', sentAt: l.sentAt, repliedAt: l.repliedAt, createdAt: l.createdAt, lastError: l.lastError || '', delivery: l.delivery || '', deliveryAt: l.deliveryAt, deliveryError: l.deliveryError || '', queuePos: queuePos.get(String(l._id)) || null }))
+      leads: leads.map(l => ({ id: l._id, name: l.name, phone: l.phone, source: l.source, status: l.status, segment: l.segment || 'general', medicine: l.medicine || '', city: l.city || '', language: l.language || 'en', sentAt: l.sentAt, repliedAt: l.repliedAt, joinedAt: l.joinedAt, createdAt: l.createdAt, lastError: l.lastError || '', delivery: l.delivery || '', deliveryAt: l.deliveryAt, deliveryError: l.deliveryError || '', queuePos: queuePos.get(String(l._id)) || null }))
     });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
+const LABEL_STATUSES = ['new', 'sending', 'sent', 'failed', 'replied', 'joined', 'optout', 'stopped'];
 
 // ========== Automatic invite queue ==========
 // Every upload adds its new contacts to one first-in-first-out queue. While auto-send is ON

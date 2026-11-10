@@ -79,6 +79,7 @@ td .err { color: var(--danger); font-size: .74rem; margin-top: 3px; max-width: 3
 .p-stopped { background: #f1f1f4; color: #55596a; border: 1px dashed #b9bdc9; }
 .n-stopped .num { color: #55596a; }
 td.ck, th.ck { width: 28px; } td.ck input, th.ck input { width: 16px; height: 16px; cursor: pointer; }
+.more { text-align: center; color: var(--muted); font-size: .82rem; padding: .8rem 0 .2rem; display: flex; gap: .6rem; justify-content: center; align-items: center; flex-wrap: wrap; }
 .qpos { font-size: .72rem; color: var(--muted); margin-top: 3px; }
 .dbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; background: var(--inner, #f4f7fb); border-radius: 12px; padding: 10px 12px; margin-bottom: 12px; font-size: .84rem; }
 .dbar b { color: var(--navy); }
@@ -287,7 +288,7 @@ Reply STOP to stop these messages.</div>
         <button class="tab lt" data-f="all" onclick="setFilter('all')">All</button>
       </div>
       <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;">
-        <div class="search"><i class="fas fa-search"></i><input type="text" id="q" placeholder="Search name, number, source" oninput="render()"></div>
+        <div class="search"><i class="fas fa-search"></i><input type="text" id="q" placeholder="Search name, number, source" oninput="searchChanged()"></div>
         <button class="btn ghost sm" onclick="exportCsv()"><i class="fas fa-download"></i> Export</button>
         <button class="btn ghost sm" onclick="load()"><i class="fas fa-rotate"></i> Refresh</button>
       </div>
@@ -720,7 +721,8 @@ function renderJob(job) {
 // ---------- invited contacts ----------
 function load(quiet) {
   if (!quiet) document.getElementById('list').innerHTML = '<div class="loading"><i class="fas fa-spinner fa-spin"></i> Loading…</div>';
-  return authFetch('/api/admin/leads').then(r => r.json()).then(d => {
+  const params = new URLSearchParams({ status: filter, q: document.getElementById('q').value.trim(), d: dfilter, limit: String(pageLimit) });
+  return authFetch('/api/admin/leads?' + params).then(r => r.json()).then(d => {
     if (!d.leads) throw new Error(d.message || 'Could not load');
     data = d;
     Object.keys(LABEL).forEach(k => { const el = document.getElementById('c-' + k); if (el) el.textContent = d.counts[k] || 0; });
@@ -737,21 +739,25 @@ function load(quiet) {
   }).catch(e => { if (!quiet) document.getElementById('list').innerHTML = `<div class="empty">Couldn't load — ${esc(e.message)}</div>`; });
 }
 
-function setFilter(f) { filter = f; render(); }
+let pageLimit = 300, qTimer = null;
+function setFilter(f) { filter = f; pageLimit = 300; load(); }
+function searchChanged() { clearTimeout(qTimer); qTimer = setTimeout(() => { pageLimit = 300; load(true); }, 350); }
+function showMore() { pageLimit += 300; load(true); }
 
 // WhatsApp delivery of each invite (from MSG91 delivery reports). '' = no report received.
 const DLABEL = { read: 'Read', delivered: 'Delivered', sent: 'Not delivered yet', failed: 'Not delivered', '': 'No report' };
 let dfilter = '';
 const deliveryOf = l => l.delivery || '';
-function setDFilter(f) { dfilter = dfilter === f ? '' : f; render(); }
+function setDFilter(f) { dfilter = dfilter === f ? '' : f; pageLimit = 300; load(); }
 function renderDeliveryBar() {
   const bar = document.getElementById('deliveryBar');
-  const invited = data.leads.filter(l => l.sentAt);
-  if (!invited.length) { bar.hidden = true; return; }
-  const n = k => invited.filter(l => deliveryOf(l) === k).length;
+  const dc = data.delivery || {};
+  const n = k => dc[k] || 0;
+  const invitedN = ['read', 'delivered', 'sent', 'failed', ''].reduce((a, k) => a + n(k), 0);
+  if (!invitedN) { bar.hidden = true; return; }
   const got = n('delivered') + n('read');
   bar.hidden = false;
-  bar.innerHTML = `<span>WhatsApp delivery of <b>${invited.length}</b> invites:</span>` +
+  bar.innerHTML = `<span>WhatsApp delivery of <b>${invitedN.toLocaleString('en-IN')}</b> invites:</span>` +
     [['arrived', `✓ Arrived ${got}`], ['read', `Read ${n('read')}`], ['failed', `✗ Not delivered ${n('failed')}`], ['pending', `Waiting ${n('sent')}`], ['none', `No report ${n('')}`]]
       .map(([k, t]) => `<button class="${dfilter === k ? 'on' : ''}" onclick="setDFilter('${k}')">${t}</button>`).join('') +
     (data.deliveryReportsOn ? `<span class="hint">"No report" = invited before delivery tracking was switched on, or MSG91 hasn't reported yet.</span>`
@@ -762,10 +768,9 @@ const DMATCH = { arrived: d => d === 'delivered' || d === 'read', read: d => d =
 function render() {
   document.querySelectorAll('.stat, .tab.lt').forEach(b => b.classList.toggle('on', b.dataset.f === filter));
   renderDeliveryBar();
-  const q = document.getElementById('q').value.trim().toLowerCase();
-  const rows = data.leads.filter(l => (filter === 'all' || l.status === filter) && (!dfilter || (l.sentAt && DMATCH[dfilter](deliveryOf(l)))) && (!q || [l.name, l.phone, l.source].join(' ').toLowerCase().includes(q)));
+  const rows = data.leads; // already filtered by the server
   const el = document.getElementById('list');
-  if (!rows.length) { el.innerHTML = `<div class="empty">${data.leads.length ? 'Nobody here.' : 'No new contacts invited yet.'}</div>`; return; }
+  if (!rows.length) { el.innerHTML = `<div class="empty">${document.getElementById('q').value.trim() || filter !== 'all' || dfilter ? 'Nobody matches this filter.' : 'No contacts yet.'}</div>`; updateBulkBar(); return; }
   shown = rows.map(l => l.id);
   const allOn = rows.length && rows.every(l => selected.has(l.id));
   el.innerHTML = `<table><thead><tr><th class="ck"><input type="checkbox" title="Select all shown" ${allOn ? 'checked' : ''} onchange="selAll(this.checked)"></th><th>Name</th><th>Number</th><th>Source</th><th>Status</th><th>Invited</th><th>WhatsApp delivery</th><th>Replied</th><th></th></tr></thead><tbody>` +
@@ -777,7 +782,9 @@ function render() {
       <td>${l.sentAt ? `<span class="pill p-d-${deliveryOf(l) || 'none'}">${DLABEL[deliveryOf(l)]}</span>${l.deliveryError ? `<div class="err">${esc(l.deliveryError.slice(0, 160))}</div>` : ''}` : ''}</td>
       <td>${fmt(l.repliedAt)}</td>
       <td style="white-space:nowrap">${['new', 'failed'].includes(l.status) ? `<button class="btn ghost sm" title="Stop — don't invite" onclick="bulk('stop', ['${l.id}'])"><i class="fas fa-circle-pause"></i></button> ` : l.status === 'stopped' ? `<button class="btn ghost sm" title="Put back in the queue" onclick="bulk('resume', ['${l.id}'])"><i class="fas fa-play"></i></button> ` : ''}<button class="btn del sm" title="Delete" onclick="del('${l.id}')"><i class="fas fa-trash"></i></button></td>
-    </tr>`).join('') + '</tbody></table>';
+    </tr>`).join('') + '</tbody></table>' +
+    `<div class="more">Showing ${rows.length.toLocaleString('en-IN')} of ${Number(data.total || rows.length).toLocaleString('en-IN')}${filter === 'new' ? ' — in queue order, next to be sent first' : ''}` +
+    (data.total > rows.length ? ` · <button class="btn ghost sm" onclick="showMore()">Show 300 more</button>` : '') + `</div>`;
   updateBulkBar();
 }
 
@@ -792,7 +799,7 @@ function updateBulkBar() {
   document.getElementById('selN').textContent = `${ids.length} selected`;
 }
 function bulk(action, ids) {
-  ids = ids || [...selected];
+  ids = ids || [...selected].filter(id => data.leads.some(l => l.id === id));
   if (!ids.length) return;
   if (action === 'delete' && !confirm(`Delete ${ids.length} contact${ids.length === 1 ? '' : 's'}? They will not be messaged and are removed from the list.`)) return;
   post('/api/admin/leads/bulk', { action, ids }).then(({ ok, d }) => {
@@ -826,9 +833,12 @@ function downloadBlob(name, text) {
 function downloadSample() { downloadBlob('biomexa-contacts-sample.csv', 'name,number,disease,medicine,city,language\nSample Patient 1,9000000001,Diabetes,Glimepiride 1mg,Hapur,Hindi\nSample Patient 2,+91 90000 00002,BP,Telmexa AM,Delhi,English\n'); }
 function exportCsv() {
   const q = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
-  const rows = data.leads.filter(l => filter === 'all' || l.status === filter);
-  downloadBlob(`biomexa-invited-${filter}.csv`, 'name,number,source,status,invited_at,whatsapp_delivery,delivery_error,replied_at\n' +
-    rows.map(l => [l.name, l.phone, l.source, LABEL[l.status], l.sentAt || '', l.sentAt ? DLABEL[deliveryOf(l)] : '', l.deliveryError || '', l.repliedAt || ''].map(q).join(',')).join('\n'));
+  const params = new URLSearchParams({ status: filter, q: document.getElementById('q').value.trim(), d: dfilter, limit: '20000' });
+  authFetch('/api/admin/leads?' + params).then(r => r.json()).then(d => {
+    const rows = d.leads || [];
+    downloadBlob(`biomexa-contacts-${filter}.csv`, 'name,number,source,status,invited_at,whatsapp_delivery,delivery_error,replied_at\n' +
+      rows.map(l => [l.name, l.phone, l.source, LABEL[l.status] || l.status, l.sentAt || '', l.sentAt ? DLABEL[deliveryOf(l)] : '', l.deliveryError || '', l.repliedAt || ''].map(q).join(',')).join('\n'));
+  }).catch(e => alert('Export failed — ' + e.message));
 }
 
 load();
