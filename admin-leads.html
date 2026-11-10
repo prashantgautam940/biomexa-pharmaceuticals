@@ -70,6 +70,13 @@ table { width: 100%; border-collapse: collapse; font-size: .86rem; }
 th { text-align: left; font-size: .74rem; color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: .03em; padding: .6rem .5rem; border-bottom: 1px solid var(--line); }
 td { padding: .65rem .5rem; border-bottom: 1px solid var(--line); vertical-align: top; }
 td .err { color: var(--danger); font-size: .74rem; margin-top: 3px; max-width: 320px; word-break: break-word; }
+.dbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; background: var(--inner, #f4f7fb); border-radius: 12px; padding: 10px 12px; margin-bottom: 12px; font-size: .84rem; }
+.dbar b { color: var(--navy); }
+.dbar button { border: 1px solid transparent; background: #fff; border-radius: 999px; padding: 4px 10px; font: inherit; font-size: .8rem; font-weight: 600; cursor: pointer; }
+.dbar button.on { border-color: var(--navy); }
+.dbar .hint { color: var(--muted); font-size: .78rem; flex-basis: 100%; }
+.p-d-read { background: #d3f3df; color: #0b5a30; } .p-d-delivered { background: var(--green-soft); color: #11663a; }
+.p-d-sent { background: #fff6e0; color: #92600a; } .p-d-failed { background: #fdecec; color: var(--danger); }
 .pill { display: inline-block; font-size: .72rem; font-weight: 700; padding: 3px 9px; border-radius: 999px; }
 .p-new { background: #e8eefb; color: var(--navy); } .p-sent { background: #e5efff; color: #2563eb; } .p-replied { background: var(--green-soft); color: #11663a; }
 .p-joined { background: #d3f3df; color: #0b5a30; } .p-optout { background: var(--inner); color: var(--muted); } .p-failed { background: #fdecec; color: var(--danger); }
@@ -259,6 +266,7 @@ Reply STOP to stop these messages.</div>
         <button class="btn ghost sm" onclick="load()"><i class="fas fa-rotate"></i> Refresh</button>
       </div>
     </div>
+    <div id="deliveryBar" class="dbar" hidden></div>
     <div class="table-wrap" id="list"><div class="loading"><i class="fas fa-spinner fa-spin"></i> Loading…</div></div>
   </div>
 </div>
@@ -696,17 +704,40 @@ function load(quiet) {
 
 function setFilter(f) { filter = f; render(); }
 
+// WhatsApp delivery of each invite (from MSG91 delivery reports). '' = no report received.
+const DLABEL = { read: 'Read', delivered: 'Delivered', sent: 'Not delivered yet', failed: 'Not delivered', '': 'No report' };
+let dfilter = '';
+const deliveryOf = l => l.delivery || '';
+function setDFilter(f) { dfilter = dfilter === f ? '' : f; render(); }
+function renderDeliveryBar() {
+  const bar = document.getElementById('deliveryBar');
+  const invited = data.leads.filter(l => l.sentAt);
+  if (!invited.length) { bar.hidden = true; return; }
+  const n = k => invited.filter(l => deliveryOf(l) === k).length;
+  const got = n('delivered') + n('read');
+  bar.hidden = false;
+  bar.innerHTML = `<span>WhatsApp delivery of <b>${invited.length}</b> invites:</span>` +
+    [['arrived', `✓ Arrived ${got}`], ['read', `Read ${n('read')}`], ['failed', `✗ Not delivered ${n('failed')}`], ['pending', `Waiting ${n('sent')}`], ['none', `No report ${n('')}`]]
+      .map(([k, t]) => `<button class="${dfilter === k ? 'on' : ''}" onclick="setDFilter('${k}')">${t}</button>`).join('') +
+    (data.deliveryReportsOn ? `<span class="hint">"No report" = invited before delivery tracking was switched on, or MSG91 hasn't reported yet.</span>`
+      : `<span class="hint">Delivery tracking is not switched on in MSG91 yet — every invite shows "No report" until it is.</span>`);
+}
+const DMATCH = { arrived: d => d === 'delivered' || d === 'read', read: d => d === 'read', failed: d => d === 'failed', pending: d => d === 'sent', none: d => !d };
+
 function render() {
   document.querySelectorAll('.stat, .tab.lt').forEach(b => b.classList.toggle('on', b.dataset.f === filter));
+  renderDeliveryBar();
   const q = document.getElementById('q').value.trim().toLowerCase();
-  const rows = data.leads.filter(l => (filter === 'all' || l.status === filter) && (!q || [l.name, l.phone, l.source].join(' ').toLowerCase().includes(q)));
+  const rows = data.leads.filter(l => (filter === 'all' || l.status === filter) && (!dfilter || (l.sentAt && DMATCH[dfilter](deliveryOf(l)))) && (!q || [l.name, l.phone, l.source].join(' ').toLowerCase().includes(q)));
   const el = document.getElementById('list');
   if (!rows.length) { el.innerHTML = `<div class="empty">${data.leads.length ? 'Nobody here.' : 'No new contacts invited yet.'}</div>`; return; }
-  el.innerHTML = `<table><thead><tr><th>Name</th><th>Number</th><th>Source</th><th>Status</th><th>Invited</th><th>Replied</th><th></th></tr></thead><tbody>` +
+  el.innerHTML = `<table><thead><tr><th>Name</th><th>Number</th><th>Source</th><th>Status</th><th>Invited</th><th>WhatsApp delivery</th><th>Replied</th><th></th></tr></thead><tbody>` +
     rows.map(l => `<tr>
       <td><b>${esc(l.name || '—')}</b></td><td>${esc(l.phone)}</td><td>${esc(l.source || '')}</td>
       <td><span class="pill p-${l.status}">${LABEL[l.status]}</span>${l.status === 'failed' && l.lastError ? `<div class="err">${esc(l.lastError.slice(0, 160))}</div>` : ''}</td>
-      <td>${fmt(l.sentAt)}</td><td>${fmt(l.repliedAt)}</td>
+      <td>${fmt(l.sentAt)}</td>
+      <td>${l.sentAt ? `<span class="pill p-d-${deliveryOf(l) || 'none'}">${DLABEL[deliveryOf(l)]}</span>${l.deliveryError ? `<div class="err">${esc(l.deliveryError.slice(0, 160))}</div>` : ''}` : ''}</td>
+      <td>${fmt(l.repliedAt)}</td>
       <td><button class="btn del sm" title="Delete" onclick="del('${l.id}')"><i class="fas fa-trash"></i></button></td>
     </tr>`).join('') + '</tbody></table>';
 }
@@ -725,8 +756,8 @@ function downloadSample() { downloadBlob('biomexa-contacts-sample.csv', 'name,nu
 function exportCsv() {
   const q = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
   const rows = data.leads.filter(l => filter === 'all' || l.status === filter);
-  downloadBlob(`biomexa-invited-${filter}.csv`, 'name,number,source,status,invited_at,replied_at\n' +
-    rows.map(l => [l.name, l.phone, l.source, LABEL[l.status], l.sentAt || '', l.repliedAt || ''].map(q).join(',')).join('\n'));
+  downloadBlob(`biomexa-invited-${filter}.csv`, 'name,number,source,status,invited_at,whatsapp_delivery,delivery_error,replied_at\n' +
+    rows.map(l => [l.name, l.phone, l.source, LABEL[l.status], l.sentAt || '', l.sentAt ? DLABEL[deliveryOf(l)] : '', l.deliveryError || '', l.repliedAt || ''].map(q).join(',')).join('\n'));
 }
 
 load();

@@ -4105,6 +4105,61 @@ cron.schedule('* * * * *', async () => {
 // inbound JSON shape can vary slightly by how your webhook's "Customize Data Parameters" is
 // configured in their dashboard. If replies aren't being matched, log the raw req.body (already
 // done below) and adjust the field names pulled out here to match what you actually receive.
+// ========== WhatsApp DELIVERY REPORTS (MSG91 "On Outbound Report Received") ==========
+// MSG91 accepting a message ("sent" in our logs) doesn't mean WhatsApp delivered it — Meta can
+// still reject it (wrong template variables, number not on WhatsApp, 24h window…). This webhook
+// receives the real outcome for every outbound message and records it. Setup in MSG91:
+//   WhatsApp → Webhook (New) → Create Webhook → event "On Outbound Report Received" →
+//   URL https://biomexa-api-f9f6.onrender.com/api/webhooks/msg91-whatsapp-report?token=<MSG91_REPORT_TOKEN>
+// The payload fields are configurable in MSG91, so every common name for each field is accepted.
+const MSG91_REPORT_TOKEN = process.env.MSG91_REPORT_TOKEN || null;
+const WaReport = mongoose.model('WaReport', new mongoose.Schema({
+  digits: { type: String, index: true },          // last 10 digits of the customer's number
+  status: String,                                  // sent | delivered | read | failed
+  template: String,
+  reason: String,
+  requestId: String,
+  at: { type: Date, default: Date.now, expires: 90 * 86400 } // kept 90 days
+}), 'wa_reports');
+const DELIVERY_RANK = { sent: 1, delivered: 2, read: 3 };
+function normaliseReport(r) {
+  const pick = (...keys) => { for (const k of keys) { const v = r[k]; if (v !== undefined && v !== null && String(v).trim() !== '') return String(v).trim(); } return ''; };
+  const phone = pick('customerNumber', 'customer_number', 'mobile', 'to', 'recipient', 'msisdn', 'number');
+  let status = pick('eventName', 'status', 'event', 'messageStatus', 'deliveryStatus').toLowerCase();
+  status = /fail|undeliver|reject|error/.test(status) ? 'failed' : /read|seen/.test(status) ? 'read' : /deliver/.test(status) ? 'delivered' : /sent|submit|accept|queue/.test(status) ? 'sent' : '';
+  return {
+    digits: phone.replace(/\D/g, '').slice(-10), status,
+    template: pick('templateName', 'template_name', 'template'),
+    reason: pick('desc', 'reason', 'failureReason', 'failure_reason', 'errorMessage', 'error', 'description'),
+    requestId: pick('requestId', 'request_id', 'uuid', 'messageId')
+  };
+}
+app.post('/api/webhooks/msg91-whatsapp-report', async (req, res) => {
+  if (MSG91_REPORT_TOKEN && req.query.token !== MSG91_REPORT_TOKEN) return res.status(403).json({ message: 'Bad token' });
+  res.status(200).json({ received: true });
+  try {
+    const body = req.body || {};
+    const items = Array.isArray(body) ? body : Array.isArray(body.data) ? body.data : Array.isArray(body.payload) ? body.payload : [body.payload && typeof body.payload === 'object' ? body.payload : body];
+    for (const raw of items.slice(0, 500)) {
+      const r = normaliseReport(raw || {});
+      if (!r.digits || r.digits.length < 10 || !r.status) { console.log('⚠️ Unrecognised delivery report:', JSON.stringify(raw).substring(0, 300)); continue; }
+      await WaReport.create(r).catch(() => {});
+      if (r.status === 'failed') console.log(`❌ WhatsApp not delivered to …${r.digits.slice(-4)}${r.template ? ` (${r.template})` : ''}: ${r.reason || 'no reason given'}`);
+      // Update the campaign contact, if this number is one. Only move forward (sent → delivered → read);
+      // a failure is recorded unless the message already arrived.
+      const lead = await Lead.findOne({ phone: { $regex: r.digits + '$' }, sentAt: { $ne: null } }).select('delivery').lean();
+      if (!lead) continue;
+      const cur = lead.delivery;
+      let set = null;
+      if (r.status === 'failed') { if (!cur || cur === 'sent' || cur === 'failed') set = { delivery: 'failed', deliveryError: r.reason || 'WhatsApp did not deliver this message' }; }
+      else if (!cur || cur === 'failed' || DELIVERY_RANK[r.status] > (DELIVERY_RANK[cur] || 0)) set = { delivery: r.status, deliveryError: '' };
+      if (set) await Lead.updateOne({ _id: lead._id }, { ...set, deliveryAt: new Date() });
+    }
+  } catch (err) {
+    console.log('⚠️ Delivery report error:', err.message);
+  }
+});
+
 app.post('/api/webhooks/msg91-whatsapp', async (req, res) => {
   // Acknowledge immediately — MSG91 (like most WhatsApp BSPs) expects a fast 200 response
   // and will retry on timeout, which could cause duplicate processing otherwise.
@@ -6062,6 +6117,10 @@ const Lead = mongoose.model('Lead', new mongoose.Schema({
   gender: String,
   language: { type: String, default: 'en' },                // 'hi' when the list shows Hindi
   templateUsed: String,
+  // WhatsApp delivery of the invite, from MSG91's "On Outbound Report Received" webhook.
+  delivery: { type: String, enum: ['sent', 'delivered', 'read', 'failed'] },
+  deliveryAt: Date,
+  deliveryError: String,
   signupVia: String,                                        // 'whatsapp' when they signed up in the chat, else the web form
   lastSignupInviteAt: Date                                  // admin Reminder Center "finish signing up" nudge (max once a day)
 }, { timestamps: true }));
@@ -6186,7 +6245,7 @@ async function runLeadCampaign(items) {
       const fresh = await Lead.findOneAndUpdate({ _id: item.leadId, status: { $in: ['new', 'failed'] } }, { status: 'sending' }, { new: true }).lean();
       if (!fresh) continue;
       r = await sendLeadTemplate(fresh.phone, fresh.segment);
-      if (r.ok) await Lead.updateOne({ _id: fresh._id }, { status: 'sent', sentAt: new Date(), lastError: '', templateUsed: r.template });
+      if (r.ok) await Lead.updateOne({ _id: fresh._id }, { status: 'sent', sentAt: new Date(), lastError: '', templateUsed: r.template, delivery: 'sent', deliveryError: '', deliveryAt: null });
       else await Lead.updateOne({ _id: fresh._id }, { status: 'failed', lastError: r.error });
       if (r.ok) leadJob.invites++;
     } else {
@@ -6648,7 +6707,8 @@ app.get('/api/admin/leads', adminAuth, async (req, res) => {
     grouped.forEach(g => { counts[g._id] = g.n; });
     res.json({
       counts, ...ctx, job: leadJob, queue: await queueStatus(),
-      leads: leads.map(l => ({ id: l._id, name: l.name, phone: l.phone, source: l.source, status: l.status, segment: l.segment || 'general', medicine: l.medicine || '', city: l.city || '', language: l.language || 'en', sentAt: l.sentAt, repliedAt: l.repliedAt, createdAt: l.createdAt, lastError: l.lastError || '' }))
+      deliveryReportsOn: !!(await WaReport.exists({})),
+      leads: leads.map(l => ({ id: l._id, name: l.name, phone: l.phone, source: l.source, status: l.status, segment: l.segment || 'general', medicine: l.medicine || '', city: l.city || '', language: l.language || 'en', sentAt: l.sentAt, repliedAt: l.repliedAt, createdAt: l.createdAt, lastError: l.lastError || '', delivery: l.delivery || '', deliveryAt: l.deliveryAt, deliveryError: l.deliveryError || '' }))
     });
   } catch (err) {
     res.status(500).json({ message: err.message });
