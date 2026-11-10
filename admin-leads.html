@@ -70,6 +70,16 @@ table { width: 100%; border-collapse: collapse; font-size: .86rem; }
 th { text-align: left; font-size: .74rem; color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: .03em; padding: .6rem .5rem; border-bottom: 1px solid var(--line); }
 td { padding: .65rem .5rem; border-bottom: 1px solid var(--line); vertical-align: top; }
 td .err { color: var(--danger); font-size: .74rem; margin-top: 3px; max-width: 320px; word-break: break-word; }
+.muted { color: var(--muted); font-weight: 400; }
+.addone { border: 1px dashed #cfd8e6; border-radius: 12px; padding: .7rem 1rem; margin: 0 0 1rem; }
+.addone summary { cursor: pointer; font-weight: 700; color: var(--navy); font-size: .9rem; }
+.addone[open] summary { margin-bottom: .8rem; }
+.addgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 0 .9rem; }
+.bulkbar { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; background: #eef3fb; border: 1px solid #cfd8e6; border-radius: 12px; padding: .6rem .8rem; margin-bottom: .8rem; position: sticky; top: 8px; z-index: 5; }
+.p-stopped { background: #f1f1f4; color: #55596a; border: 1px dashed #b9bdc9; }
+.n-stopped .num { color: #55596a; }
+td.ck, th.ck { width: 28px; } td.ck input, th.ck input { width: 16px; height: 16px; cursor: pointer; }
+.qpos { font-size: .72rem; color: var(--muted); margin-top: 3px; }
 .dbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; background: var(--inner, #f4f7fb); border-radius: 12px; padding: 10px 12px; margin-bottom: 12px; font-size: .84rem; }
 .dbar b { color: var(--navy); }
 .dbar button { border: 1px solid transparent; background: #fff; border-radius: 999px; padding: 4px 10px; font: inherit; font-size: .8rem; font-weight: 600; cursor: pointer; }
@@ -255,7 +265,22 @@ Reply STOP to stop these messages.</div>
       <button class="stat n-joined" data-f="joined" onclick="setFilter('joined')"><div class="lbl"><i class="fas fa-user-check"></i> Joined</div><div class="num" id="c-joined">–</div></button>
       <button class="stat n-optout" data-f="optout" onclick="setFilter('optout')"><div class="lbl"><i class="fas fa-ban"></i> Opted out</div><div class="num" id="c-optout">–</div></button>
       <button class="stat n-failed" data-f="failed" onclick="setFilter('failed')"><div class="lbl"><i class="fas fa-triangle-exclamation"></i> Failed</div><div class="num" id="c-failed">–</div></button>
+      <button class="stat n-stopped" data-f="stopped" onclick="setFilter('stopped')"><div class="lbl"><i class="fas fa-circle-pause"></i> Stopped</div><div class="num" id="c-stopped">–</div></button>
     </div>
+    <details class="addone" id="addBox">
+      <summary><i class="fas fa-user-plus"></i> Add one contact by hand</summary>
+      <div class="addgrid">
+        <div class="field"><label for="aName">Name</label><input type="text" id="aName" placeholder="e.g. Ravi Sharma"></div>
+        <div class="field"><label for="aPhone">WhatsApp number</label><input type="text" id="aPhone" inputmode="numeric" placeholder="10-digit mobile"></div>
+        <div class="field"><label for="aMed">Medicine / condition <span class="muted">(optional)</span></label><input type="text" id="aMed" placeholder="e.g. Metformin, diabetes"></div>
+        <div class="field"><label for="aCity">City <span class="muted">(optional)</span></label><input type="text" id="aCity" placeholder="e.g. Hapur"></div>
+        <div class="field"><label for="aLang">Reply language</label><select id="aLang"><option value="en">English</option><option value="hi">Hindi</option></select></div>
+        <div class="field"><label for="aSrc">Source <span class="muted">(optional)</span></label><input type="text" id="aSrc" placeholder="e.g. Clinic camp"></div>
+      </div>
+      <label style="display:flex;gap:.5rem;align-items:flex-start;font-size:.84rem;margin:.2rem 0 .8rem"><input type="checkbox" id="aConsent" style="width:auto;margin-top:3px"> This person agreed to be contacted by Biomexa on WhatsApp.</label>
+      <button class="btn wa sm" id="aBtn" onclick="addOne()"><i class="fas fa-plus"></i> Add to queue</button>
+      <div class="result" id="addResult"></div>
+    </details>
     <div class="toolbar">
       <div class="tabs">
         <button class="tab lt" data-f="all" onclick="setFilter('all')">All</button>
@@ -267,6 +292,15 @@ Reply STOP to stop these messages.</div>
       </div>
     </div>
     <div id="deliveryBar" class="dbar" hidden></div>
+    <div id="bulkBar" class="bulkbar" hidden>
+      <b id="selN">0 selected</b>
+      <button class="btn ghost sm" onclick="bulk('stop')"><i class="fas fa-circle-pause"></i> Stop</button>
+      <button class="btn ghost sm" onclick="bulk('resume')"><i class="fas fa-play"></i> Put back in queue</button>
+      <button class="btn del sm" onclick="bulk('delete')"><i class="fas fa-trash"></i> Delete</button>
+      <button class="btn ghost sm" onclick="clearSel()">Clear</button>
+      <span class="muted" style="font-size:.78rem">Stopped contacts are never invited until you put them back.</span>
+    </div>
+    <div class="result" id="bulkResult"></div>
     <div class="table-wrap" id="list"><div class="loading"><i class="fas fa-spinner fa-spin"></i> Loading…</div></div>
   </div>
 </div>
@@ -281,7 +315,7 @@ let plan = null;      // result of /analyze
 let csvText = '';
 let filter = 'all', group = 'all';
 let pollTimer = null;
-const LABEL = { new: 'Waiting', sent: 'Invited', failed: 'Failed', replied: 'Replied START', joined: 'Joined', optout: 'Opted out' };
+const LABEL = { new: 'Waiting', sent: 'Invited', failed: 'Failed', replied: 'Replied START', joined: 'Joined', optout: 'Opted out', stopped: 'Stopped', sending: 'Sending…' };
 const GLABEL = { offer: 'Patient offer', invite: 'New-contact invite', skipped: 'Skipped' };
 
 function authFetch(path, opts = {}) {
@@ -688,7 +722,7 @@ function load(quiet) {
   return authFetch('/api/admin/leads').then(r => r.json()).then(d => {
     if (!d.leads) throw new Error(d.message || 'Could not load');
     data = d;
-    Object.keys(LABEL).forEach(k => document.getElementById('c-' + k).textContent = d.counts[k] || 0);
+    Object.keys(LABEL).forEach(k => { const el = document.getElementById('c-' + k); if (el) el.textContent = d.counts[k] || 0; });
     const w = document.getElementById('tplWarn');
     const miss = [];
     if (!d.offerTemplateReady) miss.push('<b>MSG91_AD_TEMPLATE_NAME</b> (patient offer)');
@@ -731,15 +765,51 @@ function render() {
   const rows = data.leads.filter(l => (filter === 'all' || l.status === filter) && (!dfilter || (l.sentAt && DMATCH[dfilter](deliveryOf(l)))) && (!q || [l.name, l.phone, l.source].join(' ').toLowerCase().includes(q)));
   const el = document.getElementById('list');
   if (!rows.length) { el.innerHTML = `<div class="empty">${data.leads.length ? 'Nobody here.' : 'No new contacts invited yet.'}</div>`; return; }
-  el.innerHTML = `<table><thead><tr><th>Name</th><th>Number</th><th>Source</th><th>Status</th><th>Invited</th><th>WhatsApp delivery</th><th>Replied</th><th></th></tr></thead><tbody>` +
+  shown = rows.map(l => l.id);
+  const allOn = rows.length && rows.every(l => selected.has(l.id));
+  el.innerHTML = `<table><thead><tr><th class="ck"><input type="checkbox" title="Select all shown" ${allOn ? 'checked' : ''} onchange="selAll(this.checked)"></th><th>Name</th><th>Number</th><th>Source</th><th>Status</th><th>Invited</th><th>WhatsApp delivery</th><th>Replied</th><th></th></tr></thead><tbody>` +
     rows.map(l => `<tr>
+      <td class="ck"><input type="checkbox" ${selected.has(l.id) ? 'checked' : ''} onchange="sel('${l.id}', this.checked)"></td>
       <td><b>${esc(l.name || '—')}</b></td><td>${esc(l.phone)}</td><td>${esc(l.source || '')}</td>
-      <td><span class="pill p-${l.status}">${LABEL[l.status]}</span>${l.status === 'failed' && l.lastError ? `<div class="err">${esc(l.lastError.slice(0, 160))}</div>` : ''}</td>
+      <td><span class="pill p-${l.status}">${LABEL[l.status] || l.status}</span>${l.status === 'new' && l.queuePos ? `<div class="qpos">#${l.queuePos} in queue</div>` : ''}${l.status === 'failed' && l.lastError ? `<div class="err">${esc(l.lastError.slice(0, 160))}</div>` : ''}</td>
       <td>${fmt(l.sentAt)}</td>
       <td>${l.sentAt ? `<span class="pill p-d-${deliveryOf(l) || 'none'}">${DLABEL[deliveryOf(l)]}</span>${l.deliveryError ? `<div class="err">${esc(l.deliveryError.slice(0, 160))}</div>` : ''}` : ''}</td>
       <td>${fmt(l.repliedAt)}</td>
-      <td><button class="btn del sm" title="Delete" onclick="del('${l.id}')"><i class="fas fa-trash"></i></button></td>
+      <td style="white-space:nowrap">${['new', 'failed'].includes(l.status) ? `<button class="btn ghost sm" title="Stop — don't invite" onclick="bulk('stop', ['${l.id}'])"><i class="fas fa-circle-pause"></i></button> ` : l.status === 'stopped' ? `<button class="btn ghost sm" title="Put back in the queue" onclick="bulk('resume', ['${l.id}'])"><i class="fas fa-play"></i></button> ` : ''}<button class="btn del sm" title="Delete" onclick="del('${l.id}')"><i class="fas fa-trash"></i></button></td>
     </tr>`).join('') + '</tbody></table>';
+  updateBulkBar();
+}
+
+// ---------- select + bulk stop / resume / delete ----------
+const selected = new Set(); let shown = [];
+function sel(id, on) { on ? selected.add(id) : selected.delete(id); updateBulkBar(); }
+function selAll(on) { shown.forEach(id => on ? selected.add(id) : selected.delete(id)); render(); }
+function clearSel() { selected.clear(); render(); }
+function updateBulkBar() {
+  const ids = [...selected].filter(id => data.leads.some(l => l.id === id));
+  document.getElementById('bulkBar').hidden = !ids.length;
+  document.getElementById('selN').textContent = `${ids.length} selected`;
+}
+function bulk(action, ids) {
+  ids = ids || [...selected];
+  if (!ids.length) return;
+  if (action === 'delete' && !confirm(`Delete ${ids.length} contact${ids.length === 1 ? '' : 's'}? They will not be messaged and are removed from the list.`)) return;
+  post('/api/admin/leads/bulk', { action, ids }).then(({ ok, d }) => {
+    showResult('bulkResult', ok ? 'ok' : 'err', d.message);
+    if (ok) { ids.forEach(id => selected.delete(id)); load(true); }
+  }).catch(e => showResult('bulkResult', 'err', e.message));
+}
+function addOne() {
+  const v = id => document.getElementById(id).value.trim();
+  if (!document.getElementById('aConsent').checked) return showResult('addResult', 'err', 'Please tick the box confirming they agreed to be contacted.');
+  const btn = document.getElementById('aBtn'); btn.disabled = true;
+  post('/api/admin/leads/add', { name: v('aName'), phone: v('aPhone'), medicine: v('aMed'), city: v('aCity'), language: v('aLang'), source: v('aSrc'), consent: true })
+    .then(({ ok, d }) => {
+      showResult('addResult', ok ? 'ok' : 'err', d.message);
+      if (ok) { ['aName', 'aPhone', 'aMed', 'aCity', 'aSrc'].forEach(id => document.getElementById(id).value = ''); document.getElementById('aConsent').checked = false; load(true); }
+    })
+    .catch(e => showResult('addResult', 'err', e.message))
+    .finally(() => { btn.disabled = false; });
 }
 
 function del(id) {

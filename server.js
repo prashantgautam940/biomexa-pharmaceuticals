@@ -1495,6 +1495,46 @@ async function sendWhatsAppFree(phone, message, userApiKey) {
   return { success: false, provider: 'none' };
 }
 
+// ===== SAMPLE REPORT (PDF) — shows new contacts what Biomexa gives them =====
+// Hosted on the website (sample-report.pdf, demo data only). Sent as a WhatsApp document:
+// as a normal message inside the 24-hour window, or as the header of the optional sign-up
+// template (MSG91_SIGNUP_TEMPLATE_NAME) when the window is closed.
+const SAMPLE_REPORT_URL = process.env.SAMPLE_REPORT_URL || 'https://biomexapharmaceuticals.com/sample-report.pdf';
+const SAMPLE_REPORT_FILENAME = 'Biomexa sample health report.pdf';
+async function sendMsg91Document(phone, url, filename, caption) {
+  if (!MSG91_CONFIGURED) return { success: false, provider: 'msg91_not_configured' };
+  try {
+    const res = await fetch('https://api.msg91.com/api/v5/whatsapp/whatsapp-outbound-message/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'authkey': MSG91_AUTH_KEY },
+      body: JSON.stringify({
+        integrated_number: MSG91_INTEGRATED_NUMBER,
+        recipient_number: phone.replace(/\D/g, ''),
+        content_type: 'document',
+        attachment_url: url,
+        filename,
+        caption
+      }),
+      signal: AbortSignal.timeout(15000)
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.hasError || data.status === 'fail') {
+      console.log('⚠️ MSG91 document send failed:', JSON.stringify(data).substring(0, 300));
+      return { success: false, provider: 'msg91', detail: data };
+    }
+    console.log('✅ MSG91 WhatsApp document sent to', phone);
+    return { success: true, provider: 'msg91' };
+  } catch (err) {
+    console.log('⚠️ MSG91 document send error:', err.message);
+    return { success: false, provider: 'msg91', detail: err.message };
+  }
+}
+function sampleReportCaption(hi) {
+  return hi
+    ? '📄 नमूना रिपोर्ट — Biomexa से जुड़ने पर आपको हर महीने ऐसी रिपोर्ट मिलती है: दवा कितनी समय पर ली, बीपी और शुगर का चार्ट, और डॉक्टर के लिए सारांश। (यह डेमो डेटा है, असली मरीज़ नहीं।)'
+    : '📄 Sample report — this is what you get every month with Biomexa: which doses you took on time, your BP and sugar charts, and a summary for your doctor. (Demo data, not a real patient.)';
+}
+
 // ===== WHATSAPP 24-HOUR WINDOW + IVF CARE UPDATE TEMPLATE =====
 // Meta only delivers free-text messages within 24 hours of the person's last message to the
 // Biomexa number; outside that window MSG91 still answers "sent" but Meta drops it (131047).
@@ -6010,6 +6050,60 @@ function portalLoginMessage(name, lang, segment) {
     : `🎉 Hi ${first}! Your Biomexa reminders are running. You also have your own Biomexa health portal — log in to use all of it:\n\n${benefits}\n\n🔐 Log in: ${login}\nUse this same WhatsApp number.\n\nNo password yet? Just reply *RESET* here and we'll send you a link to set one.\n\n— Team Biomexa 💙`;
 }
 
+// Optional: sign-up follow-up template for people who tapped START but whose 24-hour window has
+// closed (free text is dropped by Meta then). MSG91 → create template, e.g. biomexa_signup_followup:
+//   Category: Utility (or Marketing) · Header: DOCUMENT · Body:
+//     "Hi {{1}}, you tapped START for free medicine reminders from Biomexa. The attached sample
+//      report shows what you get every month. Sign up in 1 minute: {{2}}  Reply STOP to opt out."
+//   Sample header: upload sample-report.pdf · {{1}} Ravi · {{2}} https://biomexapharmaceuticals.com/reminders.html
+// then set MSG91_SIGNUP_TEMPLATE_NAME (+ _NAMESPACE if different).
+const MSG91_SIGNUP_TEMPLATE_NAME = process.env.MSG91_SIGNUP_TEMPLATE_NAME || null;
+const MSG91_SIGNUP_TEMPLATE_NAMESPACE = process.env.MSG91_SIGNUP_TEMPLATE_NAMESPACE || MSG91_TEMPLATE_NAMESPACE;
+async function sendSignupTemplate(phone, firstName, link) {
+  if (!MSG91_CONFIGURED || !MSG91_SIGNUP_TEMPLATE_NAME) return { success: false, provider: 'not_configured' };
+  try {
+    const res = await fetch('https://api.msg91.com/api/v5/whatsapp/whatsapp-outbound-message/bulk/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'authkey': MSG91_AUTH_KEY },
+      body: JSON.stringify({
+        integrated_number: MSG91_INTEGRATED_NUMBER,
+        content_type: 'template',
+        payload: {
+          messaging_product: 'whatsapp', type: 'template',
+          template: {
+            name: MSG91_SIGNUP_TEMPLATE_NAME,
+            language: { code: MSG91_TEMPLATE_LANG, policy: 'deterministic' },
+            namespace: MSG91_SIGNUP_TEMPLATE_NAMESPACE,
+            to_and_components: [{
+              to: [phone.replace(/\D/g, '')],
+              components: {
+                header_1: { type: 'document', value: SAMPLE_REPORT_URL, filename: SAMPLE_REPORT_FILENAME },
+                body_1: { type: 'text', value: sanitizeTemplateParam(firstName, 40) || 'there' },
+                body_2: { type: 'text', value: link }
+              }
+            }]
+          }
+        }
+      }),
+      signal: AbortSignal.timeout(15000)
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) { console.log('⚠️ MSG91 sign-up template failed:', JSON.stringify(data).substring(0, 300)); return { success: false, provider: 'msg91', detail: data }; }
+    console.log('✅ MSG91 sign-up template (with sample report) sent to', phone);
+    return { success: true, provider: 'msg91_template' };
+  } catch (err) {
+    console.log('⚠️ MSG91 sign-up template error:', err.message);
+    return { success: false, provider: 'msg91', detail: err.message };
+  }
+}
+// Sends the sample report PDF once per contact (inside the 24-hour window).
+async function sendLeadSampleReport(lead, phone) {
+  if (!lead || lead.sampleReportSentAt || lead.segment === 'ivf') return false;
+  const r = await sendMsg91Document(phone, SAMPLE_REPORT_URL, SAMPLE_REPORT_FILENAME, sampleReportCaption(leadHi(lead)));
+  if (r.success) await Lead.updateOne({ _id: lead._id }, { sampleReportSentAt: new Date() });
+  return r.success;
+}
+
 // body: { audience: 'started' | 'campaign', phone?: one person only }
 app.post('/api/admin/reminder-center/campaign-invite', adminAuth, async (req, res) => {
   try {
@@ -6027,8 +6121,15 @@ app.post('/api/admin/reminder-center/campaign-invite', adminAuth, async (req, re
         if (only && key !== only) continue;
         if (lead.lastSignupInviteAt && lead.lastSignupInviteAt > dayAgo) { results.skippedRecent++; continue; }
         const phone = '+91' + key;
-        if (!(await whatsappWindowOpen(phone))) { results.skippedWindow++; continue; }
-        const r = await sendWhatsAppFree(phone, signupNudgeMessage(lead, phone));
+        let r;
+        if (await whatsappWindowOpen(phone)) {
+          r = await sendWhatsAppFree(phone, signupNudgeMessage(lead, phone));
+          if (r && r.success) await sendLeadSampleReport(lead, phone);
+        } else if (MSG91_SIGNUP_TEMPLATE_NAME) {
+          // Window closed — the approved template (sample report attached) still reaches them.
+          r = await sendSignupTemplate(phone, String(lead.name || '').trim().split(/\s+/)[0], leadSignupLink(lead, phone));
+          if (r.success) await Lead.updateOne({ _id: lead._id }, { sampleReportSentAt: now });
+        } else { results.skippedWindow++; continue; }
         if (r && r.success) { results.sent++; await Lead.updateOne({ _id: lead._id }, { lastSignupInviteAt: now }); }
         else results.failed.push({ name: lead.name, phone });
         await new Promise(r2 => setTimeout(r2, 250));
@@ -6100,7 +6201,7 @@ const Lead = mongoose.model('Lead', new mongoose.Schema({
   name: { type: String, default: '' },
   phone: { type: String, required: true, unique: true }, // canonical 91XXXXXXXXXX
   source: { type: String, default: '' },                  // e.g. "Dr Sharma clinic", "Pharmacy camp"
-  status: { type: String, enum: ['new', 'sending', 'sent', 'failed', 'replied', 'joined', 'optout'], default: 'new', index: true },
+  status: { type: String, enum: ['new', 'sending', 'sent', 'failed', 'replied', 'joined', 'optout', 'stopped'], default: 'new', index: true }, // stopped = held by admin, never auto-invited
   sentAt: Date,
   repliedAt: Date,
   joinedAt: Date,
@@ -6122,7 +6223,8 @@ const Lead = mongoose.model('Lead', new mongoose.Schema({
   deliveryAt: Date,
   deliveryError: String,
   signupVia: String,                                        // 'whatsapp' when they signed up in the chat, else the web form
-  lastSignupInviteAt: Date                                  // admin Reminder Center "finish signing up" nudge (max once a day)
+  lastSignupInviteAt: Date,                                 // admin Reminder Center "finish signing up" nudge (max once a day)
+  sampleReportSentAt: Date                                  // sample report PDF sent on WhatsApp (once)
 }, { timestamps: true }));
 
 // ---------- Lead profiling: what condition / medicine / city / language a contact has ----------
@@ -6310,7 +6412,8 @@ async function handleLeadReply(phone, buttonText, freeText) {
       { state: 'lead_signup_med', draft: {}, doseId: null, updatedAt: new Date() },
       { upsert: true }
     );
-    await sendWhatsAppFree(phone, leadChatStartMessage(lead, phone));
+    const sent = await sendWhatsAppFree(phone, leadChatStartMessage(lead, phone));
+    if (sent && sent.success) await sendLeadSampleReport(lead, phone); // what they'll get, as a PDF
     return true;
   }
   return false;
@@ -6328,8 +6431,8 @@ function leadChatStartMessage(lead, phone) {
     ? (hi ? `1️⃣ क्या आप *${lead.medicine}* लेते हैं? *YES* लिखें, या अपनी दवा का नाम लिखें।` : `1️⃣ Is it *${lead.medicine}*? Reply *YES*, or type your medicine's name.`)
     : (hi ? `1️⃣ किस दवा का रिमाइंडर चाहिए? दवा का नाम लिखें (जैसे Diabmexa M 500)।` : `1️⃣ Which medicine should we remind you about? Type its name (e.g. Diabmexa M 500).`);
   return hi
-    ? `🙏 धन्यवाद! चलिए ${what} के मुफ़्त रिमाइंडर यहीं WhatsApp पर सेट करते हैं — बस 3 छोटे सवाल।\n\n${ask}\n\n(फ़ॉर्म से करना है? यहाँ टैप करें: ${leadSignupLink(lead, phone)} )`
-    : `🙏 Thank you! Let's set up free reminders for ${what} right here on WhatsApp — just 3 quick questions.\n\n${ask}\n\n(Prefer a form? Tap here instead: ${leadSignupLink(lead, phone)} )`;
+    ? `🙏 धन्यवाद! चलिए ${what} के मुफ़्त रिमाइंडर यहीं WhatsApp पर सेट करते हैं — बस 3 छोटे सवाल।\n📄 हर महीने आपको ऐसी रिपोर्ट मिलेगी (नमूना): ${SAMPLE_REPORT_URL}\n\n${ask}\n\n(फ़ॉर्म से करना है? यहाँ टैप करें: ${leadSignupLink(lead, phone)} )`
+    : `🙏 Thank you! Let's set up free reminders for ${what} right here on WhatsApp — just 3 quick questions.\n📄 See the report you'll get every month (sample): ${SAMPLE_REPORT_URL}\n\n${ask}\n\n(Prefer a form? Tap here instead: ${leadSignupLink(lead, phone)} )`;
 }
 
 // "9", "9 am", "9:30 pm", "21:00", "8.30 PM", "subah 8", "raat 9" — up to 4, separated by , / and / &.
@@ -6703,12 +6806,14 @@ app.get('/api/admin/leads', adminAuth, async (req, res) => {
       Lead.find().sort({ createdAt: -1 }).limit(2000).lean(),
       campaignContext()
     ]);
-    const counts = { new: 0, sent: 0, failed: 0, replied: 0, joined: 0, optout: 0 };
+    const counts = { new: 0, sent: 0, failed: 0, replied: 0, joined: 0, optout: 0, stopped: 0 };
     grouped.forEach(g => { counts[g._id] = g.n; });
+    // Queue position of each waiting contact (the queue sends oldest upload first).
+    const queuePos = new Map((await Lead.find({ status: 'new' }).sort({ createdAt: 1, _id: 1 }).select('_id').lean()).map((l, i) => [String(l._id), i + 1]));
     res.json({
       counts, ...ctx, job: leadJob, queue: await queueStatus(),
       deliveryReportsOn: !!(await WaReport.exists({})),
-      leads: leads.map(l => ({ id: l._id, name: l.name, phone: l.phone, source: l.source, status: l.status, segment: l.segment || 'general', medicine: l.medicine || '', city: l.city || '', language: l.language || 'en', sentAt: l.sentAt, repliedAt: l.repliedAt, createdAt: l.createdAt, lastError: l.lastError || '', delivery: l.delivery || '', deliveryAt: l.deliveryAt, deliveryError: l.deliveryError || '' }))
+      leads: leads.map(l => ({ id: l._id, name: l.name, phone: l.phone, source: l.source, status: l.status, segment: l.segment || 'general', medicine: l.medicine || '', city: l.city || '', language: l.language || 'en', sentAt: l.sentAt, repliedAt: l.repliedAt, createdAt: l.createdAt, lastError: l.lastError || '', delivery: l.delivery || '', deliveryAt: l.deliveryAt, deliveryError: l.deliveryError || '', queuePos: queuePos.get(String(l._id)) || null }))
     });
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -7047,6 +7152,56 @@ app.get('/api/admin/leads/analytics', adminAuth, async (req, res) => {
     ]);
 
     res.json({ days, totals, bySource, bySegment, daily, recent: shown, patientOffers: { sent: offersSent, optedOut: patientsOptedOut } });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Add ONE contact by hand (name + number, optional medicine / city). Goes through the same checks
+// as an uploaded list: already a patient → not added; already a lead → reported, not duplicated.
+app.post('/api/admin/leads/add', adminAuth, async (req, res) => {
+  try {
+    if (req.body?.consent !== true) return res.status(400).json({ message: 'Please confirm this person agreed to be contacted by Biomexa on WhatsApp.' });
+    const clean = v => String(v || '').replace(/[,\r\n"]/g, ' ').trim().slice(0, 80);
+    const name = clean(req.body?.name), number = String(req.body?.phone || '').replace(/[^\d+]/g, '');
+    if (!/^(\+?91)?[6-9]\d{9}$/.test(number)) return res.status(400).json({ message: 'Please enter a valid 10-digit Indian mobile number.' });
+    const medicine = clean(req.body?.medicine), city = clean(req.body?.city), language = req.body?.language === 'hi' ? 'Hindi' : '';
+    let parsed;
+    try { parsed = parseContactsCsv(`name,number,medicine,city,language\n${name},${number},${medicine},${city},${language}`); } catch (e) { return res.status(400).json({ message: e.message }); }
+    const [row] = await analyzeContacts(parsed.contacts, 7);
+    if (!row) return res.status(400).json({ message: 'Could not read that number.' });
+    if (row.group === 'offer') return res.status(409).json({ message: `${row.phone} is already a Biomexa patient — they get the patient offer instead.` });
+    if (row.group !== 'invite' || row.leadId) return res.status(409).json({ message: `${row.phone} is already in your contacts${row.group === 'skipped' ? ` — ${row.reason}` : ''}.` });
+    const lead = await Lead.create({
+      name: row.name || name, phone: row.phone, source: clean(req.body?.source) || 'Added by hand', uploadedBy: req.admin?.username || 'admin',
+      segment: row.segment, condition: row.condition, medicine: row.medicine, city: row.city, language: row.language
+    });
+    const position = await Lead.countDocuments({ status: 'new' });
+    res.json({ message: `Added to the queue at position ${position}.`, id: lead._id });
+  } catch (err) {
+    if (err.code === 11000) return res.status(409).json({ message: 'That number is already in your contacts.' });
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Bulk queue actions on selected contacts:
+//   stop   → held; never invited automatically (only contacts still waiting/failed can be stopped)
+//   resume → back into the queue (status new) — joins at its original upload position
+//   delete → removed entirely
+app.post('/api/admin/leads/bulk', adminAuth, async (req, res) => {
+  try {
+    const action = req.body?.action;
+    const ids = (Array.isArray(req.body?.ids) ? req.body.ids : []).filter(id => mongoose.isValidObjectId(id)).slice(0, 5000);
+    if (!ids.length) return res.status(400).json({ message: 'Select at least one contact.' });
+    let r;
+    if (action === 'stop') r = await Lead.updateMany({ _id: { $in: ids }, status: { $in: ['new', 'failed'] } }, { status: 'stopped' });
+    else if (action === 'resume') r = await Lead.updateMany({ _id: { $in: ids }, status: 'stopped' }, { status: 'new', lastError: '' });
+    else if (action === 'delete') r = await Lead.deleteMany({ _id: { $in: ids }, status: { $ne: 'sending' } });
+    else return res.status(400).json({ message: 'Unknown action.' });
+    const n = r.modifiedCount ?? r.deletedCount ?? 0;
+    const skipped = ids.length - n;
+    const verb = { stop: 'stopped', resume: 'put back in the queue', delete: 'deleted' }[action];
+    res.json({ message: `${n} contact${n === 1 ? '' : 's'} ${verb}.` + (skipped ? ` ${skipped} skipped (${action === 'stop' ? 'already invited, replied or opted out' : action === 'resume' ? 'not stopped' : 'being sent right now'}).` : ''), changed: n });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
