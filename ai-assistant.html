@@ -62,6 +62,7 @@
   @media (max-width: 420px) { .med-card img { width: 90px; } }
 </style>
 <link rel="stylesheet" href="css/mobile.css">
+<script>/* remove any old service worker left on this domain */if("serviceWorker"in navigator){navigator.serviceWorker.getRegistrations().then(function(r){r.forEach(function(x){x.update().catch(function(){});x.unregister()})}).catch(function(){});if(window.caches)caches.keys().then(function(k){k.forEach(function(n){caches.delete(n)})}).catch(function(){})}</script>
 </head>
 <body>
 

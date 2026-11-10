@@ -166,6 +166,7 @@ tbody tr:hover { background: #f6f8fc !important; }
 <link rel="stylesheet" href="css/biomexa-ui.css">
 <script src="js/biomexa-ui.js" defer></script>
 <link rel="stylesheet" href="css/mobile.css">
+<script>/* remove any old service worker left on this domain */if("serviceWorker"in navigator){navigator.serviceWorker.getRegistrations().then(function(r){r.forEach(function(x){x.update().catch(function(){});x.unregister()})}).catch(function(){});if(window.caches)caches.keys().then(function(k){k.forEach(function(n){caches.delete(n)})}).catch(function(){})}</script>
 </head>
 <body>
 

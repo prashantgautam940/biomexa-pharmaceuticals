@@ -133,6 +133,7 @@ details summary { cursor: pointer; font-weight: 700; color: var(--navy); font-si
 </style>
 <link rel="stylesheet" href="css/biomexa-ui.css">
 <link rel="stylesheet" href="css/mobile.css">
+<script>/* remove any old service worker left on this domain */if("serviceWorker"in navigator){navigator.serviceWorker.getRegistrations().then(function(r){r.forEach(function(x){x.update().catch(function(){});x.unregister()})}).catch(function(){});if(window.caches)caches.keys().then(function(k){k.forEach(function(n){caches.delete(n)})}).catch(function(){})}</script>
 </head>
 <body>
 <header>
@@ -320,9 +321,18 @@ let pollTimer = null;
 const LABEL = { new: 'Waiting', sent: 'Invited', failed: 'Failed', replied: 'Replied START', joined: 'Joined', optout: 'Opted out', stopped: 'Stopped', sending: 'Sending…' };
 const GLABEL = { offer: 'Patient offer', invite: 'New-contact invite', skipped: 'Skipped' };
 
+// Network blips (or the server waking up) make fetch throw — retry reads twice before giving up.
+function fetchRetry(url, opts, tries) {
+  tries = tries === undefined ? 2 : tries;
+  const isRead = !opts || !opts.method || opts.method === 'GET';
+  return fetch(url, opts).catch(err => {
+    if (!isRead || tries <= 0) throw new Error('Could not reach the Biomexa server — check your internet and press Refresh.');
+    return new Promise(r => setTimeout(r, tries === 2 ? 1500 : 4000)).then(() => fetchRetry(url, opts, tries - 1));
+  });
+}
 function authFetch(path, opts = {}) {
   opts.headers = Object.assign({ Authorization: authHeader }, opts.headers || {});
-  return fetch(API_BASE + path, opts).then(r => {
+  return fetchRetry(API_BASE + path, opts).then(r => {
     if (r.status === 401) { logout(); throw new Error('Session expired'); }
     return r;
   });
