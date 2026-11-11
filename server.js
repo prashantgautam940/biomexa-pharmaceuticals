@@ -6193,7 +6193,9 @@ const LEAD_GREETING_WORD = 'there';
 const SIGNUP_SITE_URL = (process.env.SIGNUP_SITE_URL || 'https://biomexapharmaceuticals.com').replace(/\/+$/, '');
 // New WhatsApp numbers can only start ~250 new conversations a day until Meta raises the tier —
 // going over it (or getting many blocks) hurts the number's quality rating.
-const LEAD_DAILY_LIMIT = Math.max(1, parseInt(process.env.LEAD_DAILY_LIMIT, 10) || 250);
+// The admin sets the daily number in Admin → Campaigns ("Contacts per day"); this is only the default.
+const LEAD_DAILY_DEFAULT = Math.max(1, parseInt(process.env.LEAD_DAILY_LIMIT, 10) || 250);
+const LEAD_DAILY_MAX = 100000;
 const LEAD_SEND_START_HOUR = 9;  // IST — don't message strangers early morning…
 const LEAD_SEND_END_HOUR = 21;   // …or late at night.
 
@@ -6784,10 +6786,11 @@ function summarizeAnalysis(rows) {
 async function campaignContext() {
   const sent = await sentLast24hTotal();
   const hour = istHour();
+  const dailyLimit = await getDailyLimit();
   return {
-    dailyLimit: LEAD_DAILY_LIMIT,
+    dailyLimit,
     sentLast24h: sent,
-    remainingToday: Math.max(0, LEAD_DAILY_LIMIT - sent),
+    remainingToday: Math.max(0, dailyLimit - sent),
     withinSendHours: hour >= LEAD_SEND_START_HOUR && hour < LEAD_SEND_END_HOUR,
     inviteTemplateReady: !!(MSG91_CONFIGURED && MSG91_LEAD_TEMPLATE_NAME),
     offerTemplateReady: !!(MSG91_CONFIGURED && MSG91_AD_TEMPLATE_NAME),
@@ -6869,6 +6872,21 @@ async function setAutoQueue(on) {
   autoQueueCache = !!on;
   await AppSetting.updateOne({ key: 'leadAutoQueue' }, { value: !!on }, { upsert: true });
 }
+// How many campaign messages (invites + offers) may go out per rolling 24 hours — set by the admin.
+let dailyLimitCache = null;
+async function getDailyLimit() {
+  if (dailyLimitCache === null) {
+    const row = await AppSetting.findOne({ key: 'leadDailyLimit' }).lean();
+    const v = row ? parseInt(row.value, 10) : NaN;
+    dailyLimitCache = v >= 1 ? Math.min(LEAD_DAILY_MAX, v) : LEAD_DAILY_DEFAULT;
+  }
+  return dailyLimitCache;
+}
+async function setDailyLimit(n) {
+  dailyLimitCache = Math.min(LEAD_DAILY_MAX, Math.max(1, parseInt(n, 10) || LEAD_DAILY_DEFAULT));
+  await AppSetting.updateOne({ key: 'leadDailyLimit' }, { value: dailyLimitCache }, { upsert: true });
+  return dailyLimitCache;
+}
 
 function startLeadJob(items, by) {
   leadJob = { running: true, total: items.length, sent: 0, failed: 0, invites: 0, offers: 0, errors: [], startedAt: new Date(), finishedAt: null, by };
@@ -6896,7 +6914,7 @@ async function processLeadQueue(by) {
   if (hour < LEAD_SEND_START_HOUR || hour >= LEAD_SEND_END_HOUR) return { started: false, reason: 'Outside sending hours.' };
   // A send interrupted by a restart: don't risk a duplicate — mark it failed (retry from the page).
   await Lead.updateMany({ status: 'sending', updatedAt: { $lt: new Date(Date.now() - 30 * 60000) } }, { status: 'failed', lastError: 'Interrupted by a server restart — use "Retry failed" to send again' });
-  const room = LEAD_DAILY_LIMIT - await sentLast24hTotal();
+  const room = (await getDailyLimit()) - await sentLast24hTotal();
   if (room <= 0) return { started: false, reason: 'Daily limit reached.' };
   const items = await nextQueueBatch(room);
   if (!items.length) return { started: false, reason: 'Queue is empty.' };
@@ -6914,8 +6932,32 @@ setInterval(async () => {
 
 async function queueStatus() {
   const [waiting, failed] = await Promise.all([Lead.countDocuments({ status: 'new' }), Lead.countDocuments({ status: 'failed' })]);
-  return { autoQueue: await getAutoQueue(), waiting, failed, daysToFinish: waiting ? Math.ceil(waiting / LEAD_DAILY_LIMIT) : 0 };
+  const perDay = await getDailyLimit();
+  return { autoQueue: await getAutoQueue(), perDay, waiting, failed, daysToFinish: waiting ? Math.ceil(waiting / perDay) : 0 };
 }
+
+// Admin sets how many campaign messages go out per day. Raising it starts sending the extra
+// right away (if auto-send is on and it's within sending hours).
+app.post('/api/admin/leads/daily-limit', adminAuth, async (req, res) => {
+  try {
+    const n = parseInt(req.body?.limit, 10);
+    if (!(n >= 1 && n <= LEAD_DAILY_MAX)) return res.status(400).json({ message: `Enter a number between 1 and ${LEAD_DAILY_MAX.toLocaleString('en-IN')}.` });
+    const before = await getDailyLimit();
+    const limit = await setDailyLimit(n);
+    console.log(`🤖 Campaign daily limit ${before} → ${limit} by ${req.admin?.username || 'admin'}`);
+    let kicked = null;
+    if (limit > before && await getAutoQueue()) kicked = await processLeadQueue('auto queue');
+    const q = await queueStatus();
+    res.json({
+      message: `Saved — up to ${limit.toLocaleString('en-IN')} contacts a day.` +
+        (kicked?.started ? ` Sending the next ${kicked.count} now.` : '') +
+        (q.waiting ? ` The ${q.waiting.toLocaleString('en-IN')} waiting will take about ${q.daysToFinish} day${q.daysToFinish === 1 ? '' : 's'}.` : ''),
+      limit, queue: q
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
 
 app.post('/api/admin/leads/auto', adminAuth, async (req, res) => {
   try {
@@ -7057,7 +7099,7 @@ app.post('/api/admin/leads/campaign', adminAuth, async (req, res) => {
       queue = [...offerItems, ...inviteItems];
       const all = offers.length + invites.length;
       const waitingAfter = (await Lead.countDocuments({ status: 'new' })) - inviteItems.length;
-      if (waitingAfter > 0) notes.push(`${waitingAfter.toLocaleString('en-IN')} contact${waitingAfter === 1 ? '' : 's'} in the queue` + ((await getAutoQueue()) ? ` — they go out automatically, about ${LEAD_DAILY_LIMIT} a day (≈ ${Math.ceil(waitingAfter / LEAD_DAILY_LIMIT)} day${Math.ceil(waitingAfter / LEAD_DAILY_LIMIT) === 1 ? '' : 's'}).` : '. Auto-send is OFF — turn it on or press "Send now" each day.'));
+      if (waitingAfter > 0) notes.push(`${waitingAfter.toLocaleString('en-IN')} contact${waitingAfter === 1 ? '' : 's'} in the queue` + ((await getAutoQueue()) ? ` — they go out automatically, about ${ctx.dailyLimit} a day (≈ ${Math.ceil(waitingAfter / ctx.dailyLimit)} day${Math.ceil(waitingAfter / ctx.dailyLimit) === 1 ? '' : 's'}).` : '. Auto-send is OFF — turn it on or press "Send now" each day.'));
       if (!all && !queue.length) return res.status(400).json({ message: 'Nobody in this list needs a message right now — see the reasons in the table.' + (notes.length ? ' ' + notes.join(' ') : '') });
     }
 

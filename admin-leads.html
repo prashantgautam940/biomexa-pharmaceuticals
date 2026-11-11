@@ -79,6 +79,11 @@ td .err { color: var(--danger); font-size: .74rem; margin-top: 3px; max-width: 3
 .p-stopped { background: #f1f1f4; color: #55596a; border: 1px dashed #b9bdc9; }
 .n-stopped .num { color: #55596a; }
 td.ck, th.ck { width: 28px; } td.ck input, th.ck input { width: 16px; height: 16px; cursor: pointer; }
+.perday { margin-top: 1rem; padding: .8rem 1rem; background: rgba(255,255,255,.65); border: 1px solid #cfe9d9; border-radius: 12px; }
+.perday label { display: block; font-size: .9rem; margin-bottom: .45rem; }
+.perday-row { display: flex; gap: .45rem; align-items: center; flex-wrap: wrap; }
+.perday-row input { width: 120px; text-align: center; font-weight: 700; font-size: 1.05rem; padding: .45rem .5rem; }
+.perday small { display: block; color: var(--muted); font-size: .78rem; margin-top: .45rem; }
 .more { text-align: center; color: var(--muted); font-size: .82rem; padding: .8rem 0 .2rem; display: flex; gap: .6rem; justify-content: center; align-items: center; flex-wrap: wrap; }
 .qpos { font-size: .72rem; color: var(--muted); margin-top: 3px; }
 .dbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; background: var(--inner, #f4f7fb); border-radius: 12px; padding: 10px 12px; margin-bottom: 12px; font-size: .84rem; }
@@ -163,6 +168,17 @@ details summary { cursor: pointer; font-weight: 700; color: var(--navy); font-si
         <input type="checkbox" id="autoToggle" onchange="toggleAuto(this.checked)">
         <span class="slider"></span><span class="switch-lbl" id="autoLbl">Auto-send</span>
       </label>
+    </div>
+    <div class="perday">
+      <label for="perDay"><b>Contacts per day</b></label>
+      <div class="perday-row">
+        <button type="button" class="btn ghost sm" onclick="stepPerDay(-50)" aria-label="50 fewer">−</button>
+        <input type="number" id="perDay" min="1" max="100000" step="1" inputmode="numeric">
+        <button type="button" class="btn ghost sm" onclick="stepPerDay(50)" aria-label="50 more">+</button>
+        <button type="button" class="btn sm" id="perDayBtn" onclick="savePerDay()"><i class="fas fa-check"></i> Save</button>
+      </div>
+      <small id="perDayHint">How many invites + offers go out automatically each day (9 AM – 9 PM). Keep it at or below your WhatsApp limit in Meta → Messaging limits (now 250; 2,000 after the upgrade) and leave room for dose reminders.</small>
+      <div id="perDayResult" class="result"></div>
     </div>
     <div style="display:flex;gap:.6rem;flex-wrap:wrap;margin-top:.9rem">
       <button class="btn wa sm" id="waitBtn" onclick="sendWaiting(false)"><i class="fab fa-whatsapp"></i> Send now</button>
@@ -682,6 +698,31 @@ function renderQueue() {
       ? `Oldest uploads go first. Up to <b>${d.dailyLimit}</b> are invited automatically every day between 9 AM and 9 PM — about <b>${qd.daysToFinish} day${qd.daysToFinish === 1 ? '' : 's'}</b> to finish. ` + (d.withinSendHours ? (today ? `${today} more can go today.` : 'Today\'s limit is used — it continues as the 24-hour limit frees up.') : 'Next sending starts at 9 AM.')
       : 'Auto-send is OFF. Press <b>Send now</b> each day, or turn auto-send on.';
   if (!leadJobRunning) document.getElementById('waitBtn').disabled = !today || !d.withinSendHours || !qd.waiting;
+  const pd = document.getElementById('perDay');
+  if (document.activeElement !== pd && !pd.dataset.dirty) pd.value = d.dailyLimit;
+}
+
+// ---------- contacts per day (admin-set daily limit) ----------
+function stepPerDay(delta) {
+  const pd = document.getElementById('perDay');
+  pd.value = Math.max(1, Math.min(100000, (parseInt(pd.value, 10) || 0) + delta));
+  pd.dataset.dirty = '1';
+}
+document.addEventListener('input', e => { if (e.target && e.target.id === 'perDay') e.target.dataset.dirty = '1'; });
+function savePerDay() {
+  const pd = document.getElementById('perDay');
+  const n = parseInt(pd.value, 10);
+  if (!(n >= 1 && n <= 100000)) return showResult('perDayResult', 'err', 'Enter a number between 1 and 100,000.');
+  if (n > 2000 && !confirm(`${n.toLocaleString('en-IN')} a day is more than WhatsApp's 2,000 tier. Messages above your Meta limit fail and can lower your quality rating. Save anyway?`)) return;
+  if (n > 250 && n <= 2000 && n > data.dailyLimit && !confirm(`Only raise this above 250 once Meta → Messaging limits shows 2,000. Has it been upgraded?`)) return;
+  const btn = document.getElementById('perDayBtn'); btn.disabled = true;
+  post('/api/admin/leads/daily-limit', { limit: n })
+    .then(({ ok, d }) => {
+      showResult('perDayResult', ok ? 'ok' : 'err', d.message);
+      if (ok) { delete pd.dataset.dirty; load(true); }
+    })
+    .catch(e => showResult('perDayResult', 'err', e.message))
+    .finally(() => { btn.disabled = false; });
 }
 
 
