@@ -78,6 +78,9 @@ td .err { color: var(--danger); font-size: .74rem; margin-top: 3px; max-width: 3
 .bulkbar { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; background: #eef3fb; border: 1px solid #cfd8e6; border-radius: 12px; padding: .6rem .8rem; margin-bottom: .8rem; position: sticky; top: 8px; z-index: 5; }
 .p-stopped { background: #f1f1f4; color: #55596a; border: 1px dashed #b9bdc9; }
 .n-stopped .num { color: #55596a; }
+.p-undeliverable { background: #fdecec; color: #9b1c1c; }
+.n-undeliverable .num { color: #9b1c1c; }
+.p-notdel { background: #fff4e0; color: #8a5300; }
 td.ck, th.ck { width: 28px; } td.ck input, th.ck input { width: 16px; height: 16px; cursor: pointer; }
 .perday { margin-top: 1rem; padding: .8rem 1rem; background: rgba(255,255,255,.65); border: 1px solid #cfe9d9; border-radius: 12px; }
 .perday label { display: block; font-size: .9rem; margin-bottom: .45rem; }
@@ -303,6 +306,7 @@ Reply STOP to stop these messages.</div>
       <button class="stat n-optout" data-f="optout" onclick="setFilter('optout')"><div class="lbl"><i class="fas fa-ban"></i> Opted out</div><div class="num" id="c-optout">–</div></button>
       <button class="stat n-failed" data-f="failed" onclick="setFilter('failed')"><div class="lbl"><i class="fas fa-triangle-exclamation"></i> Failed</div><div class="num" id="c-failed">–</div></button>
       <button class="stat n-stopped" data-f="stopped" onclick="setFilter('stopped')"><div class="lbl"><i class="fas fa-circle-pause"></i> Stopped</div><div class="num" id="c-stopped">–</div></button>
+      <button class="stat n-undeliverable" data-f="undeliverable" onclick="setFilter('undeliverable')" title="WhatsApp could not deliver to these numbers — they are not sent again"><div class="lbl"><i class="fas fa-phone-slash"></i> Undeliverable</div><div class="num" id="c-undeliverable">–</div></button>
     </div>
     <details class="addone" id="addBox">
       <summary><i class="fas fa-user-plus"></i> Add one contact by hand</summary>
@@ -354,7 +358,10 @@ let plan = null;      // result of /analyze
 let csvText = '';
 let filter = 'all', group = 'all';
 let pollTimer = null;
-const LABEL = { new: 'Waiting', sent: 'Invited', failed: 'Failed', replied: 'Replied START', joined: 'Joined', optout: 'Opted out', stopped: 'Stopped', sending: 'Sending…' };
+const LABEL = { new: 'Waiting', sent: 'Invited', failed: 'Failed', replied: 'Replied START', joined: 'Joined', optout: 'Opted out', stopped: 'Stopped', sending: 'Sending…', undeliverable: 'Undeliverable' };
+// An invite MSG91 accepted but WhatsApp didn't deliver is not "Invited".
+const statusLabel = l => l.status === 'sent' && l.delivery === 'failed' ? 'Not delivered' : (LABEL[l.status] || l.status);
+const statusClass = l => l.status === 'sent' && l.delivery === 'failed' ? 'notdel' : l.status;
 const GLABEL = { offer: 'Patient offer', invite: 'New-contact invite', skipped: 'Skipped' };
 
 // Network blips (or the server waking up) make fetch throw — retry reads twice before giving up.
@@ -898,7 +905,7 @@ function render() {
     rows.map(l => `<tr>
       <td class="ck"><input type="checkbox" ${selected.has(l.id) ? 'checked' : ''} onchange="sel('${l.id}', this.checked)"></td>
       <td><b>${esc(l.name || '—')}</b></td><td>${esc(l.phone)}</td><td>${esc(l.source || '')}</td>
-      <td><span class="pill p-${l.status}">${LABEL[l.status] || l.status}</span>${l.status === 'new' && l.queuePos ? `<div class="qpos">#${l.queuePos} in queue</div>` : ''}${l.status === 'failed' && l.lastError ? `<div class="err">${esc(l.lastError.slice(0, 160))}</div>` : ''}</td>
+      <td><span class="pill p-${statusClass(l)}">${statusLabel(l)}</span>${l.status === 'new' && l.queuePos ? `<div class="qpos">#${l.queuePos} in queue</div>` : ''}${['failed', 'undeliverable'].includes(l.status) && l.lastError ? `<div class="err">${esc(l.lastError.slice(0, 160))}</div>` : ''}</td>
       <td>${fmt(l.sentAt)}</td>
       <td>${l.sentAt ? `<span class="pill p-d-${deliveryOf(l) || 'none'}">${DLABEL[deliveryOf(l)]}</span>${l.deliveryError ? `<div class="err">${esc(l.deliveryError.slice(0, 160))}</div>` : ''}` : ''}</td>
       <td>${fmt(l.repliedAt)}</td>
@@ -958,7 +965,7 @@ function exportCsv() {
   authFetch('/api/admin/leads?' + params).then(r => r.json()).then(d => {
     const rows = d.leads || [];
     downloadBlob(`biomexa-contacts-${filter}.csv`, 'name,number,source,status,invited_at,whatsapp_delivery,delivery_error,replied_at\n' +
-      rows.map(l => [l.name, l.phone, l.source, LABEL[l.status] || l.status, l.sentAt || '', l.sentAt ? DLABEL[deliveryOf(l)] : '', l.deliveryError || '', l.repliedAt || ''].map(q).join(',')).join('\n'));
+      rows.map(l => [l.name, l.phone, l.source, statusLabel(l), l.sentAt || '', l.sentAt ? DLABEL[deliveryOf(l)] : '', l.deliveryError || '', l.repliedAt || ''].map(q).join(',')).join('\n'));
   }).catch(e => alert('Export failed — ' + e.message));
 }
 

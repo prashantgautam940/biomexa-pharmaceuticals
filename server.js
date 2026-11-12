@@ -1651,9 +1651,29 @@ mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/biomexa')
     // Queue order: older contacts have no queueRank, and a missing value sorts before "send first".
     Lead.updateMany({ queueRank: { $exists: false } }, { queueRank: 0 }).then(r => { if (r.modifiedCount) console.log(`🔢 Queue order set on ${r.modifiedCount} contacts`); }).catch(() => {});
     Lead.collection.createIndex({ status: 1, queueRank: 1, createdAt: 1, _id: 1 }).catch(() => {});
+    // Invites already sent count as one attempt.
+    Lead.updateMany({ inviteAttempts: { $in: [null, 0] }, sentAt: { $ne: null } }, { inviteAttempts: 1 }).catch(() => {});
+    cleanPlaceNames().catch(e => console.log('⚠️ name cleanup error:', e.message));
     setTimeout(() => syncDeliveryFromMsg91('startup').catch(() => {}), 60 * 1000);
   })
   .catch(err => console.log('❌ MongoDB connection error:', err.message));
+
+// Contacts uploaded before the place-column check got an area ("CENTRAL DELHI") as their name,
+// which would make the sign-up message say "Hi CENTRAL". A name shared by 20+ contacts, or one made
+// of place words, is cleared (and kept as the city when the contact has none).
+async function cleanPlaceNames() {
+  const groups = await Lead.aggregate([{ $match: { name: { $nin: [null, ''] } } }, { $group: { _id: { $toLower: '$name' }, n: { $sum: 1 } } }, { $match: { n: { $gte: 20 } } }]);
+  const bad = groups.filter(g => g._id && (PLACE_WORDS.test(g._id) || g.n >= 100)).map(g => g._id);
+  let fixed = 0;
+  for (const nm of bad) {
+    const rx = new RegExp('^' + nm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$', 'i');
+    const city = nm.replace(/\b\w/g, x => x.toUpperCase());
+    const a = await Lead.updateMany({ name: rx, city: { $in: [null, ''] } }, { name: '', city });
+    const b = await Lead.updateMany({ name: rx }, { name: '' });
+    fixed += a.modifiedCount + b.modifiedCount;
+  }
+  if (fixed) console.log(`🧹 Cleared place names on ${fixed} contacts (${bad.slice(0, 5).join(', ')})`);
+}
 
 // ONE-OFF (safe to delete after 11 Nov 2026): the 9 Nov 11 AM biomexa_care_offer run was rejected
 // by Meta (3 params sent, template has 2) but those patients were still marked as sent, which would
@@ -4196,6 +4216,28 @@ async function applyDeliveryToLead(r, at) {
   return !!set;
 }
 
+// Invited contacts whose message WhatsApp did not deliver shouldn't stay "Invited":
+//  • 131026 / 130472 (number not on WhatsApp, or can't receive business messages, or it is part of
+//    Meta's experiment) → "Undeliverable" — never queued again.
+//  • 131049 (Meta held a marketing message back "to keep a healthy ecosystem") → back to the END of
+//    the queue for ONE more try, but only 3+ days after the first one.
+//  • anything else (low MSG91 balance, a temporary error…) → "Failed", so "Retry failed" can resend it.
+const UNDELIVERABLE_RX = /131026|130472|undeliverable|not (a )?(valid )?whatsapp|not on whatsapp|incapable|experiment/i;
+const HELD_BACK_RX = /131049|healthy ecosystem|ecosystem/i;
+async function classifyUndelivered() {
+  const base = { status: 'sent', delivery: 'failed' };
+  const a = await Lead.updateMany({ ...base, deliveryError: UNDELIVERABLE_RX }, { status: 'undeliverable', lastError: 'WhatsApp could not deliver to this number' });
+  const old = new Date(Date.now() - 3 * 86400000);
+  const b = await Lead.updateMany({ ...base, deliveryError: HELD_BACK_RX, sentAt: { $lt: old }, inviteAttempts: { $lt: 2 } },
+    { status: 'new', queueRank: Date.now(), lastError: 'Meta held the first invite back — one more try' });
+  const c = await Lead.updateMany({ ...base, deliveryError: { $not: HELD_BACK_RX } }, { status: 'failed', lastError: 'WhatsApp did not deliver — use "Retry failed" to send again' });
+  // Held back twice: stop trying, the number gets no more marketing for now.
+  const d = await Lead.updateMany({ ...base, deliveryError: HELD_BACK_RX, inviteAttempts: { $gte: 2 } }, { status: 'undeliverable', lastError: 'Meta held the invite back twice' });
+  const n = a.modifiedCount + b.modifiedCount + c.modifiedCount + d.modifiedCount;
+  if (n) console.log(`📮 Undelivered invites sorted: ${a.modifiedCount + d.modifiedCount} undeliverable · ${b.modifiedCount} re-queued for one more try · ${c.modifiedCount} marked failed`);
+  return n;
+}
+
 // ===== Real delivery data from MSG91's own logs (no webhook needed) =====
 // MSG91 keeps every WhatsApp message with its status. Every 2 hours (and on demand from
 // Admin → Campaigns) the last 3 days of logs are read with the server's auth key, campaign contacts
@@ -4259,6 +4301,7 @@ async function syncDeliveryFromMsg91(why) {
       for (let i = 0; i < ops.length; i += 1000) await Lead.bulkWrite(ops.slice(i, i + 1000), { ordered: false });
       applied = changed.size;
     }
+    await classifyUndelivered().catch(e => console.log('⚠️ undelivered sort error:', e.message));
     msg91Report = {
       at: new Date(), from: ymdIST(from), to: ymdIST(to), total, byStatus, applied,
       byTemplate: Object.entries(byTemplate).map(([name, c]) => ({ name, ...c, total: Object.values(c).reduce((a, b) => a + b, 0) })).sort((a, b) => b.total - a.total),
@@ -4294,7 +4337,7 @@ app.post('/api/webhooks/msg91-whatsapp-report', async (req, res) => {
       if (!r.digits || r.digits.length < 10 || !r.status) { console.log('⚠️ Unrecognised delivery report:', JSON.stringify(raw).substring(0, 300)); continue; }
       await WaReport.create(r).catch(() => {});
       if (r.status === 'failed') console.log(`❌ WhatsApp not delivered to …${r.digits.slice(-4)}${r.template ? ` (${r.template})` : ''}: ${r.reason || 'no reason given'}`);
-      await applyDeliveryToLead(r);
+      if (await applyDeliveryToLead(r) && r.status === 'failed') await classifyUndelivered().catch(() => {});
     }
   } catch (err) {
     console.log('⚠️ Delivery report error:', err.message);
@@ -6306,7 +6349,8 @@ const Lead = mongoose.model('Lead', new mongoose.Schema({
   name: { type: String, default: '' },
   phone: { type: String, required: true, unique: true }, // canonical 91XXXXXXXXXX
   source: { type: String, default: '' },                  // e.g. "Dr Sharma clinic", "Pharmacy camp"
-  status: { type: String, enum: ['new', 'sending', 'sent', 'failed', 'replied', 'joined', 'optout', 'stopped'], default: 'new', index: true }, // stopped = held by admin, never auto-invited
+  status: { type: String, enum: ['new', 'sending', 'sent', 'failed', 'replied', 'joined', 'optout', 'stopped', 'undeliverable'], default: 'new', index: true }, // stopped = held by admin, never auto-invited; undeliverable = WhatsApp can't reach this number
+  inviteAttempts: { type: Number, default: 0 }, // invites accepted by MSG91 for this contact (used to allow one retry when Meta held it back)
   sentAt: Date,
   repliedAt: Date,
   joinedAt: Date,
@@ -6455,7 +6499,7 @@ async function runLeadCampaign(items) {
       const fresh = await Lead.findOneAndUpdate({ _id: item.leadId, status: { $in: ['new', 'failed'] } }, { status: 'sending' }, { new: true }).lean();
       if (!fresh) continue;
       r = await sendLeadTemplate(fresh.phone, fresh.segment);
-      if (r.ok) await Lead.updateOne({ _id: fresh._id }, { status: 'sent', sentAt: new Date(), lastError: '', templateUsed: r.template, delivery: 'sent', deliveryError: '', deliveryAt: null });
+      if (r.ok) await Lead.updateOne({ _id: fresh._id }, { $set: { status: 'sent', sentAt: new Date(), lastError: '', templateUsed: r.template, delivery: 'sent', deliveryError: '', deliveryAt: null }, $inc: { inviteAttempts: 1 } });
       else await Lead.updateOne({ _id: fresh._id }, { status: 'failed', lastError: r.error });
       if (r.ok) leadJob.invites++;
     } else {
@@ -6743,6 +6787,19 @@ const COLUMN_ROLES = [
   ['language', /language|\blang\b/]
 ];
 
+const PLACE_WORDS = /\b(delhi|mumbai|kolkata|chennai|bengaluru|bangalore|hyderabad|pune|noida|gurgaon|gurugram|ghaziabad|faridabad|lucknow|jaipur|north|south|east|west|central|new|old|district|nagar|city|road|sector|colony|vihar|enclave|block|tehsil|village|market|india|pradesh|state)\b/i;
+// True when a column picked as "name" holds the same few values over and over, or mostly place
+// words — i.e. it is a location / area column, not people's names.
+function nameColumnLooksWrong(values) {
+  const vals = values.map(v => v.toLowerCase().replace(/\s+/g, ' ')).filter(Boolean);
+  if (vals.length < 5) return false;
+  const freq = new Map();
+  vals.forEach(v => freq.set(v, (freq.get(v) || 0) + 1));
+  const top = Math.max(...freq.values());
+  const placey = vals.filter(v => PLACE_WORDS.test(v)).length;
+  return (vals.length >= 10 && top / vals.length > 0.3) || freq.size / vals.length < 0.2 || placey / vals.length > 0.5;
+}
+
 function parseContactsCsv(csv) {
   const rows = parseCsvText(csv);
   if (!rows.length) throw new Error('The file is empty.');
@@ -6800,6 +6857,12 @@ function parseContactsCsv(csv) {
     const n = pick(isName, t);
     if (n >= 0 && score(n, isName) >= sample.length * 0.3) cols.name = n;
   }
+  // A "name" column that is really a place (e.g. every row says "CENTRAL DELHI"): real names
+  // are mostly different from each other and don't read like areas. Use it as the city instead.
+  if (cols.name !== undefined && cols.name >= 0 && nameColumnLooksWrong(sample.map(r => String(r[cols.name] || '').trim()))) {
+    if (cols.city === undefined || cols.city < 0) cols.city = cols.name;
+    delete cols.name;
+  }
   const get = (r, role) => cols[role] !== undefined && cols[role] >= 0 ? String(r[cols[role]] || '').trim() : '';
   return {
     columns: Object.fromEntries(Object.entries(cols).filter(([, i]) => i >= 0).map(([role, i]) => [role, hasHeader ? String(rows[0][i]).trim() : `column ${i + 1}`])),
@@ -6849,6 +6912,7 @@ async function analyzeContacts(contacts, gapDays) {
     const lead = leads.get(phone);
     if (lead && lead.status === 'optout') out.push({ ...base, group: 'skipped', phone, reason: 'Replied STOP to our invite' });
     else if (lead && lead.status === 'joined') out.push({ ...base, group: 'skipped', phone, reason: 'Already signed up' });
+    else if (lead && lead.status === 'undeliverable') out.push({ ...base, group: 'skipped', phone, reason: 'WhatsApp could not deliver to this number before' });
     else if (lead && lead.sentAt && lead.sentAt > cutoff) out.push({ ...base, group: 'skipped', phone, reason: `Already invited on ${fmt(lead.sentAt)}` });
     else {
       const tpl = leadTemplateFor(profile.segment);
@@ -6941,7 +7005,7 @@ app.get('/api/admin/leads', adminAuth, async (req, res) => {
       Lead.aggregate([{ $match: { sentAt: { $ne: null } } }, { $group: { _id: { $ifNull: ['$delivery', ''] }, n: { $sum: 1 } } }]),
       campaignContext()
     ]);
-    const counts = { new: 0, sent: 0, failed: 0, replied: 0, joined: 0, optout: 0, stopped: 0 };
+    const counts = { new: 0, sent: 0, failed: 0, replied: 0, joined: 0, optout: 0, stopped: 0, undeliverable: 0 };
     grouped.forEach(g => { if (g._id in counts) counts[g._id] = g.n; });
     const delivery = { read: 0, delivered: 0, sent: 0, failed: 0, '': 0 };
     dgroup.forEach(g => { delivery[g._id in delivery ? g._id : ''] += g.n; });
@@ -6959,7 +7023,7 @@ app.get('/api/admin/leads', adminAuth, async (req, res) => {
     res.status(500).json({ message: err.message });
   }
 });
-const LABEL_STATUSES = ['new', 'sending', 'sent', 'failed', 'replied', 'joined', 'optout', 'stopped'];
+const LABEL_STATUSES = ['new', 'sending', 'sent', 'failed', 'replied', 'joined', 'optout', 'stopped', 'undeliverable'];
 
 // ========== Automatic invite queue ==========
 // Every upload adds its new contacts to one first-in-first-out queue. While auto-send is ON
