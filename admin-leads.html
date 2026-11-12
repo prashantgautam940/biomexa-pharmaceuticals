@@ -84,6 +84,13 @@ td.ck, th.ck { width: 28px; } td.ck input, th.ck input { width: 16px; height: 16
 .perday-row { display: flex; gap: .45rem; align-items: center; flex-wrap: wrap; }
 .perday-row input { width: 120px; text-align: center; font-weight: 700; font-size: 1.05rem; padding: .45rem .5rem; }
 .perday small { display: block; color: var(--muted); font-size: .78rem; margin-top: .45rem; }
+.wr-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: .6rem; margin: .8rem 0; }
+.wr-tiles > div { border: 1px solid #dde4ef; border-radius: 12px; padding: .7rem .8rem; background: #fff; }
+.wr-tiles span { display: block; font-size: .75rem; color: var(--muted); font-weight: 600; }
+.wr-tiles b { display: block; font-size: 1.5rem; color: var(--navy); margin-top: .15rem; }
+.wr-tiles small { color: var(--muted); font-size: .74rem; }
+.wr-tiles .ok b { color: #11663a; } .wr-tiles .wait b { color: #92600a; } .wr-tiles .bad b { color: var(--danger); }
+.wr-reasons { margin-top: .8rem; font-size: .85rem; } .wr-reasons ul { margin: .3rem 0 0 1.1rem; }
 .more { text-align: center; color: var(--muted); font-size: .82rem; padding: .8rem 0 .2rem; display: flex; gap: .6rem; justify-content: center; align-items: center; flex-wrap: wrap; }
 .qpos { font-size: .72rem; color: var(--muted); margin-top: 3px; }
 .dbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; background: var(--inner, #f4f7fb); border-radius: 12px; padding: 10px 12px; margin-bottom: 12px; font-size: .84rem; }
@@ -183,8 +190,19 @@ details summary { cursor: pointer; font-weight: 700; color: var(--navy); font-si
     <div style="display:flex;gap:.6rem;flex-wrap:wrap;margin-top:.9rem">
       <button class="btn wa sm" id="waitBtn" onclick="sendWaiting(false)"><i class="fab fa-whatsapp"></i> Send now</button>
       <button class="btn ghost sm" id="retryBtn" onclick="sendWaiting(true)" style="display:none"><i class="fas fa-rotate-right"></i> <span id="failN">Retry failed</span></button>
+      <button class="btn del sm" id="stopBtn" onclick="stopSending()" hidden><i class="fas fa-stop"></i> Stop sending now</button>
     </div>
+    <div id="liveJob" class="result info" style="display:none"></div>
     <div id="waitResult" class="result"></div>
+  </div>
+
+  <div class="card" id="waReportCard">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:.6rem;flex-wrap:wrap">
+      <h2 style="margin:0"><i class="fas fa-chart-column"></i> WhatsApp delivery — real data from MSG91</h2>
+      <button class="btn ghost sm" id="waRepBtn" onclick="loadWaReport(true)"><i class="fas fa-rotate"></i> Refresh from MSG91</button>
+    </div>
+    <p class="desc" style="margin-top:.4rem">Every WhatsApp message sent from your number in the last 3 days, as MSG91 recorded it — and each invited contact's "WhatsApp delivery" below is updated from it. <b>Sent</b> = accepted, not yet on the phone · <b>Delivered</b> = on their phone · <b>Read</b> = opened · <b>Failed</b> = WhatsApp did not deliver.</p>
+    <div id="waReport"><div class="loading"><i class="fas fa-spinner fa-spin"></i> Reading MSG91 logs…</div></div>
   </div>
 
   <div class="card">
@@ -313,6 +331,8 @@ Reply STOP to stop these messages.</div>
     <div id="deliveryBar" class="dbar" hidden></div>
     <div id="bulkBar" class="bulkbar" hidden>
       <b id="selN">0 selected</b>
+      <button class="btn ghost sm" onclick="bulk('first')" title="These go out before everyone else"><i class="fas fa-angles-up"></i> Send first</button>
+      <button class="btn ghost sm" onclick="bulk('last')" title="These go out after everyone else"><i class="fas fa-angles-down"></i> Send last</button>
       <button class="btn ghost sm" onclick="bulk('stop')"><i class="fas fa-circle-pause"></i> Stop</button>
       <button class="btn ghost sm" onclick="bulk('resume')"><i class="fas fa-play"></i> Put back in queue</button>
       <button class="btn del sm" onclick="bulk('delete')"><i class="fas fa-trash"></i> Delete</button>
@@ -700,6 +720,56 @@ function renderQueue() {
   if (!leadJobRunning) document.getElementById('waitBtn').disabled = !today || !d.withinSendHours || !qd.waiting;
   const pd = document.getElementById('perDay');
   if (document.activeElement !== pd && !pd.dataset.dirty) pd.value = d.dailyLimit;
+  // A send in progress (auto queue or manual): show it live with a Stop button.
+  const job = d.job, live = document.getElementById('liveJob');
+  const running = !!(job && job.running);
+  document.getElementById('stopBtn').hidden = !running;
+  if (running) {
+    wc.style.display = 'block';
+    live.style.display = 'block';
+    live.textContent = `Sending now (${job.by}): ${job.sent + job.failed} of ${job.total} done — ${job.invites} invites, ${job.offers} offers, ${job.failed} failed.` + (job.cancelRequested ? ' Stopping after the current message…' : '');
+    if (!livePoll) livePoll = setInterval(() => load(true), 3000);
+  } else {
+    if (livePoll) {
+      clearInterval(livePoll); livePoll = null;
+      live.textContent = job && job.cancelled ? `Stopped: ${job.invites} invites and ${job.offers} offers went out before you stopped it. The rest stay in the queue.`
+        : job ? `Finished: ${job.invites} invites and ${job.offers} offers sent, ${job.failed} failed.` : '';
+      setTimeout(() => loadWaReport(false), 1500);
+    } else if (!job || !job.finishedAt) live.style.display = 'none';
+  }
+}
+let livePoll = null;
+function stopSending() {
+  if (!confirm('Stop sending now? Whoever has not been messaged yet stays in the queue.')) return;
+  const b = document.getElementById('stopBtn'); b.disabled = true;
+  post('/api/admin/leads/stop-sending', {}).then(({ ok, d }) => { showResult('waitResult', ok ? 'ok' : 'err', d.message); load(true); })
+    .catch(e => showResult('waitResult', 'err', e.message)).finally(() => { b.disabled = false; });
+}
+
+// ---------- real delivery data from MSG91 logs ----------
+function loadWaReport(refresh) {
+  const el = document.getElementById('waReport'), btn = document.getElementById('waRepBtn');
+  if (refresh) { btn.disabled = true; el.innerHTML = '<div class="loading"><i class="fas fa-spinner fa-spin"></i> Reading MSG91 logs…</div>'; }
+  authFetch('/api/admin/wa-report' + (refresh ? '?refresh=1' : '')).then(r => r.json()).then(r => {
+    if (r.error || r.message) { el.innerHTML = `<div class="empty">Couldn't read MSG91 logs — ${esc(r.error || r.message)}</div>`; return; }
+    const st = r.byStatus || {}, n = k => Number(st[k] || 0).toLocaleString('en-IN');
+    const pct = k => r.total ? Math.round((st[k] || 0) / r.total * 100) + '%' : '';
+    el.innerHTML = `
+      <div class="wr-tiles">
+        <div><span>Sent from your number</span><b>${Number(r.total).toLocaleString('en-IN')}</b><small>${esc(r.from)} → ${esc(r.to)}</small></div>
+        <div class="ok"><span>Read</span><b>${n('read')}</b><small>${pct('read')}</small></div>
+        <div class="ok"><span>Delivered (not read)</span><b>${n('delivered')}</b><small>${pct('delivered')}</small></div>
+        <div class="wait"><span>Sent, not delivered yet</span><b>${n('sent')}</b><small>${pct('sent')}</small></div>
+        <div class="bad"><span>Failed</span><b>${n('failed')}</b><small>${pct('failed')}</small></div>
+      </div>
+      <div class="table-wrap"><table><thead><tr><th>Message (template)</th><th>Total</th><th>Read</th><th>Delivered</th><th>Sent only</th><th>Failed</th></tr></thead><tbody>` +
+      (r.byTemplate || []).map(t => `<tr><td><b>${esc(t.name)}</b></td><td>${t.total}</td><td>${t.read || 0}</td><td>${t.delivered || 0}</td><td>${t.sent || 0}</td><td style="color:${t.failed ? 'var(--danger)' : 'inherit'}">${t.failed || 0}</td></tr>`).join('') +
+      `</tbody></table></div>` +
+      ((r.reasons || []).length ? `<div class="wr-reasons"><b>Why messages failed</b><ul>${r.reasons.map(x => `<li><b>${x.n}×</b> ${esc(x.reason)}</li>`).join('')}</ul></div>` : '') +
+      `<p class="muted" style="font-size:.78rem;margin-top:.6rem">Read from MSG91 at ${new Date(r.at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })} · ${r.applied || 0} contact statuses updated · refreshes every 2 hours.</p>`;
+    if (r.applied) load(true);
+  }).catch(e => { el.innerHTML = `<div class="empty">Couldn't read MSG91 logs — ${esc(e.message)}</div>`; })
+    .finally(() => { btn.disabled = false; });
 }
 
 // ---------- contacts per day (admin-set daily limit) ----------
@@ -832,7 +902,7 @@ function render() {
       <td>${fmt(l.sentAt)}</td>
       <td>${l.sentAt ? `<span class="pill p-d-${deliveryOf(l) || 'none'}">${DLABEL[deliveryOf(l)]}</span>${l.deliveryError ? `<div class="err">${esc(l.deliveryError.slice(0, 160))}</div>` : ''}` : ''}</td>
       <td>${fmt(l.repliedAt)}</td>
-      <td style="white-space:nowrap">${['new', 'failed'].includes(l.status) ? `<button class="btn ghost sm" title="Stop — don't invite" onclick="bulk('stop', ['${l.id}'])"><i class="fas fa-circle-pause"></i></button> ` : l.status === 'stopped' ? `<button class="btn ghost sm" title="Put back in the queue" onclick="bulk('resume', ['${l.id}'])"><i class="fas fa-play"></i></button> ` : ''}<button class="btn del sm" title="Delete" onclick="del('${l.id}')"><i class="fas fa-trash"></i></button></td>
+      <td style="white-space:nowrap">${l.status === 'new' ? `<button class="btn ghost sm" title="Send first" onclick="bulk('first', ['${l.id}'])"><i class="fas fa-angles-up"></i></button> <button class="btn ghost sm" title="Send last" onclick="bulk('last', ['${l.id}'])"><i class="fas fa-angles-down"></i></button> ` : ''}${['new', 'failed'].includes(l.status) ? `<button class="btn ghost sm" title="Stop — don't invite" onclick="bulk('stop', ['${l.id}'])"><i class="fas fa-circle-pause"></i></button> ` : l.status === 'stopped' ? `<button class="btn ghost sm" title="Put back in the queue" onclick="bulk('resume', ['${l.id}'])"><i class="fas fa-play"></i></button> ` : ''}<button class="btn del sm" title="Delete" onclick="del('${l.id}')"><i class="fas fa-trash"></i></button></td>
     </tr>`).join('') + '</tbody></table>' +
     `<div class="more">Showing ${rows.length.toLocaleString('en-IN')} of ${Number(data.total || rows.length).toLocaleString('en-IN')}${filter === 'new' ? ' — in queue order, next to be sent first' : ''}` +
     (data.total > rows.length ? ` · <button class="btn ghost sm" onclick="showMore()">Show 300 more</button>` : '') + `</div>`;
@@ -893,6 +963,7 @@ function exportCsv() {
 }
 
 load();
+loadWaReport(false);
 </script>
 </body>
 </html>

@@ -1648,6 +1648,10 @@ mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/biomexa')
     console.log('✅ MongoDB connected');
     await bootstrapAdmin();
     await resetFailedOffers_2026_11_09();
+    // Queue order: older contacts have no queueRank, and a missing value sorts before "send first".
+    Lead.updateMany({ queueRank: { $exists: false } }, { queueRank: 0 }).then(r => { if (r.modifiedCount) console.log(`🔢 Queue order set on ${r.modifiedCount} contacts`); }).catch(() => {});
+    Lead.collection.createIndex({ status: 1, queueRank: 1, createdAt: 1, _id: 1 }).catch(() => {});
+    setTimeout(() => syncDeliveryFromMsg91('startup').catch(() => {}), 60 * 1000);
   })
   .catch(err => console.log('❌ MongoDB connection error:', err.message));
 
@@ -4174,6 +4178,111 @@ function normaliseReport(r) {
     requestId: pick('requestId', 'request_id', 'uuid', 'messageId')
   };
 }
+// Update the campaign contact this report is about, if any. Only moves forward (sent → delivered →
+// read); a failure is recorded unless the message already arrived. `at` = when the message was sent
+// (from MSG91 logs) so a report about an older message never overwrites a newer invite.
+async function applyDeliveryToLead(r, at) {
+  if (!r || !r.digits || !r.status) return false;
+  const q = { phone: { $regex: r.digits + '$' }, sentAt: { $ne: null } };
+  if (at) q.sentAt = { $ne: null, $lte: new Date(at.getTime() + 10 * 60000) };
+  const lead = await Lead.findOne(q).select('delivery templateUsed').lean();
+  if (!lead) return false;
+  if (r.template && lead.templateUsed && r.template !== lead.templateUsed) return false; // a different message to this number
+  const cur = lead.delivery;
+  let set = null;
+  if (r.status === 'failed') { if (!cur || cur === 'sent' || cur === 'failed') set = { delivery: 'failed', deliveryError: r.reason || 'WhatsApp did not deliver this message' }; }
+  else if (!cur || cur === 'failed' || DELIVERY_RANK[r.status] > (DELIVERY_RANK[cur] || 0)) set = { delivery: r.status, deliveryError: '' };
+  if (set) await Lead.updateOne({ _id: lead._id }, { ...set, deliveryAt: new Date() });
+  return !!set;
+}
+
+// ===== Real delivery data from MSG91's own logs (no webhook needed) =====
+// MSG91 keeps every WhatsApp message with its status. Every 2 hours (and on demand from
+// Admin → Campaigns) the last 3 days of logs are read with the server's auth key, campaign contacts
+// get their Delivered / Read / Failed status, and a summary is kept for the admin page.
+let msg91Report = null; // { at, from, to, total, byStatus, byTemplate, reasons, applied, error }
+let msg91LogKeysShown = false;
+function ymdIST(d) { return new Date(d.getTime() + 330 * 60000).toISOString().slice(0, 10); }
+async function syncDeliveryFromMsg91(why) {
+  if (!MSG91_CONFIGURED) return null;
+  const to = new Date(), from = new Date(Date.now() - 2 * 86400000);
+  try {
+    const url = `https://control.msg91.com/api/v5/report/logs/wa?startDate=${ymdIST(from)}&endDate=${ymdIST(to)}&limit=10000`;
+    const res = await fetch(url, { headers: { authkey: MSG91_AUTH_KEY, accept: 'application/json' }, signal: AbortSignal.timeout(30000) });
+    const body = await res.json().catch(() => ({}));
+    const rows = Array.isArray(body) ? body : Array.isArray(body.data) ? body.data : Array.isArray(body.data?.data) ? body.data.data
+      : Array.isArray(body.logs) ? body.logs : Array.isArray(body.result) ? body.result : null;
+    if (!res.ok || !rows) {
+      const err = body.error || body.errors || body.message || `HTTP ${res.status}`;
+      msg91Report = { at: new Date(), error: String(typeof err === 'string' ? err : JSON.stringify(err)).slice(0, 200) };
+      console.log('⚠️ MSG91 logs read failed:', msg91Report.error, '· response keys:', Object.keys(body || {}).join(','));
+      return msg91Report;
+    }
+    if (!msg91LogKeysShown && rows[0]) { msg91LogKeysShown = true; console.log('ℹ️ MSG91 log fields:', Object.keys(rows[0]).join(',')); }
+    const byStatus = {}, byTemplate = {}, reasons = {};
+    let total = 0, applied = 0;
+    // Invited contacts by number (last 10 digits) — one query, not one per log row.
+    const invited = await Lead.find({ sentAt: { $ne: null } }).select('phone sentAt delivery templateUsed').lean();
+    const leadByKey = new Map(invited.map(l => [last10(l.phone), { ...l }]));
+    const changed = new Map();
+    // Oldest first so the newest status for a number wins.
+    rows.sort((x, y) => new Date(x.sentTime || x.createdAt || x.requestedAt || 0) - new Date(y.sentTime || y.createdAt || y.requestedAt || 0));
+    for (const raw of rows) {
+      const dir = String(raw.direction || raw.type || raw.messageDirection || '').toLowerCase();
+      if (dir.includes('inbound') || dir === 'in') continue;
+      const r = normaliseReport(raw);
+      const rawStatus = String(raw.status || raw.deliveryStatus || raw.eventName || raw.deliveryReport || '').toLowerCase();
+      if (!r.status) r.status = /fail|undeliver|reject|error/.test(rawStatus) ? 'failed' : /read/.test(rawStatus) ? 'read' : /deliver/.test(rawStatus) ? 'delivered' : /sent|submit/.test(rawStatus) ? 'sent' : '';
+      if (!r.reason) r.reason = String(raw.failureReason || raw.failure_reason || raw.reason || raw.errorReason || '').trim();
+      const st = r.status || 'unknown';
+      total++;
+      byStatus[st] = (byStatus[st] || 0) + 1;
+      const t = r.template || String(raw.templateName || raw.template_name || 'text / other');
+      byTemplate[t] = byTemplate[t] || { sent: 0, delivered: 0, read: 0, failed: 0, unknown: 0 };
+      byTemplate[t][st] = (byTemplate[t][st] || 0) + 1;
+      if (st === 'failed' && r.reason) reasons[r.reason.slice(0, 160)] = (reasons[r.reason.slice(0, 160)] || 0) + 1;
+      const atRaw = raw.sentTime || raw.sentAt || raw.requestedAt || raw.createdAt || raw.created_at || raw.date || raw.timestamp || raw.submittedAt;
+      const at = atRaw ? new Date(atRaw) : null;
+      const lead = r.digits && r.status ? leadByKey.get(r.digits) : null;
+      if (lead && !(at && !isNaN(at) && new Date(lead.sentAt) > new Date(at.getTime() + 10 * 60000))
+          && !(r.template && lead.templateUsed && r.template !== lead.templateUsed)) {
+        const cur = lead.delivery;
+        let set = null;
+        if (r.status === 'failed') { if (!cur || cur === 'sent' || cur === 'failed') set = { delivery: 'failed', deliveryError: r.reason || 'WhatsApp did not deliver this message' }; }
+        else if (!cur || cur === 'failed' || DELIVERY_RANK[r.status] > (DELIVERY_RANK[cur] || 0)) set = { delivery: r.status, deliveryError: '' };
+        if (set && (set.delivery !== cur || set.deliveryError !== (lead.deliveryError || ''))) { Object.assign(lead, set); changed.set(String(lead._id), set); }
+      }
+    }
+    if (changed.size) {
+      const now = new Date();
+      const ops = [...changed].map(([id, set]) => ({ updateOne: { filter: { _id: id }, update: { $set: { ...set, deliveryAt: now } } } }));
+      for (let i = 0; i < ops.length; i += 1000) await Lead.bulkWrite(ops.slice(i, i + 1000), { ordered: false });
+      applied = changed.size;
+    }
+    msg91Report = {
+      at: new Date(), from: ymdIST(from), to: ymdIST(to), total, byStatus, applied,
+      byTemplate: Object.entries(byTemplate).map(([name, c]) => ({ name, ...c, total: Object.values(c).reduce((a, b) => a + b, 0) })).sort((a, b) => b.total - a.total),
+      reasons: Object.entries(reasons).map(([reason, n]) => ({ reason, n })).sort((a, b) => b.n - a.n).slice(0, 8)
+    };
+    const f = k => byStatus[k] || 0;
+    console.log(`📊 WhatsApp (MSG91 logs ${msg91Report.from} → ${msg91Report.to}, ${why}): ${total} outbound · read ${f('read')} · delivered ${f('delivered')} · sent ${f('sent')} · failed ${f('failed')}${f('unknown') ? ` · unknown ${f('unknown')}` : ''} · ${applied} contact statuses updated`);
+    msg91Report.byTemplate.slice(0, 8).forEach(t => console.log(`   • ${t.name}: ${t.total} — read ${t.read}, delivered ${t.delivered}, sent ${t.sent}, failed ${t.failed}`));
+    msg91Report.reasons.forEach(x => console.log(`   ✗ ${x.n}× ${x.reason}`));
+    return msg91Report;
+  } catch (err) {
+    msg91Report = { at: new Date(), error: err.message };
+    console.log('⚠️ MSG91 logs read error:', err.message);
+    return msg91Report;
+  }
+}
+setInterval(() => { if (mongoose.connection.readyState === 1) syncDeliveryFromMsg91('every 2 h').catch(() => {}); }, 2 * 3600 * 1000);
+app.get('/api/admin/wa-report', adminAuth, async (req, res) => {
+  try {
+    if (req.query.refresh === '1' || !msg91Report || Date.now() - new Date(msg91Report.at) > 2 * 3600 * 1000) await syncDeliveryFromMsg91('admin');
+    res.json(msg91Report || { error: 'MSG91 not configured' });
+  } catch (err) { res.status(500).json({ message: err.message }); }
+});
+
 app.post('/api/webhooks/msg91-whatsapp-report', async (req, res) => {
   if (MSG91_REPORT_TOKEN && req.query.token !== MSG91_REPORT_TOKEN) return res.status(403).json({ message: 'Bad token' });
   res.status(200).json({ received: true });
@@ -4185,15 +4294,7 @@ app.post('/api/webhooks/msg91-whatsapp-report', async (req, res) => {
       if (!r.digits || r.digits.length < 10 || !r.status) { console.log('⚠️ Unrecognised delivery report:', JSON.stringify(raw).substring(0, 300)); continue; }
       await WaReport.create(r).catch(() => {});
       if (r.status === 'failed') console.log(`❌ WhatsApp not delivered to …${r.digits.slice(-4)}${r.template ? ` (${r.template})` : ''}: ${r.reason || 'no reason given'}`);
-      // Update the campaign contact, if this number is one. Only move forward (sent → delivered → read);
-      // a failure is recorded unless the message already arrived.
-      const lead = await Lead.findOne({ phone: { $regex: r.digits + '$' }, sentAt: { $ne: null } }).select('delivery').lean();
-      if (!lead) continue;
-      const cur = lead.delivery;
-      let set = null;
-      if (r.status === 'failed') { if (!cur || cur === 'sent' || cur === 'failed') set = { delivery: 'failed', deliveryError: r.reason || 'WhatsApp did not deliver this message' }; }
-      else if (!cur || cur === 'failed' || DELIVERY_RANK[r.status] > (DELIVERY_RANK[cur] || 0)) set = { delivery: r.status, deliveryError: '' };
-      if (set) await Lead.updateOne({ _id: lead._id }, { ...set, deliveryAt: new Date() });
+      await applyDeliveryToLead(r);
     }
   } catch (err) {
     console.log('⚠️ Delivery report error:', err.message);
@@ -6196,6 +6297,8 @@ const SIGNUP_SITE_URL = (process.env.SIGNUP_SITE_URL || 'https://biomexapharmace
 // The admin sets the daily number in Admin → Campaigns ("Contacts per day"); this is only the default.
 const LEAD_DAILY_DEFAULT = Math.max(1, parseInt(process.env.LEAD_DAILY_LIMIT, 10) || 250);
 const LEAD_DAILY_MAX = 100000;
+// Queue order: admin's "send first / send last" choices, then oldest upload first.
+const LEAD_QUEUE_SORT = { queueRank: 1, createdAt: 1, _id: 1 };
 const LEAD_SEND_START_HOUR = 9;  // IST — don't message strangers early morning…
 const LEAD_SEND_END_HOUR = 21;   // …or late at night.
 
@@ -6221,6 +6324,8 @@ const Lead = mongoose.model('Lead', new mongoose.Schema({
   language: { type: String, default: 'en' },                // 'hi' when the list shows Hindi
   templateUsed: String,
   // WhatsApp delivery of the invite, from MSG91's "On Outbound Report Received" webhook.
+  // Queue order set by the admin: negative = "send first", positive = "send last", 0 = upload order.
+  queueRank: { type: Number, default: 0 },
   delivery: { type: String, enum: ['sent', 'delivered', 'read', 'failed'] },
   deliveryAt: Date,
   deliveryError: String,
@@ -6342,6 +6447,7 @@ let leadJob = { running: false, total: 0, sent: 0, failed: 0, invites: 0, offers
 //        { kind: 'offer', patientId, gapDays } → biomexa_care_offer template (existing patient)
 async function runLeadCampaign(items) {
   for (const item of items) {
+    if (leadJob.cancelRequested) { leadJob.cancelled = true; console.log(`⏹ Campaign stopped by admin after ${leadJob.sent} sent`); break; }
     let r = { ok: false, error: 'skipped' };
     if (item.kind === 'invite') {
       // Re-check: they may have replied STOP or signed up since the list was analysed.
@@ -6825,7 +6931,7 @@ app.get('/api/admin/leads', adminAuth, async (req, res) => {
       filter.$or = [{ name: rx }, { source: rx }, { city: rx }, { medicine: rx }, ...(digits.length >= 3 ? [{ phone: { $regex: digits } }] : [])];
     }
     // Waiting → queue order (next to be sent first). Everything else → latest activity first.
-    const sort = status === 'new' ? { createdAt: 1, _id: 1 }
+    const sort = status === 'new' ? LEAD_QUEUE_SORT
       : status === 'replied' ? { repliedAt: -1 } : status === 'joined' ? { joinedAt: -1 }
       : status === 'optout' ? { optedOutAt: -1 } : status === 'all' ? { updatedAt: -1 } : { sentAt: -1, updatedAt: -1 };
     const [grouped, leads, total, dgroup, ctx] = await Promise.all([
@@ -6842,7 +6948,7 @@ app.get('/api/admin/leads', adminAuth, async (req, res) => {
     // Queue position of waiting contacts on this page.
     let queuePos = new Map();
     if (leads.some(l => l.status === 'new')) {
-      queuePos = new Map((await Lead.find({ status: 'new' }).sort({ createdAt: 1, _id: 1 }).select('_id').lean()).map((l, i) => [String(l._id), i + 1]));
+      queuePos = new Map((await Lead.find({ status: 'new' }).sort(LEAD_QUEUE_SORT).select('_id').lean()).map((l, i) => [String(l._id), i + 1]));
     }
     res.json({
       counts, delivery, total, skip, limit, ...ctx, job: leadJob, queue: await queueStatus(),
@@ -6889,7 +6995,7 @@ async function setDailyLimit(n) {
 }
 
 function startLeadJob(items, by) {
-  leadJob = { running: true, total: items.length, sent: 0, failed: 0, invites: 0, offers: 0, errors: [], startedAt: new Date(), finishedAt: null, by };
+  leadJob = { running: true, total: items.length, sent: 0, failed: 0, invites: 0, offers: 0, errors: [], startedAt: new Date(), finishedAt: null, by, cancelRequested: false, cancelled: false };
   runLeadCampaign(items)
     .catch(err => console.log('⚠️ Campaign error:', err.message))
     .finally(() => {
@@ -6903,7 +7009,7 @@ async function nextQueueBatch(room, retryFailed = false) {
   if (room <= 0) return [];
   await syncJoinedLeads();
   const statuses = retryFailed ? ['new', 'failed'] : ['new'];
-  const batch = await Lead.find({ status: { $in: statuses } }).sort({ createdAt: 1, _id: 1 }).limit(room).select('_id').lean();
+  const batch = await Lead.find({ status: { $in: statuses } }).sort(LEAD_QUEUE_SORT).limit(room).select('_id').lean();
   return batch.map(l => ({ kind: 'invite', leadId: l._id }));
 }
 
@@ -6959,9 +7065,21 @@ app.post('/api/admin/leads/daily-limit', adminAuth, async (req, res) => {
   }
 });
 
+// "Stop sending now": halts the campaign that is sending right now. Contacts not reached stay in the queue.
+app.post('/api/admin/leads/stop-sending', adminAuth, async (req, res) => {
+  if (!leadJob.running) return res.json({ message: 'Nothing is sending right now.', job: leadJob });
+  leadJob.cancelRequested = true;
+  console.log(`⏹ Stop sending requested by ${req.admin?.username || 'admin'}`);
+  for (let i = 0; i < 20 && leadJob.running; i++) await new Promise(r => setTimeout(r, 250));
+  const left = await Lead.countDocuments({ status: 'new' });
+  res.json({ message: `Stopped after ${leadJob.sent} message${leadJob.sent === 1 ? '' : 's'}. ${left.toLocaleString('en-IN')} contacts stay waiting in the queue.`, job: leadJob });
+});
+
 app.post('/api/admin/leads/auto', adminAuth, async (req, res) => {
   try {
     await setAutoQueue(req.body?.enabled === true);
+    // Turning auto-send OFF also stops a send that is in progress (after the current message).
+    if (req.body?.enabled !== true && leadJob.running) leadJob.cancelRequested = true;
     let kicked = null;
     if (req.body?.enabled === true) kicked = await processLeadQueue('auto queue');
     console.log(`🤖 Auto queue turned ${req.body?.enabled === true ? 'ON' : 'OFF'} by ${req.admin?.username || 'admin'}`);
@@ -7271,11 +7389,18 @@ app.post('/api/admin/leads/bulk', adminAuth, async (req, res) => {
     if (action === 'stop') r = await Lead.updateMany({ _id: { $in: ids }, status: { $in: ['new', 'failed'] } }, { status: 'stopped' });
     else if (action === 'resume') r = await Lead.updateMany({ _id: { $in: ids }, status: 'stopped' }, { status: 'new', lastError: '' });
     else if (action === 'delete') r = await Lead.deleteMany({ _id: { $in: ids }, status: { $ne: 'sending' } });
+    else if (action === 'first' || action === 'last') {
+      // Each new "first" goes ahead of earlier "first" picks; each new "last" goes behind earlier "last" picks.
+      // Stopped/failed contacts picked here are put back in the queue at that position.
+      const rank = action === 'first' ? -Date.now() : Date.now();
+      r = await Lead.updateMany({ _id: { $in: ids }, status: { $in: ['new', 'failed', 'stopped'] } }, { status: 'new', queueRank: rank, lastError: '' });
+    }
+    else if (action === 'normal') r = await Lead.updateMany({ _id: { $in: ids }, status: 'new' }, { queueRank: 0 });
     else return res.status(400).json({ message: 'Unknown action.' });
     const n = r.modifiedCount ?? r.deletedCount ?? 0;
     const skipped = ids.length - n;
-    const verb = { stop: 'stopped', resume: 'put back in the queue', delete: 'deleted' }[action];
-    res.json({ message: `${n} contact${n === 1 ? '' : 's'} ${verb}.` + (skipped ? ` ${skipped} skipped (${action === 'stop' ? 'already invited, replied or opted out' : action === 'resume' ? 'not stopped' : 'being sent right now'}).` : ''), changed: n });
+    const verb = { stop: 'stopped', resume: 'put back in the queue', delete: 'deleted', first: 'moved to the front of the queue (sent first)', last: 'moved to the end of the queue (sent last)', normal: 'returned to upload order' }[action];
+    res.json({ message: `${n} contact${n === 1 ? '' : 's'} ${verb}.` + (skipped ? ` ${skipped} skipped (${action === 'stop' ? 'already invited, replied or opted out' : action === 'resume' ? 'not stopped' : action === 'delete' ? 'being sent right now' : 'already invited, replied or opted out'}).` : ''), changed: n });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
