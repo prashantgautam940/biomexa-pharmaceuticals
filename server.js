@@ -7470,6 +7470,31 @@ app.post('/api/admin/leads/bulk', adminAuth, async (req, res) => {
   }
 });
 
+// Admin fills in / corrects a contact's details (name, city, medicine, language).
+app.patch('/api/admin/leads/:id', adminAuth, async (req, res) => {
+  try {
+    const clean = (v, n) => String(v ?? '').replace(/[\r\n"]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, n);
+    const lead = await Lead.findById(req.params.id);
+    if (!lead) return res.status(404).json({ message: 'Contact not found.' });
+    const b = req.body || {};
+    if ('name' in b) {
+      const name = clean(b.name, 60);
+      if (name && !/^[A-Za-z\u0900-\u097F][A-Za-z\u0900-\u097F .'-]*$/.test(name)) return res.status(400).json({ message: 'Name can only have letters, spaces, dots and hyphens.' });
+      lead.name = name;
+    }
+    if ('city' in b) lead.city = clean(b.city, 60);
+    if ('medicine' in b) {
+      const p = leadProfile({ medicine: clean(b.medicine, 60), condition: lead.condition, language: lead.language === 'hi' ? 'hindi' : 'english' });
+      lead.medicine = p.medicine; lead.segment = p.segment;
+    }
+    if (b.language === 'hi' || b.language === 'en') lead.language = b.language;
+    await lead.save();
+    res.json({ message: 'Contact updated.' });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
 app.delete('/api/admin/leads/:id', adminAuth, async (req, res) => {
   try {
     const r = await Lead.deleteOne({ _id: req.params.id });
