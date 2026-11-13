@@ -82,6 +82,17 @@ td .err { color: var(--danger); font-size: .74rem; margin-top: 3px; max-width: 3
 td .sub { font-size: .78rem; color: var(--muted); }
 .editlink { background: none; border: 0; padding: 2px 0; color: #1a6fd1; font-size: .78rem; cursor: pointer; }
 .editlink:hover { text-decoration: underline; }
+#clearDlg { position: fixed; inset: 0; margin: auto; height: fit-content; border: 0; border-radius: 14px; padding: 0; width: min(460px, 94vw); box-shadow: 0 20px 60px rgba(0,0,0,.25); }
+#clearDlg::backdrop { background: rgba(15,20,40,.45); }
+#clearDlg form { padding: 20px; display: grid; gap: 12px; }
+#clearDlg h3 { margin: 0; font-size: 1.05rem; }
+#clearDlg label { display: grid; gap: 4px; font-size: .85rem; font-weight: 600; }
+#clearDlg label.ck2 { display: flex; gap: 8px; align-items: center; font-weight: 400; }
+#clearDlg input#clrTxt { padding: 10px; border: 1px solid #d5d9e2; border-radius: 8px; font: inherit; font-weight: 400; }
+#clearDlg .row { display: flex; gap: 8px; justify-content: flex-end; }
+.balbox { margin-top: .8rem; display: flex; gap: 1.2rem; align-items: baseline; flex-wrap: wrap; }
+.balbox .amt { font-size: 2rem; font-weight: 800; color: #0f6b3a; }
+.balbox .amt.low { color: #b42318; }
 #editDlg { position: fixed; inset: 0; margin: auto; height: fit-content; border: 0; border-radius: 14px; padding: 0; width: min(440px, 94vw); box-shadow: 0 20px 60px rgba(0,0,0,.25); }
 #editDlg::backdrop { background: rgba(15,20,40,.45); }
 #editDlg form { padding: 20px; display: grid; gap: 12px; }
@@ -206,10 +217,29 @@ details summary { cursor: pointer; font-weight: 700; color: var(--navy); font-si
       <button class="btn wa sm" id="waitBtn" onclick="sendWaiting(false)"><i class="fab fa-whatsapp"></i> Send now</button>
       <button class="btn ghost sm" id="retryBtn" onclick="sendWaiting(true)" style="display:none"><i class="fas fa-rotate-right"></i> <span id="failN">Retry failed</span></button>
       <button class="btn del sm" id="stopBtn" onclick="stopSending()" hidden><i class="fas fa-stop"></i> Stop sending now</button>
+      <button class="btn del sm" onclick="openClear()"><i class="fas fa-trash-can"></i> Delete all waiting contacts</button>
     </div>
     <div id="liveJob" class="result info" style="display:none"></div>
     <div id="waitResult" class="result"></div>
   </div>
+
+  <div class="card" id="balCard">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:.6rem;flex-wrap:wrap">
+      <h2 style="margin:0"><i class="fas fa-wallet"></i> MSG91 WhatsApp balance</h2>
+      <button class="btn ghost sm" id="balBtn" onclick="loadBalance()"><i class="fas fa-rotate"></i> Check balance</button>
+    </div>
+    <div id="balBox" class="balbox"><span class="muted">Press <b>Check balance</b> to see how much WhatsApp credit is left.</span></div>
+  </div>
+
+  <dialog id="clearDlg"><form onsubmit="doClear(event)">
+    <h3><i class="fas fa-triangle-exclamation" style="color:#b42318"></i> Delete all waiting contacts?</h3>
+    <p style="margin:0;font-size:.9rem">This deletes <b id="clrN">all</b> contacts still <b>Waiting</b> in the queue, so you can upload a fresh list. Sending stops first. Invited, replied, joined and opted-out contacts are kept — so nobody is messaged twice or after STOP.</p>
+    <label class="ck2"><input type="checkbox" id="clrStopped"> Also delete <b>Stopped</b> contacts (<span id="clrS">0</span>)</label>
+    <label class="ck2"><input type="checkbox" id="clrFailed"> Also delete <b>Failed</b> contacts (<span id="clrF">0</span>)</label>
+    <label><span>Type <b>DELETE</b> to confirm</span> <input id="clrTxt" autocomplete="off" placeholder="DELETE"></label>
+    <div id="clrMsg" class="emsg"></div>
+    <div class="row"><button type="button" class="btn ghost" onclick="document.getElementById('clearDlg').close()">Cancel</button><button class="btn del" id="clrBtn">Delete</button></div>
+  </form></dialog>
 
   <div class="card" id="waReportCard">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:.6rem;flex-wrap:wrap">
@@ -969,6 +999,48 @@ function addOne() {
     .finally(() => { btn.disabled = false; });
 }
 
+function openClear() {
+  const c = (data && data.counts) || {};
+  document.getElementById('clrN').textContent = (c.new || 0).toLocaleString('en-IN');
+  document.getElementById('clrS').textContent = (c.stopped || 0).toLocaleString('en-IN');
+  document.getElementById('clrF').textContent = (c.failed || 0).toLocaleString('en-IN');
+  ['clrStopped', 'clrFailed'].forEach(id => document.getElementById(id).checked = false);
+  document.getElementById('clrTxt').value = '';
+  document.getElementById('clrMsg').textContent = '';
+  document.getElementById('clearDlg').showModal();
+}
+async function doClear(ev) {
+  ev.preventDefault();
+  const msg = document.getElementById('clrMsg'), btn = document.getElementById('clrBtn');
+  if (document.getElementById('clrTxt').value.trim().toUpperCase() !== 'DELETE') { msg.textContent = 'Type DELETE to confirm.'; msg.className = 'emsg bad'; return; }
+  btn.disabled = true; msg.textContent = 'Deleting…'; msg.className = 'emsg';
+  try {
+    const res = await authFetch('/api/admin/leads/clear-queue', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+      confirm: 'DELETE', includeStopped: document.getElementById('clrStopped').checked, includeFailed: document.getElementById('clrFailed').checked }) });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(j.message || 'Could not delete.');
+    document.getElementById('clearDlg').close();
+    const w = document.getElementById('waitResult'); w.textContent = j.message; w.className = 'result ok';
+    selected.clear(); load(true);
+  } catch (e) { msg.textContent = e.message; msg.className = 'emsg bad'; }
+  finally { btn.disabled = false; }
+}
+async function loadBalance() {
+  const box = document.getElementById('balBox'), btn = document.getElementById('balBtn');
+  btn.disabled = true; box.innerHTML = '<span class="muted"><i class="fas fa-spinner fa-spin"></i> Asking MSG91…</span>';
+  try {
+    const res = await authFetch('/api/admin/msg91-balance');
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(j.message || 'Could not read the balance.');
+    const amt = Number(j.balance), cur = j.currency === 'INR' || !j.currency ? '₹' : j.currency + ' ';
+    const low = amt < 200;
+    box.innerHTML = `<span class="amt${low ? ' low' : ''}">${cur}${amt.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+      <span class="muted">WhatsApp prepaid credit${j.planStatus ? ` · plan ${esc(j.planStatus)}` : ''} · checked ${new Date(j.at).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })}</span>
+      ${low ? '<span style="color:#b42318;font-weight:600">Low — top up in MSG91 so invites and dose reminders don\'t fail.</span>' : ''}`;
+  } catch (e) { box.innerHTML = `<span style="color:#b42318">${esc(e.message)}</span>`; }
+  finally { btn.disabled = false; }
+}
+
 function openEdit(id) {
   const l = data.leads.find(x => x.id === id); if (!l) return;
   editId = id;
@@ -1021,6 +1093,7 @@ function exportCsv() {
 
 load();
 loadWaReport(false);
+loadBalance();
 </script>
 </body>
 </html>

@@ -7132,6 +7132,54 @@ app.post('/api/admin/leads/daily-limit', adminAuth, async (req, res) => {
 });
 
 // "Stop sending now": halts the campaign that is sending right now. Contacts not reached stay in the queue.
+// Delete every contact still waiting in the queue (status "new"), so a fresh list can be uploaded.
+// Optional: also the Stopped and Failed ones. Invited / replied / joined / opted-out contacts are
+// kept — they hold the history that stops people being messaged twice or after STOP.
+app.post('/api/admin/leads/clear-queue', adminAuth, async (req, res) => {
+  try {
+    if (req.body?.confirm !== 'DELETE') return res.status(400).json({ message: 'Type DELETE to confirm.' });
+    if (leadJob.running) {
+      leadJob.cancelRequested = true;
+      for (let i = 0; i < 40 && leadJob.running; i++) await new Promise(r => setTimeout(r, 250));
+    }
+    const statuses = ['new', ...(req.body?.includeStopped ? ['stopped'] : []), ...(req.body?.includeFailed ? ['failed'] : [])];
+    const r = await Lead.deleteMany({ status: { $in: statuses } });
+    console.log(`🗑 Queue cleared by ${req.admin?.username || 'admin'}: ${r.deletedCount} contacts deleted (${statuses.join(', ')})`);
+    res.json({ deleted: r.deletedCount, message: `${r.deletedCount.toLocaleString('en-IN')} contact${r.deletedCount === 1 ? '' : 's'} deleted. The queue is empty — upload your fresh list.` });
+  } catch (err) { res.status(500).json({ message: err.message }); }
+});
+
+// MSG91 WhatsApp prepaid balance for the Biomexa number (what each WhatsApp message is paid from).
+app.get('/api/admin/msg91-balance', adminAuth, async (req, res) => {
+  if (!MSG91_CONFIGURED) return res.status(400).json({ message: 'MSG91 is not set up on the server.' });
+  const num = String(MSG91_INTEGRATED_NUMBER).replace(/\D/g, '');
+  const call = async body => {
+    const r = await fetch('https://control.msg91.com/api/v5/subscriptions/fetchPrepaidBalance', {
+      method: 'POST', headers: { authkey: MSG91_AUTH_KEY, 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify(body), signal: AbortSignal.timeout(15000)
+    });
+    const j = await r.json().catch(() => ({}));
+    return { ok: r.ok, status: r.status, j };
+  };
+  const findBal = o => {
+    if (!o || typeof o !== 'object') return null;
+    for (const k of ['prepaid_balance', 'prepaidBalance', 'balance', 'wallet_balance']) if (o[k] !== undefined && o[k] !== null && !isNaN(parseFloat(o[k]))) return { v: parseFloat(o[k]), o };
+    for (const v of Object.values(o)) { const f = typeof v === 'object' ? findBal(v) : null; if (f) return f; }
+    return null;
+  };
+  try {
+    let last;
+    for (const body of [{ integrated_number: num, service: 'whatsapp' }, { payload: { integrated_number: num, service: 'whatsapp' } }]) {
+      last = await call(body);
+      const f = last.ok ? findBal(last.j) : null;
+      if (f) return res.json({ balance: f.v, currency: f.o.currency || 'INR', planStatus: f.o.plan_status || f.o.planStatus || '', number: num, at: new Date() });
+    }
+    const err = last.j?.errors || last.j?.message || last.j?.error || `HTTP ${last.status}`;
+    console.log('⚠️ MSG91 balance read failed:', JSON.stringify(last.j).slice(0, 300));
+    res.status(502).json({ message: 'MSG91 did not return a balance: ' + String(typeof err === 'string' ? err : JSON.stringify(err)).slice(0, 200) });
+  } catch (err) { res.status(502).json({ message: 'Could not reach MSG91: ' + err.message }); }
+});
+
 app.post('/api/admin/leads/stop-sending', adminAuth, async (req, res) => {
   if (!leadJob.running) return res.json({ message: 'Nothing is sending right now.', job: leadJob });
   leadJob.cancelRequested = true;
