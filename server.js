@@ -6759,10 +6759,12 @@ function leadWelcomeMessage(lead, phone) {
     `Have a question? Just reply here. — Team Biomexa 💙`;
 }
 
-// Business-initiated WhatsApp messages in the last 24h (lead invites + patient offers) —
-// this is what Meta's daily messaging limit counts.
+// Invites + patient offers sent TODAY (India time, since midnight). "Contacts per day" is a
+// calendar-day budget, so each day's sending starts fresh at 9 AM. (It used to be a rolling 24 h,
+// which pushed each day's start to the time the previous day's batch went out — e.g. 4 PM.)
 async function sentLast24hTotal() {
-  const since = new Date(Date.now() - 24 * 3600000);
+  const ist = new Date(Date.now() + 330 * 60000);
+  const since = new Date(Date.UTC(ist.getUTCFullYear(), ist.getUTCMonth(), ist.getUTCDate()) - 330 * 60000);
   const [a, b] = await Promise.all([
     Lead.countDocuments({ sentAt: { $gte: since } }),
     Patient.countDocuments({ lastAdSentAt: { $gte: since } })

@@ -678,7 +678,7 @@ function renderPlan() {
     : 'Nobody in this list needs a message right now';
   const auto = data.queue ? data.queue.autoQueue : true;
   const days = Math.ceil((later + ahead) / plan.dailyLimit);
-  document.getElementById('limitTxt').textContent = `Daily limit ${plan.dailyLimit} · ${plan.sentLast24h} sent in the last 24h · sends 9 AM–9 PM`
+  document.getElementById('limitTxt').textContent = `Daily limit ${plan.dailyLimit} · ${plan.sentLast24h} sent today · sends 9 AM–9 PM`
     + (later ? (auto ? ` · the queue sends itself every day (≈ ${days} day${days === 1 ? '' : 's'} to finish)` : ' · auto-send is OFF') : '')
     + (!plan.offerTemplateReady && s.offer ? ' · offer template not set up' : '') + (!plan.inviteTemplateReady && s.invite ? ' · invite template not set up' : '')
     + (!plan.withinSendHours ? ' · outside sending hours — everything is queued' : '');
