@@ -163,6 +163,40 @@ tbody tr:hover { background: #f6f8fc !important; }
 .tk-reply textarea { grid-column: 1 / -1; min-height: 70px; padding: 10px; border: 1px solid var(--border); border-radius: 10px; font: inherit; font-size: .88rem; }
 .tk-reply select { padding: 8px 10px; border: 1px solid var(--border); border-radius: 10px; font: inherit; }
 @media (max-width: 600px) { .tk-reply { grid-template-columns: 1fr 1fr; } }
+/* Free trial / plan column + journey report */
+.plan-pill { display: inline-block; padding: 3px 9px; border-radius: 999px; font-size: .74rem; font-weight: 700; white-space: nowrap; }
+.plan-trial { background: #e8f6ee; color: #146c3c; }
+.plan-soon { background: #fff4e0; color: #9a5800; }
+.plan-ended { background: #fdecec; color: var(--danger); }
+.plan-paid { background: #e8eefb; color: var(--primary); }
+.plan-sub { font-size: .72rem; color: var(--text-muted); margin-top: 3px; white-space: nowrap; }
+.jr-btn { padding: 6px 10px; border: 1px solid var(--primary); background: transparent; color: var(--primary); border-radius: 6px; cursor: pointer; margin-right: 6px; font-size: .8rem; white-space: nowrap; }
+.jr-back { position: fixed; inset: 0; background: rgba(19,33,61,.55); z-index: 500; display: flex; align-items: flex-start; justify-content: center; padding: 24px 12px; overflow-y: auto; }
+.jr-box { background: #fff; border-radius: 16px; width: 100%; max-width: 860px; padding: 24px 26px; position: relative; }
+.jr-close { position: absolute; top: 14px; right: 14px; border: 1px solid var(--border); background: #fff; border-radius: 8px; width: 34px; height: 34px; cursor: pointer; font-size: 1rem; }
+.jr-box h2 { font-size: 1.25rem; margin: 0 40px 2px 0; }
+.jr-meta { color: var(--text-muted); font-size: .85rem; margin-bottom: 16px; }
+.jr-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px; margin-bottom: 16px; }
+.jr-tile { border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; }
+.jr-tile .k { font-size: .74rem; color: var(--text-muted); }
+.jr-tile .v { font-size: 1.35rem; font-weight: 800; margin-top: 2px; }
+.jr-tile .s { font-size: .74rem; color: var(--text-muted); margin-top: 2px; }
+.jr-sec { border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; margin-bottom: 12px; }
+.jr-sec h3 { font-size: .95rem; margin-bottom: 8px; }
+.jr-sec table { width: 100%; border-collapse: collapse; font-size: .84rem; }
+.jr-sec th { text-align: left; color: var(--text-muted); font-weight: 600; font-size: .74rem; padding: 4px 6px; border-bottom: 1px solid var(--border); }
+.jr-sec td { padding: 6px; border-bottom: 1px solid var(--border); vertical-align: top; }
+.jr-wa { background: #f1faf4; border: 1px solid #cfe9d9; border-radius: 12px; padding: 12px 14px; white-space: pre-wrap; font-size: .84rem; line-height: 1.45; }
+.jr-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
+.jr-actions .btn { padding: 10px 18px; font-size: .9rem; }
+.jr-actions .btn.ghost { background: #fff; color: var(--primary); border: 1px solid var(--primary); }
+@media print {
+  body > *:not(.jr-back) { display: none !important; }
+  .jr-back { position: static; background: none; padding: 0; }
+  .jr-box { max-width: none; padding: 0; }
+  .jr-close, .jr-actions, .jr-noprint { display: none !important; }
+}
+@media (max-width: 600px) { .jr-box { padding: 18px 14px; } }
 </style>
 <link rel="stylesheet" href="css/biomexa-ui.css">
 <script src="js/biomexa-ui.js" defer></script>
@@ -494,12 +528,13 @@ tbody tr:hover { background: #f6f8fc !important; }
           <th>Risk Score</th>
           <th>AI Label</th>
           <th>Missed</th>
+          <th>Free trial / plan</th>
           <th>Sentiment</th>
           <th>Action</th>
         </tr>
       </thead>
       <tbody id="patientTable">
-        <tr><td colspan="10" class="loading"><i class="fas fa-spinner fa-spin"></i> Loading patient data...</td></tr>
+        <tr><td colspan="11" class="loading"><i class="fas fa-spinner fa-spin"></i> Loading patient data...</td></tr>
       </tbody>
     </table>
   </div>
@@ -1181,13 +1216,13 @@ function loadData() {
     .then(r => r.json())
     .then(data => renderPatients(data))
     .catch(() => {
-      document.getElementById('patientTable').innerHTML = '<tr><td colspan="10" class="empty"><i class="fas fa-exclamation-circle"></i> Failed to load data. Make sure the backend is running.</td></tr>';
+      document.getElementById('patientTable').innerHTML = '<tr><td colspan="11" class="empty"><i class="fas fa-exclamation-circle"></i> Failed to load data. Make sure the backend is running.</td></tr>';
     });
 }
 
 function renderPatients(data) {
   const tb = document.getElementById('patientTable');
-  if (!data.length) { tb.innerHTML = '<tr><td colspan="10" class="empty">No patients in the system yet</td></tr>'; return; }
+  if (!data.length) { tb.innerHTML = '<tr><td colspan="11" class="empty">No patients in the system yet</td></tr>'; return; }
 
   tb.innerHTML = data.map(function(p) {
     const riskClass = p.ai_risk_label === 'Critical' ? 'risk-critical' : p.ai_risk_label === 'High' ? 'risk-high' : 'risk-low';
@@ -1205,10 +1240,103 @@ function renderPatients(data) {
       '<td><span class="risk-badge ' + riskClass + '" title="' + why + '">' + p.ai_risk_label + '</span>' +
         ((p.risk_reasons || []).length ? '<div style="font-size:0.72rem;color:var(--text-muted);margin-top:4px;max-width:220px;line-height:1.3;">' + p.risk_reasons.slice(0, 2).join(' · ') + '</div>' : '') + '</td>' +
       '<td>' + p.missed_doses + '</td>' +
+      '<td>' + planCell(p.access) + '</td>' +
       '<td>' + sentIcon + ' ' + sentiment + '</td>' +
-      '<td><button onclick="deletePatient(\'' + encodeURIComponent(p.phone) + '\', \'' + p.name.replace(/'/g, "\\'") + '\')" title="Delete this patient and all their data" style="padding:6px 10px;border:1px solid var(--danger);background:transparent;color:var(--danger);border-radius:6px;cursor:pointer;"><i class="fas fa-trash"></i></button></td>' +
+      '<td style="white-space:nowrap"><button class="jr-btn" onclick="openJourney(\'' + encodeURIComponent(p.phone) + '\')" title="Journey report and renewal reminder"><i class="fas fa-route"></i> Journey</button><button onclick="deletePatient(\'' + encodeURIComponent(p.phone) + '\', \'' + p.name.replace(/'/g, "\\'") + '\')" title="Delete this patient and all their data" style="padding:6px 10px;border:1px solid var(--danger);background:transparent;color:var(--danger);border-radius:6px;cursor:pointer;"><i class="fas fa-trash"></i></button></td>' +
     '</tr>';
   }).join('');
+}
+
+const jrEsc = t => String(t ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const jrDay = d => d ? new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
+const jrShort = d => d ? new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : '—';
+
+// "Free trial / plan" column: days left in the trial, when it ended, or the paid plan.
+function planCell(a) {
+  if (!a) return '—';
+  if (a.tier === 'subscribed') return '<span class="plan-pill plan-paid">' + jrEsc(a.planName || 'Paid') + '</span><div class="plan-sub">till ' + jrShort(a.expiresAt) + ' · ' + a.daysLeft + 'd left</div>';
+  if (a.tier === 'trial') return '<span class="plan-pill ' + (a.daysLeft <= 5 ? 'plan-soon' : 'plan-trial') + '">Trial · ' + a.daysLeft + ' day' + (a.daysLeft === 1 ? '' : 's') + ' left</span><div class="plan-sub">ends ' + jrShort(a.trialEndsAt) + '</div>';
+  const ago = a.trialEndedDaysAgo;
+  return '<span class="plan-pill plan-ended">' + (a.lastExpiredAt ? 'Plan ended' : 'Trial ended') + '</span><div class="plan-sub">' + jrShort(a.lastExpiredAt || a.trialEndsAt) + (ago != null ? ' · ' + (ago === 0 ? 'today' : ago + 'd ago') : '') + '</div>';
+}
+
+let jrCurrent = null;
+function closeJourney() { const el = document.getElementById('jrModal'); if (el) el.remove(); jrCurrent = null; }
+function openJourney(encodedPhone) {
+  closeJourney();
+  const wrap = document.createElement('div');
+  wrap.className = 'jr-back'; wrap.id = 'jrModal';
+  wrap.innerHTML = '<div class="jr-box"><button class="jr-close" onclick="closeJourney()" aria-label="Close">×</button><div id="jrBody" style="padding:30px;text-align:center;color:var(--text-muted)"><i class="fas fa-spinner fa-spin"></i> Building journey report…</div></div>';
+  wrap.addEventListener('click', e => { if (e.target === wrap) closeJourney(); });
+  document.body.appendChild(wrap);
+  authFetch('/api/admin/patients/' + encodedPhone + '/journey')
+    .then(r => r.json().then(d => ({ ok: r.ok, d })))
+    .then(({ ok, d }) => { if (!ok) throw new Error(d.message || 'Could not load'); jrCurrent = { phone: encodedPhone, data: d }; renderJourney(d); })
+    .catch(e => { document.getElementById('jrBody').innerHTML = '<div style="color:var(--danger)">' + jrEsc(e.message) + '</div>'; });
+}
+
+function renderJourney(j) {
+  const a = j.access, dz = j.doses;
+  const accessTile = a.tier === 'subscribed'
+    ? '<div class="k">Plan</div><div class="v">' + jrEsc(a.planName || 'Paid') + '</div><div class="s">till ' + jrDay(a.expiresAt) + ' · ' + a.planDaysLeft + ' days left</div>'
+    : a.tier === 'trial'
+      ? '<div class="k">Free trial</div><div class="v" style="color:' + (a.trialDaysLeft <= 5 ? '#9a5800' : 'var(--success)') + '">' + a.trialDaysLeft + ' days left</div><div class="s">' + a.trialDays + '-day trial ends ' + jrDay(a.trialEndsAt) + '</div>'
+      : '<div class="k">' + (a.lastExpiredAt ? 'Plan' : 'Free trial') + '</div><div class="v" style="color:var(--danger)">Ended</div><div class="s">' + jrDay(a.lastExpiredAt || a.trialEndsAt) + (a.trialEndedDaysAgo != null ? ' · ' + a.trialEndedDaysAgo + ' days ago' : '') + '</div>';
+  const tiles = [
+    '<div class="jr-tile">' + accessTile + '</div>',
+    '<div class="jr-tile"><div class="k">On Biomexa</div><div class="v">' + j.daysOnPlatform + ' days</div><div class="s">joined ' + jrDay(j.joinedAt) + '</div></div>',
+    '<div class="jr-tile"><div class="k">Doses taken</div><div class="v">' + (dz.adherence == null ? '—' : dz.adherence + '%') + '</div><div class="s">' + dz.taken + ' of ' + dz.due + ' due · ' + dz.missed + ' missed</div></div>',
+    '<div class="jr-tile"><div class="k">Last 30 days</div><div class="v">' + (dz.last30Adherence == null ? '—' : dz.last30Adherence + '%') + '</div><div class="s">' + dz.last30Due + ' doses due · best streak ' + dz.bestStreakDays + 'd</div></div>',
+    '<div class="jr-tile"><div class="k">WhatsApp reminders</div><div class="v">' + dz.remindersSent + '</div><div class="s">dose reminders sent</div></div>',
+    '<div class="jr-tile"><div class="k">Vitals logged</div><div class="v">' + j.vitals.readings + '</div><div class="s">' + j.reports.analysed + ' of ' + j.reports.uploaded + ' reports analysed</div></div>'
+  ].join('');
+
+  const meds = j.medicines.length
+    ? '<table><thead><tr><th>Medicine</th><th>Started</th><th>Course</th><th>Status</th><th>Taken</th></tr></thead><tbody>' + j.medicines.map(m =>
+        '<tr><td><b>' + jrEsc(m.name) + '</b>' + (m.dosage ? '<div style="color:var(--text-muted);font-size:.76rem">' + jrEsc(m.dosage) + (m.time ? ' · ' + jrEsc(m.time) : '') + '</div>' : '') + '</td><td>' + jrDay(m.startDate) + '</td><td>' + (m.durationDays ? m.durationDays + ' days' : 'Ongoing') + (m.endDate ? '<div style="color:var(--text-muted);font-size:.76rem">to ' + jrDay(m.endDate) + '</div>' : '') + '</td><td>' + jrEsc(m.status) + '</td><td>' + (m.adherence == null ? '—' : m.adherence + '% (' + m.taken + '/' + (m.taken + m.missed) + ')') + '</td></tr>').join('') + '</tbody></table>'
+    : '<div style="color:var(--text-muted)">No medicines added yet.</div>';
+
+  const vit = [];
+  if (j.vitals.bp) vit.push('<tr><td>Blood pressure</td><td>' + jrEsc(j.vitals.bp.first) + ' <span style="color:var(--text-muted);font-size:.76rem">(' + jrShort(j.vitals.bp.firstAt) + ')</span></td><td>' + jrEsc(j.vitals.bp.latest) + ' <span style="color:var(--text-muted);font-size:.76rem">(' + jrShort(j.vitals.bp.latestAt) + ')</span></td></tr>');
+  if (j.vitals.sugar) vit.push('<tr><td>Blood sugar (mg/dL)</td><td>' + j.vitals.sugar.first + ' <span style="color:var(--text-muted);font-size:.76rem">(' + jrShort(j.vitals.sugar.firstAt) + ')</span></td><td>' + j.vitals.sugar.latest + ' <span style="color:var(--text-muted);font-size:.76rem">(' + jrShort(j.vitals.sugar.latestAt) + ')</span></td></tr>');
+  const vitals = vit.length ? '<table><thead><tr><th>Vital</th><th>First reading</th><th>Latest reading</th></tr></thead><tbody>' + vit.join('') + '</tbody></table>' : '<div style="color:var(--text-muted)">No BP or sugar readings logged yet.</div>';
+
+  const other = [];
+  other.push('<tr><td>Payments</td><td>' + (j.payments.length ? j.payments.map(p => jrEsc(p.plan) + ' ₹' + p.amount + ' (' + jrShort(p.paidAt) + ')').join(', ') : 'None yet') + '</td></tr>');
+  other.push('<tr><td>Doctor consult requests</td><td>' + (j.doctorConnects.length ? j.doctorConnects.map(c => 'Dr. ' + jrEsc(String(c.doctorName || '').replace(/^dr\.?\s+/i, '')) + ' (' + jrShort(c.at) + ')').join(', ') : 'None') + '</td></tr>');
+  other.push('<tr><td>Support tickets</td><td>' + (j.tickets.length ? j.tickets.map(t => jrEsc(t.ticketNo) + ' — ' + jrEsc(t.subject) + ' (' + jrEsc(t.status) + ')').join('<br>') : 'None') + '</td></tr>');
+
+  const rem = j.renewalReminders.length
+    ? '<table><thead><tr><th>Sent</th><th>By</th><th>Type</th><th>Result</th></tr></thead><tbody>' + j.renewalReminders.map(r =>
+        '<tr><td>' + new Date(r.at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) + '</td><td>' + (r.by === 'admin' ? 'Admin' : 'Automatic') + '</td><td style="font-size:.78rem">' + jrEsc(r.kind) + '</td><td>' + (r.ok ? '<span style="color:var(--success)">Delivered</span>' : '<span style="color:var(--danger)">Failed</span>') + '</td></tr>').join('') + '</tbody></table>'
+    : '<div style="color:var(--text-muted)">No renewal reminders sent yet.</div>';
+
+  const w = j.whatsappPreview;
+  document.getElementById('jrBody').outerHTML = '<div id="jrBody">' +
+    '<h2><i class="fas fa-route" style="color:var(--primary-light)"></i> ' + jrEsc(j.name) + ' — Journey report</h2>' +
+    '<div class="jr-meta">' + jrEsc(j.phone) + (j.city ? ' · ' + jrEsc(j.city) : '') + ' · generated ' + new Date(j.generatedAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) + '</div>' +
+    '<div class="jr-grid">' + tiles + '</div>' +
+    '<div class="jr-sec"><h3>Medicines & courses</h3>' + meds + '</div>' +
+    '<div class="jr-sec"><h3>Vitals: first vs latest</h3>' + vitals + '</div>' +
+    '<div class="jr-sec"><h3>Payments, doctors & support</h3><table><tbody>' + other.join('') + '</tbody></table></div>' +
+    '<div class="jr-sec"><h3>Renewal reminders sent</h3>' + rem + '</div>' +
+    '<div class="jr-sec jr-noprint"><h3>WhatsApp the patient will get</h3>' +
+      '<div style="font-size:.8rem;color:var(--text-muted);margin-bottom:8px">If they messaged Biomexa in the last 24 hours they get this full message; otherwise the approved renewal template with: “' + jrEsc(w.statusLine) + '” and the journey line “' + jrEsc(w.summaryLine) + '”.' + (w.templateConfigured ? '' : ' <b style="color:var(--danger)">MSG91_RENEWAL_TEMPLATE_NAME is not set, so patients outside the 24-hour window may not receive it.</b>') + '</div>' +
+      '<div class="jr-wa">' + jrEsc(w.fullText) + '</div></div>' +
+    '<div class="jr-actions"><button class="btn" id="jrSend" onclick="sendRenewalReminder()"><i class="fab fa-whatsapp"></i> Send renewal reminder</button><button class="btn ghost" onclick="window.print()"><i class="fas fa-print"></i> Print / save PDF</button></div>' +
+  '</div>';
+}
+
+function sendRenewalReminder() {
+  if (!jrCurrent) return;
+  const name = jrCurrent.data.name;
+  if (!confirm('Send the renewal reminder with this journey report to ' + name + ' on WhatsApp?')) return;
+  const btn = document.getElementById('jrSend');
+  btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending…';
+  authFetch('/api/admin/patients/' + jrCurrent.phone + '/renewal-reminder', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+    .then(r => r.json().then(d => ({ ok: r.ok, d })))
+    .then(({ ok, d }) => { alert(d.message || (ok ? 'Sent' : 'Failed')); openJourney(jrCurrent.phone); })
+    .catch(e => { alert(e.message); btn.disabled = false; btn.innerHTML = '<i class="fab fa-whatsapp"></i> Send renewal reminder'; });
 }
 
 function deletePatient(encodedPhone, name) {
@@ -1234,7 +1362,7 @@ function exportCSV() {
 }
 
 function refreshData() {
-  document.getElementById('patientTable').innerHTML = '<tr><td colspan="10" class="loading"><i class="fas fa-spinner fa-spin"></i> Refreshing...</td></tr>';
+  document.getElementById('patientTable').innerHTML = '<tr><td colspan="11" class="loading"><i class="fas fa-spinner fa-spin"></i> Refreshing...</td></tr>';
   loadModelStatus();
   loadData();
 }

@@ -1760,6 +1760,8 @@ const patientSchema = new mongoose.Schema({
   },
   lastSubNoticeKey: String, // which trial/expiry WhatsApp notice was sent last (sent once each)
   broadcastKeys: [String], // one-off broadcasts already sent to this patient (see broadcastTrialExpired)
+  // Every renewal / trial-ended WhatsApp (automatic or sent by an admin from the journey report).
+  renewalReminders: [{ at: { type: Date, default: Date.now }, by: String, kind: String, ok: Boolean }],
   adOptOut: { type: Boolean, default: false },
   createdAt: { type: Date, default: Date.now }
 });
@@ -5537,6 +5539,7 @@ app.post('/api/admin/doctors/:id/:action', adminAuth, async (req, res) => {
 app.get('/api/admin/patients', adminAuth, async (req, res) => {
   try {
     const patients = await Patient.find().limit(200);
+    const all = await Patient.find().select('phone createdAt subscription').lean();
     const data = [];
     for (let i = 0; i < patients.length; i++) {
       const p = patients[i];
@@ -5556,6 +5559,9 @@ app.get('/api/admin/patients', adminAuth, async (req, res) => {
         ai_prediction: r.missChance,
         missed_doses: r.missed,
         doses_logged: r.due,
+        access: (() => { const a = accessFor(all.filter(x => last10(x.phone) === last10(p.phone))); return {
+          tier: a.tier, trialEndsAt: a.trialEndsAt, daysLeft: a.daysLeft, planName: a.planName, expiresAt: a.expiresAt, lastExpiredAt: a.lastExpiredAt,
+          trialEndedDaysAgo: a.tier === 'free' ? dayDiff(localDateStr(a.lastExpiredAt || a.trialEndsAt), localDateStr(new Date())) : null }; })(),
         sentiment: !r.adherenceKnown ? 'neutral' : (r.adherence > 0.8 ? 'positive' : r.adherence < 0.5 ? 'negative' : 'neutral')
       });
     }
@@ -5724,6 +5730,62 @@ app.get('/api/admin/subscriptions', adminAuth, async (req, res) => {
   }
 });
 
+// Journey report for one patient (admin double-check before a renewal reminder).
+async function twinsForPhone(phone) {
+  return Patient.find({ phone: { $in: phoneVariants(phone) } }).select('name phone city createdAt subscription medicines renewalReminders lastSubNoticeKey').lean();
+}
+app.get('/api/admin/patients/:phone/journey', adminAuth, async (req, res) => {
+  try {
+    const twins = await twinsForPhone(req.params.phone);
+    if (!twins.length) return res.status(404).json({ message: 'Patient not found' });
+    const j = await buildPatientJourney(twins);
+    const first = String(j.name || '').trim().split(/\s+/)[0] || 'there';
+    const status = renewalStatusLine(j);
+    res.json({ ...j, whatsappPreview: { statusLine: status, summaryLine: journeySummaryLine(j), fullText: journeyWhatsAppText(j, first, status), templateConfigured: !!MSG91_RENEWAL_TEMPLATE_NAME } });
+  } catch (err) {
+    console.log('❌ Journey report failed:', err.message);
+    res.status(500).json({ message: 'Could not build the journey report — ' + err.message });
+  }
+});
+
+// Admin "Send renewal reminder" — WhatsApp with the patient's journey. Max once per 12 hours per
+// patient so a double-click can't spam them.
+app.post('/api/admin/patients/:phone/renewal-reminder', adminAuth, async (req, res) => {
+  try {
+    const twins = await twinsForPhone(req.params.phone);
+    if (!twins.length) return res.status(404).json({ message: 'Patient not found' });
+    const lastManual = twins.flatMap(x => x.renewalReminders || []).filter(r => r.by === 'admin' && r.ok).sort((x, y) => new Date(y.at) - new Date(x.at))[0];
+    if (lastManual && Date.now() - new Date(lastManual.at) < 12 * 3600e3 && !req.body?.force) {
+      return res.status(429).json({ message: `A renewal reminder was already sent ${Math.round((Date.now() - new Date(lastManual.at)) / 3600e3 * 10) / 10} hours ago. Try again later.` });
+    }
+    const j = await buildPatientJourney(twins);
+    const first = String(j.name || '').trim().split(/\s+/)[0] || 'there';
+    const status = renewalStatusLine(j);
+    const target = twins.find(x => !/\s/.test(x.phone)) || twins[0];
+    const r = await sendSubscriptionNotice(target.phone, first, status, journeySummaryLine(j), journeyWhatsAppText(j, first, status));
+    const ok = !!r?.success;
+    await Patient.updateMany({ _id: { $in: twins.map(x => x._id) } }, { $push: { renewalReminders: { at: new Date(), by: 'admin', kind: `manual-${j.access.tier}`, ok } } });
+    console.log(`💳 Admin renewal reminder → …${last10(target.phone).slice(-4)}: ${ok ? 'sent' : 'failed'} (${r?.provider || ''})`);
+    if (!ok) return res.status(502).json({ message: 'WhatsApp could not be delivered' + (MSG91_RENEWAL_TEMPLATE_NAME ? '.' : ' — the patient is probably outside the 24-hour window and MSG91_RENEWAL_TEMPLATE_NAME is not set on Render.') });
+    res.json({ message: `Renewal reminder sent to ${j.name} on WhatsApp.`, provider: r.provider });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// The patient's own journey (shown on the renew page the WhatsApp links to).
+app.get('/api/patient/journey', auth, async (req, res) => {
+  try {
+    const twins = await twinsForPhone(req.user.phone);
+    if (!twins.length) return res.status(404).json({ message: 'Patient not found' });
+    const j = await buildPatientJourney(twins);
+    delete j.renewalReminders; delete j.tickets;
+    res.json(j);
+  } catch (err) {
+    res.status(500).json({ message: 'Could not load your journey right now — please try again.' });
+  }
+});
+
 // Daily WhatsApp notices (10 AM–8 PM, once a day):
 //   • Trial: nothing during the 25 free days. From day 26 (the day after day 25, counted from
 //     the patient's own sign-up), if they haven't subscribed: "your free trial has ended —
@@ -5735,18 +5797,145 @@ app.get('/api/admin/subscriptions', adminAuth, async (req, res) => {
 // latest due reminder goes out on the next day it runs instead of waiting for the next slot.
 // Every notice also tells the patient where their treatment stands (medicines + adherence).
 let lastSubNoticeRun = null;
-async function treatmentSummaryFor(twins) {
-  const meds = twins.flatMap(x => (x.medicines || []).filter(m => m.active !== false).map(m => m.name)).filter(Boolean);
-  const uniq = [...new Set(meds)];
-  const since = localDateStr(new Date(Date.now() - 30 * 86400000));
-  const phones = twins.map(x => x.phone);
-  const [taken, missed] = await Promise.all([
-    Dose.countDocuments({ patientPhone: { $in: phones }, scheduledDate: { $gte: since }, status: 'taken' }),
-    Dose.countDocuments({ patientPhone: { $in: phones }, scheduledDate: { $gte: since }, status: 'missed' })
+// ========== PATIENT JOURNEY REPORT ==========
+// Everything a patient has experienced on Biomexa, built from their real records across every
+// saved format of their number. Shown to admins (Patients → Journey, to double-check before a
+// renewal reminder), to the patient on the renew page, and summarised in renewal WhatsApps.
+// Adherence uses the shared rule in vitals/adherence.js, so it matches every other screen.
+const fmtDay = d => d ? new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' }) : null;
+async function buildPatientJourney(twins) {
+  const now = new Date();
+  const main = twins.find(x => !/\s/.test(x.phone)) || twins[0];
+  const phones = [...new Set(twins.flatMap(x => phoneVariants(x.phone)))];
+  const joinedAt = new Date(Math.min(...twins.map(x => new Date(x.createdAt || now).getTime())));
+  const a = accessFor(twins);
+  const [doses, vitalsLogs, docs, connects, tickets, payments] = await Promise.all([
+    Dose.find({ patientPhone: { $in: phones } }).select('medicineName scheduledDate scheduledTime status sentReminder').lean(),
+    VitalsLog.find({ patientPhone: { $in: phones } }).sort({ recordedAt: 1 }).lean(),
+    UploadedDocument.find({ patientPhone: { $in: phones } }).select('documentType analysisStatus uploadedAt uploadedByRole').lean(),
+    ConnectRequest.find({ patientPhone: { $in: phones } }).select('doctorName createdAt status').lean(),
+    Ticket.find({ phone: { $in: phones } }).select('ticketNo subject status createdAt').lean(),
+    Payment.find({ patientPhone: { $in: phones }, status: 'paid' }).sort({ paidAt: 1 }).lean()
   ]);
-  const medPart = uniq.length ? `${uniq.length} active medicine${uniq.length > 1 ? 's' : ''} (${uniq.slice(0, 3).join(', ')}${uniq.length > 3 ? '…' : ''})` : 'no active medicines on reminders';
-  const adhPart = taken + missed ? `, ${Math.round(100 * taken / (taken + missed))}% of doses taken in the last 30 days` : '';
-  return medPart + adhPart;
+
+  // Medicines (duplicate records of one medicine across twin accounts merged by name + start day)
+  const medMap = new Map();
+  for (const m of twins.flatMap(x => x.medicines || [])) {
+    const k = `${String(m.name || '').toLowerCase()}|${m.startDate ? localDateStr(m.startDate) : ''}`;
+    if (medMap.has(k)) continue;
+    const ongoing = m.active !== false && (!m.endDate || new Date(m.endDate) > now);
+    medMap.set(k, {
+      name: m.name, dosage: m.dosage || '', time: m.time || '',
+      startDate: m.startDate || null, endDate: m.endDate || m.completedAt || null, durationDays: m.durationDays || null,
+      status: ongoing ? 'ongoing' : m.stoppedByPatient ? 'stopped' : 'completed'
+    });
+  }
+  const medicines = [...medMap.values()].sort((x, y) => new Date(x.startDate || 0) - new Date(y.startDate || 0));
+  for (const m of medicines) {
+    const own = doses.filter(d => String(d.medicineName || '').toLowerCase() === String(m.name || '').toLowerCase()
+      && (!m.startDate || d.scheduledDate >= localDateStr(m.startDate)) && (!m.endDate || d.scheduledDate <= localDateStr(m.endDate)));
+    const s2 = summarizeAdherence(own, now);
+    m.taken = s2.taken; m.missed = s2.missed; m.adherence = s2.pct;
+  }
+
+  // Doses
+  const adh = summarizeAdherence(doses, now);
+  const since30 = localDateStr(new Date(now.getTime() - 29 * 86400000));
+  const last30 = summarizeAdherence(doses.filter(d => d.scheduledDate >= since30), now);
+  const remindersSent = new Set(doses.filter(d => d.sentReminder).map(d => `${String(d.medicineName).toLowerCase()}|${d.scheduledDate}|${d.scheduledTime}`)).size;
+  // Longest run of days on which every due dose was taken
+  const byDay = new Map();
+  for (const r of adh.rows) if (r.outcome !== 'upcoming') { const e = byDay.get(r.dose.scheduledDate) || { t: 0, n: 0 }; e.n++; if (r.outcome === 'taken') e.t++; byDay.set(r.dose.scheduledDate, e); }
+  let best = 0, run = 0, prev = null;
+  for (const day of [...byDay.keys()].sort()) {
+    const full = byDay.get(day).t === byDay.get(day).n;
+    run = full ? (prev && dayDiff(prev, day) === 1 && run ? run + 1 : 1) : 0;
+    best = Math.max(best, run); prev = day;
+  }
+
+  // Vitals: first vs latest real (plausible) reading of each kind
+  const firstLast = {};
+  for (const log of vitalsLogs) {
+    const c = cleanVitals(log).clean;
+    for (const [k, v] of Object.entries(c)) {
+      if (!firstLast[k]) firstLast[k] = { first: v, firstAt: log.recordedAt, n: 0 };
+      firstLast[k].latest = v; firstLast[k].latestAt = log.recordedAt; firstLast[k].n++;
+    }
+  }
+  const bp = firstLast.bpSystolic && firstLast.bpDiastolic ? {
+    first: `${firstLast.bpSystolic.first}/${firstLast.bpDiastolic.first}`, latest: `${firstLast.bpSystolic.latest}/${firstLast.bpDiastolic.latest}`,
+    firstAt: firstLast.bpSystolic.firstAt, latestAt: firstLast.bpSystolic.latestAt, n: firstLast.bpSystolic.n } : null;
+  const sugar = firstLast.glucose ? { first: firstLast.glucose.first, latest: firstLast.glucose.latest, firstAt: firstLast.glucose.firstAt, latestAt: firstLast.glucose.latestAt, n: firstLast.glucose.n } : null;
+
+  const reminders = twins.flatMap(x => x.renewalReminders || []).sort((x, y) => new Date(y.at) - new Date(x.at));
+  const seenR = new Set(); const renewalReminders = reminders.filter(r => { const k = new Date(r.at).getTime() + r.kind; if (seenR.has(k)) return false; seenR.add(k); return true; });
+
+  return {
+    name: main.name, phone: main.phone, city: twins.find(x => x.city)?.city || null,
+    joinedAt, daysOnPlatform: Math.max(1, dayDiff(localDateStr(joinedAt), localDateStr(now)) + 1),
+    access: {
+      tier: a.tier, enforced: a.enforced, trialDays: TRIAL_DAYS, trialEndsAt: a.trialEndsAt,
+      trialDaysLeft: a.tier === 'trial' ? a.daysLeft : 0,
+      trialEndedDaysAgo: a.tier !== 'subscribed' && a.trialEndsAt <= now ? dayDiff(localDateStr(a.trialEndsAt), localDateStr(now)) : null,
+      planName: a.planName, expiresAt: a.expiresAt, planDaysLeft: a.tier === 'subscribed' ? a.daysLeft : 0, lastExpiredAt: a.lastExpiredAt
+    },
+    payments: payments.map(p => ({ plan: SUBSCRIPTION_PLANS[p.plan]?.name || p.plan, amount: p.amount / 100, paidAt: p.paidAt || p.createdAt })),
+    medicines,
+    doses: { remindersSent, taken: adh.taken, missed: adh.missed, due: adh.due, adherence: adh.pct, last30Adherence: last30.pct, last30Due: last30.due, bestStreakDays: best },
+    vitals: { readings: vitalsLogs.length, bp, sugar },
+    reports: { uploaded: docs.length, analysed: docs.filter(d => d.analysisStatus === 'done').length },
+    doctorConnects: connects.map(c => ({ doctorName: c.doctorName, at: c.createdAt })),
+    tickets: tickets.map(t => ({ ticketNo: t.ticketNo, subject: t.subject, status: t.status, at: t.createdAt })),
+    renewalReminders: renewalReminders.slice(0, 20),
+    generatedAt: now
+  };
+}
+
+// One line (fits the renewal template's 300-char {{3}}) summarising the journey.
+function journeySummaryLine(j) {
+  const parts = [`${j.daysOnPlatform} day${j.daysOnPlatform === 1 ? '' : 's'} with Biomexa`];
+  const meds = j.medicines.map(m => m.name).filter(Boolean);
+  if (meds.length) parts.push(`${meds.length} medicine${meds.length > 1 ? 's' : ''} tracked (${meds.slice(0, 2).join(', ')}${meds.length > 2 ? '…' : ''})`);
+  if (j.doses.remindersSent) parts.push(`${j.doses.remindersSent} WhatsApp reminders`);
+  if (j.doses.due) parts.push(`${j.doses.taken} of ${j.doses.due} doses taken (${j.doses.adherence}%)`);
+  if (j.doses.bestStreakDays >= 2) parts.push(`best streak ${j.doses.bestStreakDays} days`);
+  if (j.vitals.bp) parts.push(j.vitals.bp.n > 1 ? `BP ${j.vitals.bp.first} → ${j.vitals.bp.latest}` : `BP ${j.vitals.bp.latest}`);
+  if (j.vitals.sugar) parts.push(j.vitals.sugar.n > 1 ? `sugar ${j.vitals.sugar.first} → ${j.vitals.sugar.latest} mg/dL` : `sugar ${j.vitals.sugar.latest} mg/dL`);
+  if (j.reports.analysed) parts.push(`${j.reports.analysed} report${j.reports.analysed > 1 ? 's' : ''} analysed`);
+  if (j.doctorConnects.length) parts.push(`${j.doctorConnects.length} doctor consult request${j.doctorConnects.length > 1 ? 's' : ''}`);
+  let line = parts.join(', ');
+  if (line.length > 290) line = line.slice(0, 287).replace(/,[^,]*$/, '') + '…';
+  return line;
+}
+
+// Full WhatsApp text (used inside the 24-hour window, where free text is allowed).
+function journeyWhatsAppText(j, first, statusLine) {
+  const L = [`Hi ${first}, ${statusLine}`, '', `📋 *Your journey with Biomexa* (${j.daysOnPlatform} days)`];
+  if (j.medicines.length) L.push(`💊 Medicines tracked: ${j.medicines.map(m => m.name).slice(0, 4).join(', ')}${j.medicines.length > 4 ? '…' : ''}`);
+  if (j.doses.remindersSent) L.push(`⏰ WhatsApp dose reminders sent: ${j.doses.remindersSent}`);
+  if (j.doses.due) L.push(`✅ Doses taken: ${j.doses.taken} of ${j.doses.due} (${j.doses.adherence}%)${j.doses.bestStreakDays >= 2 ? ` · best streak ${j.doses.bestStreakDays} days` : ''}`);
+  if (j.vitals.bp) L.push(j.vitals.bp.n > 1 ? `❤️ BP: ${j.vitals.bp.first} (first) → ${j.vitals.bp.latest} (latest)` : `❤️ BP: ${j.vitals.bp.latest}`);
+  if (j.vitals.sugar) L.push(j.vitals.sugar.n > 1 ? `🩸 Sugar: ${j.vitals.sugar.first} (first) → ${j.vitals.sugar.latest} mg/dL (latest)` : `🩸 Sugar: ${j.vitals.sugar.latest} mg/dL`);
+  if (j.vitals.readings) L.push(`📈 Vitals readings logged: ${j.vitals.readings}`);
+  if (j.reports.analysed) L.push(`🧾 Reports analysed by AI: ${j.reports.analysed}`);
+  if (j.doctorConnects.length) L.push(`👨‍⚕️ Doctor consult requests: ${j.doctorConnects.length}`);
+  L.push('', 'Keep Talk to a Doctor, treatment reports, AI report analysis and reminders for all your medicines — plans from ₹99/month (₹899/year).',
+    `See your full journey and renew: ${SITE_URL}/subscribe.html`, '', '- Biomexa Team');
+  return L.join('\n');
+}
+
+function renewalStatusLine(j) {
+  const a = j.access;
+  if (a.tier === 'subscribed') return `your Biomexa Care ${a.planName || ''} plan ends ${a.planDaysLeft === 0 ? 'today' : a.planDaysLeft === 1 ? 'tomorrow' : `in ${a.planDaysLeft} days (${fmtDay(a.expiresAt)})`}. Please renew to keep these services.`.replace(/\s+/g, ' ');
+  if (a.tier === 'trial') return `your ${TRIAL_DAYS}-day free trial of Biomexa Care ends ${a.trialDaysLeft <= 1 ? (a.trialDaysLeft === 0 ? 'today' : 'tomorrow') : `in ${a.trialDaysLeft} days (${fmtDay(a.trialEndsAt)})`}. Subscribe to keep these services.`;
+  if (a.lastExpiredAt) return `your Biomexa Care plan ended on ${fmtDay(a.lastExpiredAt)}. Please renew to keep these services.`;
+  return `your ${TRIAL_DAYS}-day free trial of Biomexa Care ended on ${fmtDay(a.trialEndsAt)}. Please subscribe to keep these services.`;
+}
+
+// Kept for the automatic notices/broadcast: now the journey summary line.
+async function treatmentSummaryFor(twins) {
+  try { return journeySummaryLine(await buildPatientJourney(twins)); }
+  catch (err) { console.log('⚠️ Journey summary failed:', err.message); return 'your medicines, reminders and reports on Biomexa'; }
 }
 // Template outside the 24-hour window (Meta drops free text there); free text inside it.
 async function sendSubscriptionNotice(phone, first, statusLine, treatment, fullText) {
@@ -5792,7 +5981,7 @@ async function broadcastTrialExpired(now = new Date()) {
         // Mark it, and count it as today's scheduled trial-ended reminder so that isn't sent too.
         const endedKey = localDateStr(a.trialEndsAt);
         const n = Math.floor(dayDiff(endedKey, localDateStr(now)) / SUB_REMINDER_EVERY_DAYS);
-        await Patient.updateMany({ _id: { $in: twins.map(x => x._id) } }, { $addToSet: { broadcastKeys: tag }, lastSubNoticeKey: `trial-ended-${endedKey}-${Math.max(0, n)}` });
+        await Patient.updateMany({ _id: { $in: twins.map(x => x._id) } }, { $addToSet: { broadcastKeys: tag }, lastSubNoticeKey: `trial-ended-${endedKey}-${Math.max(0, n)}`, $push: { renewalReminders: { at: new Date(), by: 'auto', kind: `broadcast-${tag}`, ok: true } } });
         console.log(`📣 Trial-ended broadcast (${tag}) → …${k.slice(-4)}`);
       } else failed++;
       await new Promise(r2 => setTimeout(r2, 300));
@@ -5853,7 +6042,7 @@ async function processSubscriptionNotices(now = new Date()) {
       const r = await sendSubscriptionNotice(target.phone, first, status, treatment, msg);
       if (r?.success) {
         sent++;
-        await Patient.updateMany({ _id: { $in: twins.map(x => x._id) } }, { lastSubNoticeKey: key });
+        await Patient.updateMany({ _id: { $in: twins.map(x => x._id) } }, { lastSubNoticeKey: key, $push: { renewalReminders: { at: new Date(), by: 'auto', kind: key, ok: true } } });
         console.log(`💳 Subscription reminder (${key}) → ${target.phone}`);
       }
       await new Promise(r2 => setTimeout(r2, 250));

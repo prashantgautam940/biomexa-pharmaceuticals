@@ -119,6 +119,13 @@ footer a { color: var(--navy); }
   .compare th, .compare td { padding: 11px 10px; font-size: .84rem; }
   .cta-band { padding: 24px; }
 }
+.jgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; max-width: 980px; margin: 0 auto; }
+.jtile { background: #fff; border: 1px solid #e2e8f2; border-radius: 16px; padding: 16px 18px; }
+.jtile .k { font-size: .78rem; color: #5b6b86; font-weight: 600; }
+.jtile .v { font-size: 1.5rem; font-weight: 800; color: #16336b; margin-top: 4px; }
+.jtile .s { font-size: .78rem; color: #5b6b86; margin-top: 2px; }
+.jmeds { max-width: 980px; margin: 14px auto 0; display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+.jmeds span { background: #e8f6ee; color: #146c3c; border-radius: 999px; padding: 6px 12px; font-size: .82rem; font-weight: 600; }
 </style>
 <link rel="stylesheet" href="css/mobile.css">
 <script>/* remove any old service worker left on this domain */if("serviceWorker"in navigator){navigator.serviceWorker.getRegistrations().then(function(r){r.forEach(function(x){x.update().catch(function(){});x.unregister()})}).catch(function(){});if(window.caches)caches.keys().then(function(k){k.forEach(function(n){caches.delete(n)})}).catch(function(){})}</script>
@@ -169,6 +176,16 @@ footer a { color: var(--navy); }
       <a href="patient.html" class="btn navy">Go to my portal</a>
     </div>
   </div>
+
+  <section id="journey" style="display:none">
+    <div class="sec-head">
+      <div class="eyebrow">Your journey so far</div>
+      <h2 id="jTitle">What Biomexa has done for you</h2>
+      <p id="jLead"></p>
+    </div>
+    <div class="jgrid" id="jGrid"></div>
+    <div class="jmeds" id="jMeds"></div>
+  </section>
 
   <section id="benefits">
     <div class="sec-head">
@@ -308,7 +325,38 @@ function load() {
     .then(r => { if (r.status === 401) { localStorage.removeItem('token'); throw new Error('expired'); } return r.json(); })
     .then(d => { access = d; renderStatus(); })
     .catch(() => {});
+  loadJourney();
   renderStatus();
+}
+
+// "Your journey so far" — what the patient has actually done on Biomexa (same numbers the
+// renewal WhatsApp and the admin journey report use).
+function loadJourney() {
+  fetch(API_URL + '/api/patient/journey', { headers: { Authorization: 'Bearer ' + token } })
+    .then(r => r.ok ? r.json() : null)
+    .then(j => {
+      if (!j) return;
+      const esc = t => String(t ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+      const d = j.doses, tiles = [];
+      tiles.push(['Days with Biomexa', j.daysOnPlatform, 'since ' + fmt(j.joinedAt)]);
+      if (d.remindersSent) tiles.push(['WhatsApp reminders', d.remindersSent, 'dose reminders sent to you']);
+      if (d.due) tiles.push(['Doses taken', d.adherence + '%', d.taken + ' of ' + d.due + ' doses']);
+      if (d.bestStreakDays >= 2) tiles.push(['Best streak', d.bestStreakDays + ' days', 'every dose taken']);
+      if (j.vitals.bp) tiles.push(['Blood pressure', j.vitals.bp.latest, j.vitals.bp.n > 1 ? 'first reading ' + j.vitals.bp.first : 'latest reading']);
+      if (j.vitals.sugar) tiles.push(['Blood sugar', j.vitals.sugar.latest + ' mg/dL', j.vitals.sugar.n > 1 ? 'first reading ' + j.vitals.sugar.first : 'latest reading']);
+      if (j.vitals.readings) tiles.push(['Vitals logged', j.vitals.readings, 'BP, sugar, pulse, temperature']);
+      if (j.reports.analysed) tiles.push(['Reports explained', j.reports.analysed, 'prescriptions & lab reports']);
+      if (j.doctorConnects.length) tiles.push(['Doctor consults', j.doctorConnects.length, 'requests to Biomexa doctors']);
+      document.getElementById('jGrid').innerHTML = tiles.map(t => '<div class="jtile"><div class="k">' + esc(t[0]) + '</div><div class="v">' + esc(t[1]) + '</div><div class="s">' + esc(t[2]) + '</div></div>').join('');
+      document.getElementById('jMeds').innerHTML = j.medicines.map(m => '<span><i class="fas fa-capsules"></i> ' + esc(m.name) + (m.status === 'ongoing' ? '' : ' · ' + esc(m.status)) + '</span>').join('');
+      const first = String(j.name || '').trim().split(/\s+/)[0];
+      document.getElementById('jTitle').textContent = (first ? first + ', here' : 'Here') + "'s your journey with Biomexa";
+      document.getElementById('jLead').textContent = j.access.tier === 'subscribed'
+        ? 'Keep it going — your plan keeps every reminder, report and doctor connect running.'
+        : 'Subscribe to keep all of this running — reminders for every medicine, treatment reports, report analysis and Talk to a Doctor.';
+      document.getElementById('journey').style.display = '';
+    })
+    .catch(() => {});
 }
 
 async function buy(plan) {
