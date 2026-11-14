@@ -16,6 +16,7 @@
 //  • days without a reading are gaps, never filled in
 //  • baseline = the first real reading (same rule as the AI treatment report)
 const { VITAL_TARGETS, cleanVitals, checkVitalsDanger } = require('./calibration');
+const { summarizeAdherence } = require('./adherence');
 
 function dayStr(d) {
   d = new Date(d);
@@ -113,13 +114,15 @@ function buildVitalsProgress({ patient, doses = [], vitalsLogs = [], now = new D
       .map(e => ({ ...e, flags: [...new Set(e.flags)], flagged: e.flags.length > 0, n: e.readings.length }));
   }
 
-  // ---- medicine adherence per day (pending doses and future days left out) ----
+  // ---- medicine adherence per day (shared rule in ./adherence: a dose past its time + grace
+  // period that was never confirmed is missed; upcoming doses are left out; duplicates merged) ----
+  const adh = summarizeAdherence(doses, now);
   const doseDays = new Map();
-  let taken = 0, missed = 0;
-  for (const d of doses) {
-    if (!d.scheduledDate || d.scheduledDate > today || d.status === 'pending') continue;
+  const { taken, missed } = adh;
+  for (const { dose: d, outcome } of adh.rows) {
+    if (outcome === 'upcoming') continue;
     const e = doseDays.get(d.scheduledDate) || { date: d.scheduledDate, taken: 0, missed: 0, missedList: [] };
-    if (d.status === 'taken') { e.taken++; taken++; } else { e.missed++; missed++; e.missedList.push(`${d.medicineName || 'Dose'}${d.scheduledTime ? ' ' + d.scheduledTime : ''}`); }
+    if (outcome === 'taken') e.taken++; else { e.missed++; e.missedList.push(`${d.medicineName || 'Dose'}${d.scheduledTime ? ' ' + d.scheduledTime : ''}`); }
     doseDays.set(d.scheduledDate, e);
   }
   const adherence = [...doseDays.values()].sort((a, b) => a.date.localeCompare(b.date))

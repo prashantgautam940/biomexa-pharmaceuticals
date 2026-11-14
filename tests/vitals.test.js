@@ -69,7 +69,7 @@ for (let d = 5; d <= 14; d++) {
   const date = `2026-10-${String(d).padStart(2, '0')}`;
   doses.push({ scheduledDate: date, scheduledTime: '09:00', medicineName: 'Telmexa AM', status: d === 8 || d === 11 ? 'missed' : 'taken' });
 }
-doses.push({ scheduledDate: '2026-10-20', scheduledTime: '09:00', medicineName: 'Telmexa AM', status: 'pending' });
+doses.push({ scheduledDate: '2026-10-20', scheduledTime: '20:00', medicineName: 'Telmexa AM', status: 'pending' });
 const now = at('2026-10-20T12:00:00');
 const pr = buildVitalsProgress({ patient, doses, vitalsLogs, now });
 
@@ -107,13 +107,16 @@ test('statistics use every reading', () => {
   assert.equal(pr.stats.temperature.n, 1); assert.equal(pr.stats.temperature.verdict, 'not_enough');
 });
 
-test('adherence: pending and future doses left out', () => {
+test('adherence: upcoming doses left out, overdue unconfirmed ones count as missed', () => {
   assert.equal(pr.summary.adherencePct, 80);
   assert.equal(pr.summary.taken, 8); assert.equal(pr.summary.missed, 2);
   assert.equal(pr.adherence.length, 10);
   const oct8 = pr.adherence.find(a => a.date === '2026-10-08');
   assert.equal(oct8.v, 0); assert.equal(oct8.flagged, true);
   assert.equal(pr.adherence.find(a => a.date === '2026-10-09').v, 100);
+  // A past dose that was never answered (reminder never went out) is missed, not ignored.
+  const stale = buildVitalsProgress({ patient, doses: [...doses, { scheduledDate: '2026-10-16', scheduledTime: '09:00', medicineName: 'Telmexa AM', status: 'pending', sentReminder: false }], vitalsLogs, now });
+  assert.deepEqual([stale.summary.taken, stale.summary.missed, stale.summary.adherencePct], [8, 3, 73]);
 });
 
 test('treatment phases and end-of-treatment report', () => {

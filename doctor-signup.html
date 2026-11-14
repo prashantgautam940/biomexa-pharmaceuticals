@@ -100,17 +100,87 @@ h1 { text-align: center; font-family: 'Playfair Display', serif; font-size: 2.1r
           <input type="text" id="docName" placeholder="Your full name" required>
         </div>
         <div class="field">
-          <label>Specialty</label>
-          <select id="docSpecialty">
-            <option>General Physician</option>
-            <option>Cardiologist</option>
-            <option>Endocrinologist</option>
-            <option>Diabetologist</option>
-            <option>Internal Medicine</option>
-            <option>Family Medicine</option>
-            <option>Geriatrician</option>
-            <option>Other</option>
+          <label>Specialty *</label>
+          <select id="docSpecialty" required>
+            <optgroup label="General & Primary Care">
+              <option>General Physician</option>
+              <option>Family Medicine</option>
+              <option>Internal Medicine (MD Medicine)</option>
+              <option>Geriatrician</option>
+              <option>Emergency Medicine</option>
+            </optgroup>
+            <optgroup label="Women & Fertility">
+              <option>Gynecologist / Obstetrician (OB-GYN)</option>
+              <option>IVF / Fertility Specialist (Reproductive Medicine)</option>
+              <option>Andrologist (Male Fertility)</option>
+            </optgroup>
+            <optgroup label="Children">
+              <option>Pediatrician</option>
+              <option>Neonatologist</option>
+              <option>Pediatric Surgeon</option>
+            </optgroup>
+            <optgroup label="Heart, Lungs & Blood">
+              <option>Cardiologist</option>
+              <option>Cardiothoracic Surgeon</option>
+              <option>Pulmonologist (Chest Physician)</option>
+              <option>Hematologist</option>
+            </optgroup>
+            <optgroup label="Hormones, Diabetes & Kidney">
+              <option>Endocrinologist</option>
+              <option>Diabetologist</option>
+              <option>Nephrologist</option>
+              <option>Urologist</option>
+            </optgroup>
+            <optgroup label="Brain & Mind">
+              <option>Neurologist</option>
+              <option>Neurosurgeon</option>
+              <option>Psychiatrist</option>
+              <option>Clinical Psychologist</option>
+            </optgroup>
+            <optgroup label="Stomach & Liver">
+              <option>Gastroenterologist</option>
+              <option>Hepatologist</option>
+              <option>General Surgeon</option>
+              <option>Laparoscopic / Bariatric Surgeon</option>
+            </optgroup>
+            <optgroup label="Bones, Joints & Muscles">
+              <option>Orthopedic Surgeon</option>
+              <option>Rheumatologist</option>
+              <option>Physiotherapist</option>
+              <option>Sports Medicine</option>
+            </optgroup>
+            <optgroup label="Cancer">
+              <option>Medical Oncologist</option>
+              <option>Surgical Oncologist</option>
+              <option>Radiation Oncologist</option>
+            </optgroup>
+            <optgroup label="Skin, Eye, ENT & Teeth">
+              <option>Dermatologist</option>
+              <option>Ophthalmologist (Eye)</option>
+              <option>ENT Specialist (Otorhinolaryngologist)</option>
+              <option>Dentist</option>
+              <option>Oral & Maxillofacial Surgeon</option>
+            </optgroup>
+            <optgroup label="Diagnostics & Other Specialties">
+              <option>Radiologist</option>
+              <option>Pathologist</option>
+              <option>Anesthesiologist</option>
+              <option>Plastic Surgeon</option>
+              <option>Vascular Surgeon</option>
+              <option>Infectious Disease Specialist</option>
+              <option>Allergist / Immunologist</option>
+              <option>Nutritionist / Dietitian</option>
+            </optgroup>
+            <optgroup label="AYUSH">
+              <option>Ayurveda (BAMS)</option>
+              <option>Homeopathy (BHMS)</option>
+              <option>Unani (BUMS)</option>
+              <option>Siddha</option>
+              <option>Naturopathy & Yoga (BNYS)</option>
+            </optgroup>
+            <option value="Other">Other (type below)</option>
           </select>
+          <input type="text" id="docSpecialtyOther" placeholder="Your specialty" maxlength="80" style="display:none;margin-top:8px">
         </div>
       </div>
       <div class="row">
@@ -180,7 +250,9 @@ document.getElementById('doctorSignupForm').addEventListener('submit', async (e)
 
   const payload = {
     name: document.getElementById('docName').value,
-    specialty: document.getElementById('docSpecialty').value,
+    specialty: document.getElementById('docSpecialty').value === 'Other'
+      ? (document.getElementById('docSpecialtyOther').value.trim() || 'Other')
+      : document.getElementById('docSpecialty').value,
     phone: document.getElementById('docPhone').value,
     email: document.getElementById('docEmail').value,
     licenseNumber: document.getElementById('docLicense').value,
@@ -217,5 +289,14 @@ document.getElementById('doctorSignupForm').addEventListener('submit', async (e)
 });
 </script>
 <script src="js/support.js" defer></script>
+<script>
+// "Other" specialty — show a box to type it in.
+(function () {
+  const sel = document.getElementById('docSpecialty'), other = document.getElementById('docSpecialtyOther');
+  if (!sel || !other) return;
+  const sync = () => { const on = sel.value === 'Other'; other.style.display = on ? 'block' : 'none'; other.required = on; if (on) other.focus(); };
+  sel.addEventListener('change', sync);
+})();
+</script>
 </body>
 </html>

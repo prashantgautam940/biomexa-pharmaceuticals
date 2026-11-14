@@ -9,6 +9,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const { cleanVitals, toFahrenheit, normaliseEntry, checkVitalsDanger } = require('./vitals/calibration');
+const { summarizeAdherence } = require('./vitals/adherence');
 const { buildVitalsProgress } = require('./vitals/progress');
 const ivfCare = require('./ivf/routes'); // Biomexa IVF Care — separate module, mounted near the end of this file
 
@@ -3780,12 +3781,11 @@ async function summarizeCourse(phone, med) {
   const query = { patientPhone: phone, medicineName: med.name };
   if (med.startDate) query.scheduledDate = { $gte: localDateStr(new Date(med.startDate)) };
   const doses = await Dose.find(query);
-  const taken = doses.filter(d => d.status === 'taken').length;
-  const missed = doses.filter(d => d.status !== 'taken' && d.status !== 'pending').length;
-  const unconfirmed = doses.filter(d => d.status === 'pending').length;
-  const total = taken + missed + unconfirmed;
-  const adherence = total ? Math.round((taken / total) * 100) : null;
-  return { taken, missed, unconfirmed, total, adherence };
+  // Same rule as every other screen (vitals/adherence.js): unconfirmed doses past their time are
+  // missed, doses still upcoming don't count, duplicates are merged.
+  const a = summarizeAdherence(doses);
+  const unconfirmed = a.rows.filter(r => r.outcome === 'missed' && r.dose.status === 'pending').length;
+  return { taken: a.taken, missed: a.missed, unconfirmed, total: a.due, adherence: a.pct };
 }
 
 // The one WhatsApp message sent when reminders for a medicine end — either its course days ran
@@ -4618,7 +4618,8 @@ app.post('/api/doctors/register', signupLimiter, async (req, res) => {
     // New doctors start as "pending": no access to patient data, not listed for patients, no
     // patient alerts — until an admin checks their licence and approves them (admin panel).
     const hashed = await bcrypt.hash(password, 10);
-    const doctor = new Doctor({ name, email: email || undefined, phone: cleanPhone, password: hashed, specialty, licenseNumber: String(licenseNumber).trim(), experienceYears, bio, available: false, status: 'pending' });
+    const cleanSpecialty = String(specialty || '').replace(/[<>]/g, '').replace(/\s+/g, ' ').trim().slice(0, 80) || 'General Physician';
+    const doctor = new Doctor({ name, email: email || undefined, phone: cleanPhone, password: hashed, specialty: cleanSpecialty, licenseNumber: String(licenseNumber).trim(), experienceYears, bio, available: false, status: 'pending' });
     await doctor.save();
     console.log(`🩺 New doctor sign-up awaiting approval: Dr. ${name} (${cleanPhone}), licence ${doctor.licenseNumber}`);
 
@@ -4976,10 +4977,9 @@ app.get('/api/doctor/patient/:phone/vitals', staffAuth, async (req, res) => {
       const dateStr = localDateStr(d);
 
       const dayDoses = await Dose.find({ patientPhone: { $in: phoneVariants(phone) }, scheduledDate: dateStr });
-      const taken = dayDoses.filter(x => x.status === 'taken').length;
-      // Only doses whose outcome is known count — a dose later today (still pending) isn't a miss.
-      const decided = dayDoses.filter(x => x.status !== 'pending').length;
-      const adherence = decided ? Math.round((taken / decided) * 100) : null;
+      // Shared rule (vitals/adherence.js): a dose later today isn't a miss yet; one whose time
+      // has passed unconfirmed is.
+      const adherence = summarizeAdherence(dayDoses).pct;
 
       // Real vitals logged that day (last one wins if several) — falls back to the baseline
       // snapshot only when nothing was actually logged that day, and marks which is which.
@@ -5170,11 +5170,10 @@ function sigmoid(z) { return 1 / (1 + Math.exp(-z)); }
 async function computePatientFeatures(patient) {
   const doses = await Dose.find({ patientPhone: { $in: phoneVariants(patient.phone) } });
   const total = doses.length;
-  const missed = doses.filter(d => d.status === 'missed').length;
-  const taken = doses.filter(d => d.status === 'taken').length;
-  // Only doses that are due count — pending ones (later today, not yet reminded) aren't "missed".
-  const due = doses.filter(d => d.status !== 'pending').length;
-  const adherence = due ? taken / due : 1;
+  // Shared rule (vitals/adherence.js) — upcoming doses don't count, unconfirmed past ones are missed.
+  const adh = summarizeAdherence(doses);
+  const missed = adh.missed;
+  const adherence = adh.due ? adh.rate : 1;
   const daysSince = patient.createdAt ? Math.max(1, Math.floor((Date.now() - new Date(patient.createdAt)) / 86400000)) : 1;
   const numMedicines = (patient.medicines || []).length || 1;
   const doseFreq = total / daysSince;
@@ -5225,15 +5224,20 @@ const RISK_VITAL_RULES = [
 async function computeRiskScore(patient) {
   const phones = phoneVariants(patient.phone);
   const doses = await Dose.find({ patientPhone: { $in: phones } });
-  const due = doses.filter(d => d.status !== 'pending');
-  const taken = due.filter(d => d.status === 'taken').length;
-  const missed = due.filter(d => d.status === 'missed').length;
-  const adherence = due.length ? taken / due.length : null;
+  // Shared rule (vitals/adherence.js): a dose past its time + grace period that was never
+  // confirmed is missed (even if its reminder never went out); upcoming doses don't count;
+  // the same dose saved under two phone formats counts once.
+  const adh = summarizeAdherence(doses);
+  const dueRows = adh.rows.filter(r => r.outcome !== 'upcoming');
+  const due = dueRows.map(r => r.dose);
+  const missed = adh.missed;
+  const adherence = adh.rate;
 
   // Last 7 calendar days including today (6 days back) — 7 days back made it an 8-day window.
   const weekAgo = localDateStr(new Date(Date.now() - 6 * 86400000));
-  const recent = due.filter(d => d.scheduledDate >= weekAgo);
-  const recentMissed = recent.filter(d => d.status !== 'taken').length;
+  const recentRows = dueRows.filter(r => r.dose.scheduledDate >= weekAgo);
+  const recent = recentRows.map(r => r.dose);
+  const recentMissed = recentRows.filter(r => r.outcome !== 'taken').length;
   const recentMissRate = recent.length ? recentMissed / recent.length : (adherence !== null ? 1 - adherence : 0);
 
   const reasons = [];
@@ -5263,7 +5267,7 @@ async function computeRiskScore(patient) {
 
   return {
     score: Math.round(score * 100) / 100, label, reasons, hasData,
-    adherence: adherence ?? 1, adherenceKnown: adherence !== null, missed, total: doses.length, due: due.length,
+    adherence: adherence ?? 1, adherenceKnown: adherence !== null, missed, total: adh.rows.length, due: due.length,
     missChance, vitals, hasRealVitals: !!latestLog
   };
 }
