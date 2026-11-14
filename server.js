@@ -7732,8 +7732,16 @@ app.get('/health', (req, res) => res.status(200).json({ status: 'ok', time: new 
 // WhatsApp to ADMIN_NOTIFY_PHONE and email to ADMIN_EMAIL, whichever are configured. Best-effort.
 async function notifyAdmin(subject, text) {
   const out = { whatsapp: false, email: false };
-  if (process.env.ADMIN_NOTIFY_PHONE) {
-    out.whatsapp = !!(await sendWhatsAppFree(process.env.ADMIN_NOTIFY_PHONE, text).catch(() => null))?.success;
+  const adminPhone = process.env.ADMIN_NOTIFY_PHONE;
+  if (adminPhone) {
+    // Free text only arrives within 24h of the admin's last message to the Biomexa number;
+    // otherwise use the approved IVF update template when it is configured.
+    let r = null;
+    if (!(await whatsappWindowOpen(adminPhone)) && MSG91_IVF_UPDATE_TEMPLATE_NAME) {
+      r = await sendIvfUpdateTemplate(adminPhone, subject.replace(/^\W+\s*/, ''), text.split('\n').slice(1).filter(Boolean).join(' · ').replace(/\*/g, '')).catch(() => null);
+    }
+    if (!r?.success) r = await sendWhatsAppFree(adminPhone, text).catch(() => null);
+    out.whatsapp = !!r?.success;
   }
   if (emailTransport) {
     try {
