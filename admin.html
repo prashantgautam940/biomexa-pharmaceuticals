@@ -1301,6 +1301,16 @@ function planCell(a) {
   return '<span class="plan-pill plan-ended">' + (a.lastExpiredAt ? 'Plan ended' : 'Trial ended') + '</span><div class="plan-sub">' + jrShort(a.lastExpiredAt || a.trialEndsAt) + (ago != null ? ' · ' + (ago === 0 ? 'today' : ago + 'd ago') : '') + '</div>';
 }
 
+// Real WhatsApp outcome of a renewal message (from MSG91's delivery logs), not just "accepted".
+function jrDelivery(r) {
+  const d = r.delivery || { status: r.ok ? 'pending' : 'failed', text: r.ok ? 'Accepted by MSG91' : 'Failed' };
+  const color = { read: 'var(--success)', delivered: 'var(--success)', sent: '#b45309', pending: 'var(--text-muted)', failed: 'var(--danger)' }[d.status] || 'var(--text-muted)';
+  const icon = { read: '✓✓ ', delivered: '✓✓ ', sent: '✓ ', pending: '⏳ ', failed: '✗ ' }[d.status] || '';
+  return '<span style="color:' + color + ';font-weight:600">' + icon + jrEsc(d.status === 'failed' ? 'Not delivered' : d.text.split(' — ')[0]) + '</span>' +
+    (d.status === 'failed' || d.status === 'pending' || d.status === 'sent' ? '<div style="font-size:.74rem;color:var(--text-muted);max-width:280px">' + jrEsc(d.status === 'failed' ? d.text : d.text.split(' — ')[1] || '') + '</div>' : '') +
+    (r.to ? '<div style="font-size:.7rem;color:var(--text-muted)">to +' + jrEsc(r.to) + '</div>' : '');
+}
+
 let jrCurrent = null;
 function closeJourney() { const el = document.getElementById('jrModal'); if (el) el.remove(); jrCurrent = null; }
 function openJourney(encodedPhone) {
@@ -1348,8 +1358,8 @@ function renderJourney(j) {
   other.push('<tr><td>Support tickets</td><td>' + (j.tickets.length ? j.tickets.map(t => jrEsc(t.ticketNo) + ' — ' + jrEsc(t.subject) + ' (' + jrEsc(t.status) + ')').join('<br>') : 'None') + '</td></tr>');
 
   const rem = j.renewalReminders.length
-    ? '<table><thead><tr><th>Sent</th><th>By</th><th>Type</th><th>Result</th></tr></thead><tbody>' + j.renewalReminders.map(r =>
-        '<tr><td>' + new Date(r.at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) + '</td><td>' + (r.by === 'admin' ? 'Admin' : 'Automatic') + '</td><td style="font-size:.78rem">' + jrEsc(r.kind) + '</td><td>' + (r.ok ? '<span style="color:var(--success)">Delivered</span>' : '<span style="color:var(--danger)">Failed</span>') + '</td></tr>').join('') + '</tbody></table>'
+    ? '<table><thead><tr><th>Sent</th><th>By</th><th>Type</th><th>WhatsApp result</th></tr></thead><tbody>' + j.renewalReminders.map(r =>
+        '<tr><td>' + new Date(r.at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) + '</td><td>' + (r.by === 'admin' ? 'Admin' : 'Automatic') + '</td><td style="font-size:.78rem">' + jrEsc(r.kind) + '</td><td>' + jrDelivery(r) + '</td></tr>').join('') + '</tbody></table>'
     : '<div style="color:var(--text-muted)">No renewal reminders sent yet.</div>';
 
   const w = j.whatsappPreview;

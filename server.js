@@ -661,6 +661,17 @@ let MSG91_DOSE_TEMPLATE_NAME = process.env.MSG91_DOSE_TEMPLATE_NAME || 'dose_rem
 const MSG91_TEMPLATE_NAMESPACE = process.env.MSG91_TEMPLATE_NAMESPACE || '';
 const MSG91_TEMPLATE_LANG = process.env.MSG91_TEMPLATE_LANG || 'en';
 const MSG91_CONFIGURED = !!(MSG91_AUTH_KEY && MSG91_INTEGRATED_NUMBER);
+// The number WhatsApp needs: country code + number, digits only. Numbers saved with the trunk 0
+// ("+91 09958…" → 9109958…, 13 digits) or without the country code ("9958…") don't exist on
+// WhatsApp as written — Meta answers 131026 "undeliverable" while MSG91 still says "success".
+function waNumber(phone) {
+  let d = String(phone || '').replace(/\D/g, '');
+  if (d.startsWith('00')) d = d.slice(2);
+  if (/^910[6-9]\d{9}$/.test(d)) return '91' + d.slice(3);   // +91 0XXXXXXXXXX
+  if (/^0[6-9]\d{9}$/.test(d)) return '91' + d.slice(1);     // 0XXXXXXXXXX
+  if (/^[6-9]\d{9}$/.test(d)) return '91' + d;               // XXXXXXXXXX (Indian mobile)
+  return d;
+}
 
 // Sends the dose reminder as a real WhatsApp template message with Taken/Not Taken/Remind Me
 // Later quick-reply buttons. Returns { success, provider } same shape as sendWhatsAppFree, so
@@ -686,7 +697,7 @@ async function sendDoseReminderTemplate(phone, medicineName, dosage) {
             language: { code: waTpl.langFor(MSG91_DOSE_TEMPLATE_NAME, MSG91_TEMPLATE_LANG), policy: 'deterministic' },
             namespace: waTpl.namespaceFor(MSG91_DOSE_TEMPLATE_NAME, MSG91_TEMPLATE_NAMESPACE),
             to_and_components: [{
-              to: [phone.replace(/\D/g, '')],
+              to: [waNumber(phone)],
               components: waTpl.fitComponents(MSG91_DOSE_TEMPLATE_NAME, {
                 body_1: { type: 'text', value: medicineName, parameter_name: 'medicine_name' },
                 body_2: { type: 'text', value: dosage, parameter_name: 'dosage' }
@@ -740,7 +751,7 @@ async function sendRiskAlertTemplate(phone, patientName, riskLevel, reason) {
             language: { code: waTpl.langFor(MSG91_RISK_TEMPLATE_NAME, MSG91_TEMPLATE_LANG), policy: 'deterministic' },
             namespace: waTpl.namespaceFor(MSG91_RISK_TEMPLATE_NAME, MSG91_RISK_TEMPLATE_NAMESPACE),
             to_and_components: [{
-              to: [phone.replace(/\D/g, '')],
+              to: [waNumber(phone)],
               components: waTpl.fitComponents(MSG91_RISK_TEMPLATE_NAME, {
                 body_1: { type: 'text', value: patientName, parameter_name: 'patient_name' },
                 body_2: { type: 'text', value: riskLevel, parameter_name: 'risk_level' },
@@ -805,7 +816,7 @@ async function sendDoctorAlertTemplate(doctorPhone, patientName, patientPhone, s
             language: { code: waTpl.langFor(MSG91_DOCTOR_ALERT_TEMPLATE_NAME, MSG91_TEMPLATE_LANG), policy: 'deterministic' },
             namespace: waTpl.namespaceFor(MSG91_DOCTOR_ALERT_TEMPLATE_NAME, MSG91_DOCTOR_ALERT_TEMPLATE_NAMESPACE),
             to_and_components: [{
-              to: [doctorPhone.replace(/\D/g, '')],
+              to: [waNumber(doctorPhone)],
               components: waTpl.fitComponents(MSG91_DOCTOR_ALERT_TEMPLATE_NAME, {
                 body_1: { type: 'text', value: patientName, parameter_name: 'patient_name' },
                 body_2: { type: 'text', value: patientPhone, parameter_name: 'phone' },
@@ -869,7 +880,7 @@ async function sendWelcomeTemplate(phone, patientName) {
             language: { code: waTpl.langFor(MSG91_WELCOME_TEMPLATE_NAME, MSG91_TEMPLATE_LANG), policy: 'deterministic' },
             namespace: waTpl.namespaceFor(MSG91_WELCOME_TEMPLATE_NAME, MSG91_WELCOME_TEMPLATE_NAMESPACE),
             to_and_components: [{
-              to: [phone.replace(/\D/g, '')],
+              to: [waNumber(phone)],
               components: waTpl.fitComponents(MSG91_WELCOME_TEMPLATE_NAME, {
                 body_1: { type: 'text', value: patientName, parameter_name: 'patient_name' }
               })
@@ -944,7 +955,7 @@ async function sendTreatmentReportTemplate(phone, patientName, drugName, adheren
             language: { code: waTpl.langFor(MSG91_TREATMENT_REPORT_TEMPLATE_NAME, MSG91_TEMPLATE_LANG), policy: 'deterministic' },
             namespace: waTpl.namespaceFor(MSG91_TREATMENT_REPORT_TEMPLATE_NAME, MSG91_TREATMENT_REPORT_TEMPLATE_NAMESPACE),
             to_and_components: [{
-              to: [phone.replace(/\D/g, '')],
+              to: [waNumber(phone)],
               components: waTpl.fitComponents(MSG91_TREATMENT_REPORT_TEMPLATE_NAME, {
                 body_1: { type: 'text', value: sanitizeTemplateParam(patientName, 60), parameter_name: 'patient_name' },
                 body_2: { type: 'text', value: sanitizeTemplateParam(drugName, 60), parameter_name: 'drug_name' },
@@ -1014,7 +1025,7 @@ async function sendReportAnalysisTemplate(phone, patientName, fileName, summary)
             language: { code: waTpl.langFor(MSG91_REPORT_ANALYSIS_TEMPLATE_NAME, MSG91_TEMPLATE_LANG), policy: 'deterministic' },
             namespace: waTpl.namespaceFor(MSG91_REPORT_ANALYSIS_TEMPLATE_NAME, MSG91_REPORT_ANALYSIS_TEMPLATE_NAMESPACE),
             to_and_components: [{
-              to: [phone.replace(/\D/g, '')],
+              to: [waNumber(phone)],
               components: waTpl.fitComponents(MSG91_REPORT_ANALYSIS_TEMPLATE_NAME, {
                 body_1: { type: 'text', value: sanitizeTemplateParam(patientName, 60), parameter_name: 'patient_name' },
                 body_2: { type: 'text', value: sanitizeTemplateParam(fileName, 80), parameter_name: 'file_name' },
@@ -1087,7 +1098,7 @@ async function sendPasswordResetOTPTemplate(phone, accountName, otp, expiryMinut
             language: { code: waTpl.langFor(MSG91_OTP_TEMPLATE_NAME, MSG91_TEMPLATE_LANG), policy: 'deterministic' },
             namespace: waTpl.namespaceFor(MSG91_OTP_TEMPLATE_NAME, MSG91_OTP_TEMPLATE_NAMESPACE),
             to_and_components: [{
-              to: [phone.replace(/\D/g, '')],
+              to: [waNumber(phone)],
               // Meta only approves OTP templates in the AUTHENTICATION category (a Utility OTP
               // template was rejected as "incorrect category"). Authentication templates have a
               // fixed body with exactly one variable — the code — plus a "Copy code" button that
@@ -1258,7 +1269,7 @@ async function sendLoginTemplate(phone, patientName, statusLine) {
             language: { code: waTpl.langFor(MSG91_LOGIN_TEMPLATE_NAME, MSG91_TEMPLATE_LANG), policy: 'deterministic' },
             namespace: waTpl.namespaceFor(MSG91_LOGIN_TEMPLATE_NAME, MSG91_LOGIN_TEMPLATE_NAMESPACE),
             to_and_components: [{
-              to: [phone.replace(/\D/g, '')],
+              to: [waNumber(phone)],
               components: waTpl.fitComponents(MSG91_LOGIN_TEMPLATE_NAME, {
                 body_1: { type: 'text', value: sanitizeTemplateParam(patientName, 60), parameter_name: 'patient_name' },
                 body_2: { type: 'text', value: sanitizeTemplateParam(statusLine, 300), parameter_name: 'status_line' }
@@ -1463,7 +1474,7 @@ async function sendMsg91Text(phone, message) {
       headers: { 'Content-Type': 'application/json', 'authkey': MSG91_AUTH_KEY },
       body: JSON.stringify({
         integrated_number: MSG91_INTEGRATED_NUMBER,
-        recipient_number: phone.replace(/\D/g, ''),
+        recipient_number: waNumber(phone),
         content_type: 'text',
         text: message
       }),
@@ -1511,7 +1522,7 @@ async function sendMsg91Document(phone, url, filename, caption) {
       headers: { 'Content-Type': 'application/json', 'authkey': MSG91_AUTH_KEY },
       body: JSON.stringify({
         integrated_number: MSG91_INTEGRATED_NUMBER,
-        recipient_number: phone.replace(/\D/g, ''),
+        recipient_number: waNumber(phone),
         content_type: 'document',
         attachment_url: url,
         filename,
@@ -1575,7 +1586,7 @@ async function sendIvfUpdateTemplate(phone, title, details) {
             language: { code: waTpl.langFor(MSG91_IVF_UPDATE_TEMPLATE_NAME, MSG91_TEMPLATE_LANG), policy: 'deterministic' },
             namespace: waTpl.namespaceFor(MSG91_IVF_UPDATE_TEMPLATE_NAME, MSG91_IVF_UPDATE_TEMPLATE_NAMESPACE),
             to_and_components: [{
-              to: [phone.replace(/\D/g, '')],
+              to: [waNumber(phone)],
               components: waTpl.fitComponents(MSG91_IVF_UPDATE_TEMPLATE_NAME, {
                 // ivf_care_update uses numbered variables: {{1}} = title, {{2}} = details
                 body_1: { type: 'text', value: sanitizeTemplateParam(title, 80) || 'Update' },
@@ -1622,7 +1633,7 @@ async function sendRenewalTemplate(phone, firstName, statusLine, treatmentLine) 
             language: { code: waTpl.langFor(MSG91_RENEWAL_TEMPLATE_NAME, MSG91_TEMPLATE_LANG), policy: 'deterministic' },
             namespace: waTpl.namespaceFor(MSG91_RENEWAL_TEMPLATE_NAME, MSG91_RENEWAL_TEMPLATE_NAMESPACE),
             to_and_components: [{
-              to: [phone.replace(/\D/g, '')],
+              to: [waNumber(phone)],
               components: waTpl.fitComponents(MSG91_RENEWAL_TEMPLATE_NAME, {
                 body_1: { type: 'text', value: sanitizeTemplateParam(firstName, 40) || 'there' },
                 body_2: { type: 'text', value: sanitizeTemplateParam(statusLine, 200) || 'your Biomexa Care access has changed.' },
@@ -1804,7 +1815,7 @@ const patientSchema = new mongoose.Schema({
   lastSubNoticeKey: String, // which trial/expiry WhatsApp notice was sent last (sent once each)
   broadcastKeys: [String], // one-off broadcasts already sent to this patient (see broadcastTrialExpired)
   // Every renewal / trial-ended WhatsApp (automatic or sent by an admin from the journey report).
-  renewalReminders: [{ at: { type: Date, default: Date.now }, by: String, kind: String, ok: Boolean }],
+  renewalReminders: [{ at: { type: Date, default: Date.now }, by: String, kind: String, ok: Boolean, to: String }],
   adOptOut: { type: Boolean, default: false },
   createdAt: { type: Date, default: Date.now }
 });
@@ -2390,7 +2401,7 @@ async function sendOrderTemplate(phone, firstName, statusLine, details) {
             language: { code: waTpl.langFor(MSG91_ORDER_TEMPLATE_NAME, MSG91_TEMPLATE_LANG), policy: 'deterministic' },
             namespace: waTpl.namespaceFor(MSG91_ORDER_TEMPLATE_NAME, MSG91_ORDER_TEMPLATE_NAMESPACE),
             to_and_components: [{
-              to: [phone.replace(/\D/g, '')],
+              to: [waNumber(phone)],
               components: waTpl.fitComponents(MSG91_ORDER_TEMPLATE_NAME, {
                 body_1: { type: 'text', value: sanitizeTemplateParam(firstName, 40) || 'there' },
                 body_2: { type: 'text', value: sanitizeTemplateParam(statusLine, 250) || 'there is an update on your order.' },
@@ -3770,7 +3781,7 @@ async function sendCourseTemplate(phone, patientName, medicineName, summaryLine)
             language: { code: waTpl.langFor(MSG91_COURSE_TEMPLATE_NAME, MSG91_TEMPLATE_LANG), policy: 'deterministic' },
             namespace: waTpl.namespaceFor(MSG91_COURSE_TEMPLATE_NAME, MSG91_COURSE_TEMPLATE_NAMESPACE),
             to_and_components: [{
-              to: [phone.replace(/\D/g, '')],
+              to: [waNumber(phone)],
               components: waTpl.fitComponents(MSG91_COURSE_TEMPLATE_NAME, {
                 body_1: { type: 'text', value: sanitizeTemplateParam(patientName || 'there', 60), parameter_name: 'patient_name' },
                 body_2: { type: 'text', value: sanitizeTemplateParam(medicineName, 60), parameter_name: 'medicine_name' },
@@ -4013,7 +4024,7 @@ async function sendAdTemplate(phone, patientName, accessLine) {
             language: { code: waTpl.langFor(MSG91_AD_TEMPLATE_NAME, MSG91_TEMPLATE_LANG), policy: 'deterministic' },
             namespace: waTpl.namespaceFor(MSG91_AD_TEMPLATE_NAME, MSG91_AD_TEMPLATE_NAMESPACE),
             to_and_components: [{
-              to: [phone.replace(/\D/g, '')],
+              to: [waNumber(phone)],
               components: waTpl.fitComponents(MSG91_AD_TEMPLATE_NAME, adTemplateComponents(patientName, accessLine))
             }]
           }
@@ -4288,6 +4299,9 @@ async function classifyUndelivered() {
 // Admin → Campaigns) the last 3 days of logs are read with the server's auth key, campaign contacts
 // get their Delivered / Read / Failed status, and a summary is kept for the admin page.
 let msg91Report = null; // { at, from, to, total, byStatus, byTemplate, reasons, applied, error }
+// Per-message outcomes from the latest MSG91 log read (last ~2 days) — lets the journey report
+// show whether each renewal WhatsApp was really delivered, read or failed (and why).
+let msg91LogRows = [];
 let msg91LogKeysShown = false;
 function ymdIST(d) { return new Date(d.getTime() + 330 * 60000).toISOString().slice(0, 10); }
 async function syncDeliveryFromMsg91(why) {
@@ -4308,6 +4322,7 @@ async function syncDeliveryFromMsg91(why) {
     if (!msg91LogKeysShown && rows[0]) { msg91LogKeysShown = true; console.log('ℹ️ MSG91 log fields:', Object.keys(rows[0]).join(',')); }
     const byStatus = {}, byTemplate = {}, reasons = {};
     let total = 0, applied = 0;
+    const keepRows = [];
     // Invited contacts by number (last 10 digits) — one query, not one per log row.
     const invited = await Lead.find({ sentAt: { $ne: null } }).select('phone sentAt delivery templateUsed').lean();
     const leadByKey = new Map(invited.map(l => [last10(l.phone), { ...l }]));
@@ -4330,6 +4345,7 @@ async function syncDeliveryFromMsg91(why) {
       if (st === 'failed' && r.reason) reasons[r.reason.slice(0, 160)] = (reasons[r.reason.slice(0, 160)] || 0) + 1;
       const atRaw = raw.sentTime || raw.sentAt || raw.requestedAt || raw.createdAt || raw.created_at || raw.date || raw.timestamp || raw.submittedAt;
       const at = atRaw ? new Date(atRaw) : null;
+      if (r.digits) keepRows.push({ digits: r.digits, template: r.template || String(raw.templateName || ''), status: st, reason: r.reason || '', at: at && !isNaN(at) ? at : null });
       const lead = r.digits && r.status ? leadByKey.get(r.digits) : null;
       if (lead && !(at && !isNaN(at) && new Date(lead.sentAt) > new Date(at.getTime() + 10 * 60000))
           && !(r.template && lead.templateUsed && r.template !== lead.templateUsed)) {
@@ -4346,6 +4362,7 @@ async function syncDeliveryFromMsg91(why) {
       for (let i = 0; i < ops.length; i += 1000) await Lead.bulkWrite(ops.slice(i, i + 1000), { ordered: false });
       applied = changed.size;
     }
+    msg91LogRows = keepRows.slice(-20000);
     await classifyUndelivered().catch(e => console.log('⚠️ undelivered sort error:', e.message));
     msg91Report = {
       at: new Date(), from: ymdIST(from), to: ymdIST(to), total, byStatus, applied,
@@ -4962,7 +4979,19 @@ app.get('/api/patients', staffAuth, async (req, res) => {
   // Risk = computeRiskScore (adherence + recent misses + latest real vitals). BP is the latest
   // real reading, else the sign-up baseline, else blank — never a made-up default.
   try {
-    const patients = await Patient.find().limit(50);
+    const patients = await Patient.find().limit(50).lean();
+    // Bulk: risk for every patient from two queries, latest reading per number from one more.
+    const [risks, latestAll] = await Promise.all([
+      riskScoresFor(patients),
+      VitalsLog.aggregate([
+        { $match: { patientPhone: { $in: patients.flatMap(p => phoneVariants(p.phone)) } } },
+        { $sort: { recordedAt: -1 } },
+        { $group: { _id: '$patientPhone', doc: { $first: '$$ROOT' } } }
+      ])
+    ]);
+    const nextDoses = await Promise.all(patients.map(p => nextPendingDose(p).catch(() => null)));
+    const latestBy = new Map();
+    for (const { doc } of latestAll) { const k = last10(doc.patientPhone); const cur = latestBy.get(k); if (!cur || new Date(doc.recordedAt) > new Date(cur.recordedAt)) latestBy.set(k, doc); }
     const data = [];
     for (let i = 0; i < patients.length; i++) {
       const p = patients[i];
@@ -4971,8 +5000,8 @@ app.get('/api/patients', staffAuth, async (req, res) => {
       const medName = med?.name || 'None';
       const catalogEntry = MEDICINE_CATALOG[medName] || null;
 
-      const r = await computeRiskScore(p);
-      const latest = await VitalsLog.findOne({ patientPhone: { $in: phoneVariants(p.phone) } }).sort({ recordedAt: -1 });
+      const r = risks.get(String(p._id));
+      const latest = latestBy.get(last10(p.phone)) || null;
       const lv = latest ? cleanVitals(latest).clean : {};
       const bpSys = lv.bpSystolic || p.baselineVitals?.bpSystolic || null;
       const bpDia = lv.bpDiastolic || p.baselineVitals?.bpDiastolic || null;
@@ -4994,7 +5023,7 @@ app.get('/api/patients', staffAuth, async (req, res) => {
         risk_reasons: r.reasons,
         ai_prediction: r.missChance,
         missed_doses: r.missed,
-        next_dose: await nextPendingDose(p),
+        next_dose: nextDoses[i],
         sentiment: !r.adherenceKnown ? 'neutral' : adherence > 0.8 ? 'positive' : adherence < 0.5 ? 'negative' : 'neutral'
       });
     }
@@ -5012,7 +5041,11 @@ app.get('/api/doctor/patient/:phone/vitals', staffAuth, async (req, res) => {
     const phone = patient?.phone;
     if (!patient) return res.status(404).json({ message: 'Patient not found' });
 
-    const allVitals = await VitalsLog.find({ patientPhone: { $in: phoneVariants(phone) } }).sort({ recordedAt: 1 });
+    const since7 = localDateStr(new Date(Date.now() - 6 * 86400000));
+    const [allVitals, weekDoses] = await Promise.all([
+      VitalsLog.find({ patientPhone: { $in: phoneVariants(phone) } }).sort({ recordedAt: 1 }).lean(),
+      Dose.find({ patientPhone: { $in: phoneVariants(phone) }, scheduledDate: { $gte: since7 } }).select(RISK_DOSE_FIELDS).lean()
+    ]);
 
     const today = new Date();
     const days = [];
@@ -5021,7 +5054,7 @@ app.get('/api/doctor/patient/:phone/vitals', staffAuth, async (req, res) => {
       d.setDate(d.getDate() - i);
       const dateStr = localDateStr(d);
 
-      const dayDoses = await Dose.find({ patientPhone: { $in: phoneVariants(phone) }, scheduledDate: dateStr });
+      const dayDoses = weekDoses.filter(x => x.scheduledDate === dateStr);
       // Shared rule (vitals/adherence.js): a dose later today isn't a miss yet; one whose time
       // has passed unconfirmed is.
       const adherence = summarizeAdherence(dayDoses).pct;
@@ -5268,7 +5301,44 @@ const RISK_VITAL_RULES = [
 
 async function computeRiskScore(patient) {
   const phones = phoneVariants(patient.phone);
-  const doses = await Dose.find({ patientPhone: { $in: phones } });
+  const [doses, latestLog] = await Promise.all([
+    Dose.find({ patientPhone: { $in: phones } }).select(RISK_DOSE_FIELDS).lean(),
+    VitalsLog.findOne({ patientPhone: { $in: phones }, recordedAt: { $gte: new Date(Date.now() - 14 * 86400000) } }).sort({ recordedAt: -1 }).lean()
+  ]);
+  return riskFromData(doses, latestLog);
+}
+
+// Risk for many patients from TWO queries (all doses + latest reading per number) instead of two
+// per patient — the admin and doctor lists used to make hundreds of round-trips to MongoDB per
+// page load. Cached for 30 s so the stats cards and the table share one computation.
+const RISK_DOSE_FIELDS = 'patientPhone medicineName scheduledDate scheduledTime status sentReminder';
+let riskBulkCache = null;
+async function riskScoresFor(patients) {
+  const now = Date.now();
+  if (!riskBulkCache || now - riskBulkCache.at > 30000) {
+    const [doses, latest] = await Promise.all([
+      Dose.find({}).select(RISK_DOSE_FIELDS).lean(),
+      VitalsLog.aggregate([
+        { $match: { recordedAt: { $gte: new Date(now - 14 * 86400000) } } },
+        { $sort: { recordedAt: -1 } },
+        { $group: { _id: '$patientPhone', doc: { $first: '$$ROOT' } } }
+      ])
+    ]);
+    const dosesBy = new Map(), latestBy = new Map();
+    for (const d of doses) { const k = last10(d.patientPhone); (dosesBy.get(k) || dosesBy.set(k, []).get(k)).push(d); }
+    for (const { doc } of latest) { const k = last10(doc.patientPhone); const cur = latestBy.get(k); if (!cur || new Date(doc.recordedAt) > new Date(cur.recordedAt)) latestBy.set(k, doc); }
+    riskBulkCache = { at: now, dosesBy, latestBy, scores: new Map() };
+  }
+  const out = new Map();
+  for (const p of patients) {
+    const k = last10(p.phone);
+    if (!riskBulkCache.scores.has(k)) riskBulkCache.scores.set(k, riskFromData(riskBulkCache.dosesBy.get(k) || [], riskBulkCache.latestBy.get(k) || null));
+    out.set(String(p._id), riskBulkCache.scores.get(k));
+  }
+  return out;
+}
+
+function riskFromData(doses, latestLog) {
   // Shared rule (vitals/adherence.js): a dose past its time + grace period that was never
   // confirmed is missed (even if its reminder never went out); upcoming doses don't count;
   // the same dose saved under two phone formats counts once.
@@ -5296,7 +5366,6 @@ async function computeRiskScore(patient) {
   }
 
   // Latest real (plausible) reading in the last 14 days — typos are ignored, same as reports.
-  const latestLog = await VitalsLog.findOne({ patientPhone: { $in: phones }, recordedAt: { $gte: new Date(Date.now() - 14 * 86400000) } }).sort({ recordedAt: -1 });
   const vitals = latestLog ? cleanVitals(latestLog).clean : {};
   let vitalScore = 0;
   for (const [test, sev, why] of RISK_VITAL_RULES) {
@@ -5581,12 +5650,15 @@ app.post('/api/admin/doctors/:id/:action', adminAuth, async (req, res) => {
 
 app.get('/api/admin/patients', adminAuth, async (req, res) => {
   try {
-    const patients = await Patient.find().limit(200);
-    const all = await Patient.find().select('phone createdAt subscription').lean();
+    const [patients, all] = await Promise.all([
+      Patient.find().limit(200).lean(),
+      Patient.find().select('phone createdAt subscription').lean()
+    ]);
+    const risks = await riskScoresFor(patients);
     const data = [];
     for (let i = 0; i < patients.length; i++) {
       const p = patients[i];
-      const r = await computeRiskScore(p);
+      const r = risks.get(String(p._id));
       data.push({
         id: i + 1,
         name: p.name,
@@ -5801,6 +5873,7 @@ app.get('/api/admin/patients/:phone/journey', adminAuth, async (req, res) => {
 
 // Admin "Send renewal reminder" — WhatsApp with the patient's journey. Max once per 12 hours per
 // patient so a double-click can't spam them.
+let deliveryRecheckTimer = null;
 app.post('/api/admin/patients/:phone/renewal-reminder', adminAuth, async (req, res) => {
   try {
     const twins = await twinsForPhone(req.params.phone);
@@ -5815,7 +5888,10 @@ app.post('/api/admin/patients/:phone/renewal-reminder', adminAuth, async (req, r
     const target = twins.find(x => !/\s/.test(x.phone)) || twins[0];
     const r = await sendSubscriptionNotice(target.phone, first, status, journeySummaryLine(j), journeyWhatsAppText(j, first, status));
     const ok = !!r?.success;
-    await Patient.updateMany({ _id: { $in: twins.map(x => x._id) } }, { $push: { renewalReminders: { at: new Date(), by: 'admin', kind: `manual-${j.access.tier}`, ok } } });
+    await Patient.updateMany({ _id: { $in: twins.map(x => x._id) } }, { $push: { renewalReminders: { at: new Date(), by: 'admin', kind: `manual-${j.access.tier}`, ok, to: waNumber(target.phone) } } });
+    // Read MSG91's logs again in ~3 minutes so the journey shows the real delivery result soon.
+    clearTimeout(deliveryRecheckTimer);
+    deliveryRecheckTimer = setTimeout(() => syncDeliveryFromMsg91('after renewal reminder').catch(() => {}), 3 * 60000);
     console.log(`💳 Admin renewal reminder → …${last10(target.phone).slice(-4)}: ${ok ? 'sent' : 'failed'} (${r?.provider || ''})`);
     if (!ok) return res.status(502).json({ message: 'WhatsApp could not be delivered' + (MSG91_RENEWAL_TEMPLATE_NAME ? '.' : ' — the patient is probably outside the 24-hour window and MSG91_RENEWAL_TEMPLATE_NAME is not set on Render.') });
     res.json({ message: `Renewal reminder sent to ${j.name} on WhatsApp.`, provider: r.provider });
@@ -5919,7 +5995,9 @@ async function buildPatientJourney(twins) {
   const sugar = firstLast.glucose ? { first: firstLast.glucose.first, latest: firstLast.glucose.latest, firstAt: firstLast.glucose.firstAt, latestAt: firstLast.glucose.latestAt, n: firstLast.glucose.n } : null;
 
   const reminders = twins.flatMap(x => x.renewalReminders || []).sort((x, y) => new Date(y.at) - new Date(x.at));
-  const seenR = new Set(); const renewalReminders = reminders.filter(r => { const k = new Date(r.at).getTime() + r.kind; if (seenR.has(k)) return false; seenR.add(k); return true; });
+  const seenR = new Set(); const renewalReminders = reminders.filter(r => { const k = new Date(r.at).getTime() + r.kind; if (seenR.has(k)) return false; seenR.add(k); return true; })
+    .map(r => ({ ...(r.toObject ? r.toObject() : r) }));
+  await attachDeliveryResults(last10(main.phone), renewalReminders);
 
   return {
     name: main.name, phone: main.phone, city: twins.find(x => x.city)?.city || null,
@@ -5940,6 +6018,40 @@ async function buildPatientJourney(twins) {
     renewalReminders: renewalReminders.slice(0, 20),
     generatedAt: now
   };
+}
+
+// What WhatsApp actually did with each renewal message: MSG91's own logs (read every 2 hours)
+// plus delivery webhooks. "Accepted by MSG91" is not "delivered" — MSG91 accepts messages that
+// Meta later refuses (number not on WhatsApp, Meta's marketing limits, …).
+const DELIVERY_REASON_HELP = [
+  [/131026|undeliverable/i, 'Not delivered — this number may not be on WhatsApp, or hasn\'t accepted WhatsApp\'s latest terms.'],
+  [/131049|healthy ecosystem/i, 'Held back by Meta — WhatsApp limits how many business messages one person gets. Try again in a day or two, or wait for them to message you.'],
+  [/131047|24 hours|re-engagement/i, 'Outside the 24-hour window — only an approved template can reach them.'],
+  [/132\d{3}|template|parameter/i, 'Template problem — see Admin → WhatsApp templates.'],
+  [/thread owner/i, 'Another WhatsApp app is handling this chat right now.']
+];
+function explainDelivery(reason) {
+  for (const [re, text] of DELIVERY_REASON_HELP) if (re.test(reason || '')) return text;
+  return reason || 'WhatsApp did not deliver this message.';
+}
+async function attachDeliveryResults(digits, list) {
+  if (!list.length || !digits) return;
+  const webhook = await WaReport.find({ digits, at: { $gte: new Date(Date.now() - 90 * 86400000) } }).select('status template reason at').lean().catch(() => []);
+  const events = [...msg91LogRows.filter(e => e.digits === digits && e.at), ...webhook.map(w => ({ ...w, at: new Date(w.at) }))];
+  const isOther = t => t && /dose|lead|risk|doctor|ivf|course|order|otp|signup|welcome/i.test(t);
+  const asc = [...list].sort((a, b) => new Date(a.at) - new Date(b.at));
+  asc.forEach((r, i) => {
+    const from = new Date(r.at).getTime() - 2 * 60000;
+    const to = i + 1 < asc.length ? new Date(asc[i + 1].at).getTime() - 2 * 60000 : new Date(r.at).getTime() + 3 * 86400000;
+    const ev = events.filter(e => { const t = new Date(e.at).getTime(); return t >= from && t < to && !isOther(e.template); });
+    const best = ['read', 'delivered', 'sent'].find(st => ev.some(e => e.status === st));
+    const fail = ev.find(e => e.status === 'failed');
+    if (!r.ok) r.delivery = { status: 'failed', text: 'MSG91 refused the message' };
+    else if (best === 'read' || best === 'delivered') r.delivery = { status: best, text: best === 'read' ? 'Read' : 'Delivered' };
+    else if (fail) r.delivery = { status: 'failed', text: explainDelivery(fail.reason), reason: fail.reason };
+    else if (best === 'sent') r.delivery = { status: 'sent', text: 'Sent — not yet delivered to the phone' };
+    else r.delivery = { status: 'pending', text: Date.now() - new Date(r.at) < 3 * 86400000 ? 'Accepted by MSG91 — waiting for WhatsApp\'s delivery report (checked every 2 h)' : 'No delivery report' };
+  });
 }
 
 // One line (fits the renewal template's 300-char {{3}}) summarising the journey.
@@ -6463,7 +6575,7 @@ async function sendSignupTemplate(phone, firstName, link) {
             language: { code: waTpl.langFor(MSG91_SIGNUP_TEMPLATE_NAME, MSG91_TEMPLATE_LANG), policy: 'deterministic' },
             namespace: waTpl.namespaceFor(MSG91_SIGNUP_TEMPLATE_NAME, MSG91_SIGNUP_TEMPLATE_NAMESPACE),
             to_and_components: [{
-              to: [phone.replace(/\D/g, '')],
+              to: [waNumber(phone)],
               components: waTpl.fitComponents(MSG91_SIGNUP_TEMPLATE_NAME, {
                 header_1: { type: 'document', value: SAMPLE_REPORT_URL, filename: SAMPLE_REPORT_FILENAME },
                 body_1: { type: 'text', value: sanitizeTemplateParam(firstName, 40) || 'there' },
@@ -6708,7 +6820,7 @@ async function sendLeadTemplate(phone, segment) {
             language: { code: waTpl.langFor(tpl.name, MSG91_TEMPLATE_LANG), policy: 'deterministic' },
             namespace: waTpl.namespaceFor(tpl.name, MSG91_LEAD_TEMPLATE_NAMESPACE),
             to_and_components: [{
-              to: [phone],
+              to: [waNumber(phone)],
               components: waTpl.fitComponents(tpl.name, tpl.hasVariable
                 ? { body_1: { type: 'text', value: LEAD_GREETING_WORD, parameter_name: 'patient_name' } }
                 : {})
@@ -7911,16 +8023,16 @@ app.post('/api/admin/send-risk-alerts', adminAuth, async (req, res) => {
 
 app.get('/api/admin/stats', adminAuth, async (req, res) => {
   try {
-    const patients = await Patient.find();
+    const patients = await Patient.find().select('phone').lean();
     const total = patients.length;
     let sumAdh = 0, highRisk = 0, counted = 0;
+    const [risks, doseCount] = await Promise.all([riskScoresFor(patients), Dose.estimatedDocumentCount()]);
     for (const p of patients) {
-      const r = await computeRiskScore(p);
+      const r = risks.get(String(p._id));
       if (r.adherenceKnown) { sumAdh += r.adherence; counted++; }
       if (r.label === 'High' || r.label === 'Critical') highRisk++;
     }
     const avgAdh = counted ? Math.round((sumAdh / counted) * 100) : 0;
-    const doseCount = await Dose.countDocuments();
     res.json({ total_patients: total, high_risk_patients: highRisk, average_adherence: avgAdh, total_interactions: doseCount });
   } catch (err) {
     res.status(500).json({ message: err.message });
