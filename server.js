@@ -11,6 +11,7 @@ const crypto = require('crypto');
 const { cleanVitals, toFahrenheit, normaliseEntry, checkVitalsDanger } = require('./vitals/calibration');
 const { summarizeAdherence } = require('./vitals/adherence');
 const { buildVitalsProgress } = require('./vitals/progress');
+const waTpl = require('./msg91/templates');
 const ivfCare = require('./ivf/routes'); // Biomexa IVF Care — separate module, mounted near the end of this file
 
 const app = express();
@@ -656,7 +657,7 @@ async function simplifyTreatmentReport(insights, recommendations, language) {
 // no WhatsApp messages of any kind go out without this configured.
 const MSG91_AUTH_KEY = process.env.MSG91_AUTH_KEY || null;
 const MSG91_INTEGRATED_NUMBER = process.env.MSG91_INTEGRATED_NUMBER || null;
-const MSG91_DOSE_TEMPLATE_NAME = process.env.MSG91_DOSE_TEMPLATE_NAME || 'dose_reminder';
+let MSG91_DOSE_TEMPLATE_NAME = process.env.MSG91_DOSE_TEMPLATE_NAME || 'dose_reminder';
 const MSG91_TEMPLATE_NAMESPACE = process.env.MSG91_TEMPLATE_NAMESPACE || '';
 const MSG91_TEMPLATE_LANG = process.env.MSG91_TEMPLATE_LANG || 'en';
 const MSG91_CONFIGURED = !!(MSG91_AUTH_KEY && MSG91_INTEGRATED_NUMBER);
@@ -682,14 +683,14 @@ async function sendDoseReminderTemplate(phone, medicineName, dosage) {
           type: 'template',
           template: {
             name: MSG91_DOSE_TEMPLATE_NAME,
-            language: { code: MSG91_TEMPLATE_LANG, policy: 'deterministic' },
-            namespace: MSG91_TEMPLATE_NAMESPACE,
+            language: { code: waTpl.langFor(MSG91_DOSE_TEMPLATE_NAME, MSG91_TEMPLATE_LANG), policy: 'deterministic' },
+            namespace: waTpl.namespaceFor(MSG91_DOSE_TEMPLATE_NAME, MSG91_TEMPLATE_NAMESPACE),
             to_and_components: [{
               to: [phone.replace(/\D/g, '')],
-              components: {
+              components: waTpl.fitComponents(MSG91_DOSE_TEMPLATE_NAME, {
                 body_1: { type: 'text', value: medicineName, parameter_name: 'medicine_name' },
                 body_2: { type: 'text', value: dosage, parameter_name: 'dosage' }
-              }
+              })
             }]
           }
         }
@@ -717,7 +718,7 @@ async function sendDoseReminderTemplate(phone, medicineName, dosage) {
 // ({{reason}}). Please stay on schedule with your medicine or reach out to a doctor on Biomexa
 // Connect." — no buttons needed, this is informational only. Until configured, callers fall back
 // to sendWhatsAppFree (free text), which still works for anyone within an active session.
-const MSG91_RISK_TEMPLATE_NAME = process.env.MSG91_RISK_TEMPLATE_NAME || null;
+let MSG91_RISK_TEMPLATE_NAME = process.env.MSG91_RISK_TEMPLATE_NAME || null;
 const MSG91_RISK_TEMPLATE_NAMESPACE = process.env.MSG91_RISK_TEMPLATE_NAMESPACE || '';
 
 async function sendRiskAlertTemplate(phone, patientName, riskLevel, reason) {
@@ -736,15 +737,15 @@ async function sendRiskAlertTemplate(phone, patientName, riskLevel, reason) {
           type: 'template',
           template: {
             name: MSG91_RISK_TEMPLATE_NAME,
-            language: { code: MSG91_TEMPLATE_LANG, policy: 'deterministic' },
-            namespace: MSG91_RISK_TEMPLATE_NAMESPACE,
+            language: { code: waTpl.langFor(MSG91_RISK_TEMPLATE_NAME, MSG91_TEMPLATE_LANG), policy: 'deterministic' },
+            namespace: waTpl.namespaceFor(MSG91_RISK_TEMPLATE_NAME, MSG91_RISK_TEMPLATE_NAMESPACE),
             to_and_components: [{
               to: [phone.replace(/\D/g, '')],
-              components: {
+              components: waTpl.fitComponents(MSG91_RISK_TEMPLATE_NAME, {
                 body_1: { type: 'text', value: patientName, parameter_name: 'patient_name' },
                 body_2: { type: 'text', value: riskLevel, parameter_name: 'risk_level' },
                 body_3: { type: 'text', value: reason, parameter_name: 'reason' }
-              }
+              })
             }]
           }
         }
@@ -782,7 +783,7 @@ async function sendRiskAlertMessage(phone, patientName, riskLevel, reason) {
 // Setup: create + get Meta approval for a fourth template in MSG91 (identical process to the
 // other three). Suggested body: "Biomexa Doctor Alert: Patient {{patient_name}} ({{phone}})
 // has a {{severity}} reading — {{reason}}. Please reach out as soon as possible." — no buttons.
-const MSG91_DOCTOR_ALERT_TEMPLATE_NAME = process.env.MSG91_DOCTOR_ALERT_TEMPLATE_NAME || null;
+let MSG91_DOCTOR_ALERT_TEMPLATE_NAME = process.env.MSG91_DOCTOR_ALERT_TEMPLATE_NAME || null;
 const MSG91_DOCTOR_ALERT_TEMPLATE_NAMESPACE = process.env.MSG91_DOCTOR_ALERT_TEMPLATE_NAMESPACE || '';
 
 async function sendDoctorAlertTemplate(doctorPhone, patientName, patientPhone, severity, reason) {
@@ -801,16 +802,16 @@ async function sendDoctorAlertTemplate(doctorPhone, patientName, patientPhone, s
           type: 'template',
           template: {
             name: MSG91_DOCTOR_ALERT_TEMPLATE_NAME,
-            language: { code: MSG91_TEMPLATE_LANG, policy: 'deterministic' },
-            namespace: MSG91_DOCTOR_ALERT_TEMPLATE_NAMESPACE,
+            language: { code: waTpl.langFor(MSG91_DOCTOR_ALERT_TEMPLATE_NAME, MSG91_TEMPLATE_LANG), policy: 'deterministic' },
+            namespace: waTpl.namespaceFor(MSG91_DOCTOR_ALERT_TEMPLATE_NAME, MSG91_DOCTOR_ALERT_TEMPLATE_NAMESPACE),
             to_and_components: [{
               to: [doctorPhone.replace(/\D/g, '')],
-              components: {
+              components: waTpl.fitComponents(MSG91_DOCTOR_ALERT_TEMPLATE_NAME, {
                 body_1: { type: 'text', value: patientName, parameter_name: 'patient_name' },
                 body_2: { type: 'text', value: patientPhone, parameter_name: 'phone' },
                 body_3: { type: 'text', value: severity, parameter_name: 'severity' },
                 body_4: { type: 'text', value: reason, parameter_name: 'reason' }
-              }
+              })
             }]
           }
         }
@@ -846,7 +847,7 @@ async function sendDoctorAlertMessage(doctorPhone, patientName, patientPhone, se
 // Setup: create + get Meta approval for a third template in MSG91 (identical process to
 // dose_reminder and risk_alert). Suggested body: "Welcome to Biomexa, {{patient_name}}! Your
 // account is set up and dose reminders are now active." — no buttons needed.
-const MSG91_WELCOME_TEMPLATE_NAME = process.env.MSG91_WELCOME_TEMPLATE_NAME || null;
+let MSG91_WELCOME_TEMPLATE_NAME = process.env.MSG91_WELCOME_TEMPLATE_NAME || null;
 const MSG91_WELCOME_TEMPLATE_NAMESPACE = process.env.MSG91_WELCOME_TEMPLATE_NAMESPACE || '';
 
 async function sendWelcomeTemplate(phone, patientName) {
@@ -865,13 +866,13 @@ async function sendWelcomeTemplate(phone, patientName) {
           type: 'template',
           template: {
             name: MSG91_WELCOME_TEMPLATE_NAME,
-            language: { code: MSG91_TEMPLATE_LANG, policy: 'deterministic' },
-            namespace: MSG91_WELCOME_TEMPLATE_NAMESPACE,
+            language: { code: waTpl.langFor(MSG91_WELCOME_TEMPLATE_NAME, MSG91_TEMPLATE_LANG), policy: 'deterministic' },
+            namespace: waTpl.namespaceFor(MSG91_WELCOME_TEMPLATE_NAME, MSG91_WELCOME_TEMPLATE_NAMESPACE),
             to_and_components: [{
               to: [phone.replace(/\D/g, '')],
-              components: {
+              components: waTpl.fitComponents(MSG91_WELCOME_TEMPLATE_NAME, {
                 body_1: { type: 'text', value: patientName, parameter_name: 'patient_name' }
-              }
+              })
             }]
           }
         }
@@ -914,7 +915,7 @@ async function sendWelcomeMessage(phone, patientName, fallbackMsg) {
 // Biomexa dashboard." — no buttons needed. Until configured, this falls back to the existing
 // free-text send, which still works for anyone who has messaged Biomexa's WhatsApp number
 // within the last 24 hours.
-const MSG91_TREATMENT_REPORT_TEMPLATE_NAME = process.env.MSG91_TREATMENT_REPORT_TEMPLATE_NAME || null;
+let MSG91_TREATMENT_REPORT_TEMPLATE_NAME = process.env.MSG91_TREATMENT_REPORT_TEMPLATE_NAME || null;
 const MSG91_TREATMENT_REPORT_TEMPLATE_NAMESPACE = process.env.MSG91_TREATMENT_REPORT_TEMPLATE_NAMESPACE || MSG91_TEMPLATE_NAMESPACE;
 
 // Template params can't contain newlines and read best kept short — collapses whitespace and
@@ -940,17 +941,17 @@ async function sendTreatmentReportTemplate(phone, patientName, drugName, adheren
           type: 'template',
           template: {
             name: MSG91_TREATMENT_REPORT_TEMPLATE_NAME,
-            language: { code: MSG91_TEMPLATE_LANG, policy: 'deterministic' },
-            namespace: MSG91_TREATMENT_REPORT_TEMPLATE_NAMESPACE,
+            language: { code: waTpl.langFor(MSG91_TREATMENT_REPORT_TEMPLATE_NAME, MSG91_TEMPLATE_LANG), policy: 'deterministic' },
+            namespace: waTpl.namespaceFor(MSG91_TREATMENT_REPORT_TEMPLATE_NAME, MSG91_TREATMENT_REPORT_TEMPLATE_NAMESPACE),
             to_and_components: [{
               to: [phone.replace(/\D/g, '')],
-              components: {
+              components: waTpl.fitComponents(MSG91_TREATMENT_REPORT_TEMPLATE_NAME, {
                 body_1: { type: 'text', value: sanitizeTemplateParam(patientName, 60), parameter_name: 'patient_name' },
                 body_2: { type: 'text', value: sanitizeTemplateParam(drugName, 60), parameter_name: 'drug_name' },
                 body_3: { type: 'text', value: sanitizeTemplateParam(adherenceRate, 20), parameter_name: 'adherence_rate' },
                 body_4: { type: 'text', value: sanitizeTemplateParam(effectivenessLabel, 40), parameter_name: 'effectiveness' },
                 body_5: { type: 'text', value: sanitizeTemplateParam(topInsight, 300), parameter_name: 'key_insight' }
-              }
+              })
             }]
           }
         }
@@ -991,7 +992,7 @@ async function sendTreatmentReportMessage(phone, patientName, drugName, adherenc
 // needed. The full analysis (with all formatting) always stays on the dashboard; the WhatsApp
 // template gets a short, single-line-safe summary since template variables can't contain line
 // breaks. Until configured, falls back to the existing free-text send.
-const MSG91_REPORT_ANALYSIS_TEMPLATE_NAME = process.env.MSG91_REPORT_ANALYSIS_TEMPLATE_NAME || null;
+let MSG91_REPORT_ANALYSIS_TEMPLATE_NAME = process.env.MSG91_REPORT_ANALYSIS_TEMPLATE_NAME || null;
 const MSG91_REPORT_ANALYSIS_TEMPLATE_NAMESPACE = process.env.MSG91_REPORT_ANALYSIS_TEMPLATE_NAMESPACE || MSG91_TEMPLATE_NAMESPACE;
 
 async function sendReportAnalysisTemplate(phone, patientName, fileName, summary) {
@@ -1010,15 +1011,15 @@ async function sendReportAnalysisTemplate(phone, patientName, fileName, summary)
           type: 'template',
           template: {
             name: MSG91_REPORT_ANALYSIS_TEMPLATE_NAME,
-            language: { code: MSG91_TEMPLATE_LANG, policy: 'deterministic' },
-            namespace: MSG91_REPORT_ANALYSIS_TEMPLATE_NAMESPACE,
+            language: { code: waTpl.langFor(MSG91_REPORT_ANALYSIS_TEMPLATE_NAME, MSG91_TEMPLATE_LANG), policy: 'deterministic' },
+            namespace: waTpl.namespaceFor(MSG91_REPORT_ANALYSIS_TEMPLATE_NAME, MSG91_REPORT_ANALYSIS_TEMPLATE_NAMESPACE),
             to_and_components: [{
               to: [phone.replace(/\D/g, '')],
-              components: {
+              components: waTpl.fitComponents(MSG91_REPORT_ANALYSIS_TEMPLATE_NAME, {
                 body_1: { type: 'text', value: sanitizeTemplateParam(patientName, 60), parameter_name: 'patient_name' },
                 body_2: { type: 'text', value: sanitizeTemplateParam(fileName, 80), parameter_name: 'file_name' },
                 body_3: { type: 'text', value: sanitizeTemplateParam(summary, 500), parameter_name: 'summary' }
-              }
+              })
             }]
           }
         }
@@ -1064,7 +1065,7 @@ async function sendReportAnalysisMessage(phone, patientName, fileName, analysisT
 // message." — no buttons needed. Until configured, this falls back to the existing free-text
 // send, which still works for anyone who has messaged Biomexa's WhatsApp number within the last
 // 24 hours.
-const MSG91_OTP_TEMPLATE_NAME = process.env.MSG91_OTP_TEMPLATE_NAME || null;
+let MSG91_OTP_TEMPLATE_NAME = process.env.MSG91_OTP_TEMPLATE_NAME || null;
 const MSG91_OTP_TEMPLATE_NAMESPACE = process.env.MSG91_OTP_TEMPLATE_NAMESPACE || MSG91_TEMPLATE_NAMESPACE;
 
 async function sendPasswordResetOTPTemplate(phone, accountName, otp, expiryMinutes) {
@@ -1083,18 +1084,18 @@ async function sendPasswordResetOTPTemplate(phone, accountName, otp, expiryMinut
           type: 'template',
           template: {
             name: MSG91_OTP_TEMPLATE_NAME,
-            language: { code: MSG91_TEMPLATE_LANG, policy: 'deterministic' },
-            namespace: MSG91_OTP_TEMPLATE_NAMESPACE,
+            language: { code: waTpl.langFor(MSG91_OTP_TEMPLATE_NAME, MSG91_TEMPLATE_LANG), policy: 'deterministic' },
+            namespace: waTpl.namespaceFor(MSG91_OTP_TEMPLATE_NAME, MSG91_OTP_TEMPLATE_NAMESPACE),
             to_and_components: [{
               to: [phone.replace(/\D/g, '')],
               // Meta only approves OTP templates in the AUTHENTICATION category (a Utility OTP
               // template was rejected as "incorrect category"). Authentication templates have a
               // fixed body with exactly one variable — the code — plus a "Copy code" button that
               // must be sent the same code.
-              components: {
+              components: waTpl.fitComponents(MSG91_OTP_TEMPLATE_NAME, {
                 body_1: { type: 'text', value: String(otp) },
                 button_1: { subtype: 'url', type: 'text', value: String(otp) }
-              }
+              })
             }]
           }
         }
@@ -1235,7 +1236,7 @@ async function handleWhatsAppResetRequest(phone) {
 // Metformin 500mg at 9:00 AM" or "No pending doses today. Great job!") since template variables
 // can't contain line breaks — the fully-formatted version with food notes etc. stays in the
 // free-text fallback. Until configured, this falls back to the existing free-text send.
-const MSG91_LOGIN_TEMPLATE_NAME = process.env.MSG91_LOGIN_TEMPLATE_NAME || null;
+let MSG91_LOGIN_TEMPLATE_NAME = process.env.MSG91_LOGIN_TEMPLATE_NAME || null;
 const MSG91_LOGIN_TEMPLATE_NAMESPACE = process.env.MSG91_LOGIN_TEMPLATE_NAMESPACE || MSG91_TEMPLATE_NAMESPACE;
 
 async function sendLoginTemplate(phone, patientName, statusLine) {
@@ -1254,14 +1255,14 @@ async function sendLoginTemplate(phone, patientName, statusLine) {
           type: 'template',
           template: {
             name: MSG91_LOGIN_TEMPLATE_NAME,
-            language: { code: MSG91_TEMPLATE_LANG, policy: 'deterministic' },
-            namespace: MSG91_LOGIN_TEMPLATE_NAMESPACE,
+            language: { code: waTpl.langFor(MSG91_LOGIN_TEMPLATE_NAME, MSG91_TEMPLATE_LANG), policy: 'deterministic' },
+            namespace: waTpl.namespaceFor(MSG91_LOGIN_TEMPLATE_NAME, MSG91_LOGIN_TEMPLATE_NAMESPACE),
             to_and_components: [{
               to: [phone.replace(/\D/g, '')],
-              components: {
+              components: waTpl.fitComponents(MSG91_LOGIN_TEMPLATE_NAME, {
                 body_1: { type: 'text', value: sanitizeTemplateParam(patientName, 60), parameter_name: 'patient_name' },
                 body_2: { type: 'text', value: sanitizeTemplateParam(statusLine, 300), parameter_name: 'status_line' }
-              }
+              })
             }]
           }
         }
@@ -1556,7 +1557,7 @@ async function whatsappWindowOpen(phone) {
 //   Body: "Biomexa IVF Care update: {{1}}\n\n{{2}}\n\nOpen your IVF Care app for the full details: biomexapharmaceuticals.com/ivf.html"
 //   Variables: {{1}} = title, {{2}} = details. No buttons.
 // then set MSG91_IVF_UPDATE_TEMPLATE_NAME (and MSG91_IVF_UPDATE_TEMPLATE_NAMESPACE if different).
-const MSG91_IVF_UPDATE_TEMPLATE_NAME = process.env.MSG91_IVF_UPDATE_TEMPLATE_NAME || null;
+let MSG91_IVF_UPDATE_TEMPLATE_NAME = process.env.MSG91_IVF_UPDATE_TEMPLATE_NAME || null;
 const MSG91_IVF_UPDATE_TEMPLATE_NAMESPACE = process.env.MSG91_IVF_UPDATE_TEMPLATE_NAMESPACE || MSG91_TEMPLATE_NAMESPACE;
 async function sendIvfUpdateTemplate(phone, title, details) {
   if (!MSG91_CONFIGURED || !MSG91_IVF_UPDATE_TEMPLATE_NAME) return { success: false, provider: 'msg91_ivf_update_template_not_configured' };
@@ -1571,15 +1572,15 @@ async function sendIvfUpdateTemplate(phone, title, details) {
           messaging_product: 'whatsapp', type: 'template',
           template: {
             name: MSG91_IVF_UPDATE_TEMPLATE_NAME,
-            language: { code: MSG91_TEMPLATE_LANG, policy: 'deterministic' },
-            namespace: MSG91_IVF_UPDATE_TEMPLATE_NAMESPACE,
+            language: { code: waTpl.langFor(MSG91_IVF_UPDATE_TEMPLATE_NAME, MSG91_TEMPLATE_LANG), policy: 'deterministic' },
+            namespace: waTpl.namespaceFor(MSG91_IVF_UPDATE_TEMPLATE_NAME, MSG91_IVF_UPDATE_TEMPLATE_NAMESPACE),
             to_and_components: [{
               to: [phone.replace(/\D/g, '')],
-              components: {
+              components: waTpl.fitComponents(MSG91_IVF_UPDATE_TEMPLATE_NAME, {
                 // ivf_care_update uses numbered variables: {{1}} = title, {{2}} = details
                 body_1: { type: 'text', value: sanitizeTemplateParam(title, 80) || 'Update' },
                 body_2: { type: 'text', value: sanitizeTemplateParam(details, 700) || '-' }
-              }
+              })
             }]
           }
         }
@@ -1603,7 +1604,7 @@ async function sendIvfUpdateTemplate(phone, title, details) {
 // then set MSG91_RENEWAL_TEMPLATE_NAME (and MSG91_RENEWAL_TEMPLATE_NAMESPACE if different).
 // Trial/plan notices go to every patient, most of whom haven't messaged Biomexa in the last 24 h,
 // so without this template Meta drops them.
-const MSG91_RENEWAL_TEMPLATE_NAME = process.env.MSG91_RENEWAL_TEMPLATE_NAME || null;
+let MSG91_RENEWAL_TEMPLATE_NAME = process.env.MSG91_RENEWAL_TEMPLATE_NAME || null;
 const MSG91_RENEWAL_TEMPLATE_NAMESPACE = process.env.MSG91_RENEWAL_TEMPLATE_NAMESPACE || MSG91_TEMPLATE_NAMESPACE;
 async function sendRenewalTemplate(phone, firstName, statusLine, treatmentLine) {
   if (!MSG91_CONFIGURED || !MSG91_RENEWAL_TEMPLATE_NAME) return { success: false, provider: 'msg91_renewal_template_not_configured' };
@@ -1618,15 +1619,15 @@ async function sendRenewalTemplate(phone, firstName, statusLine, treatmentLine) 
           messaging_product: 'whatsapp', type: 'template',
           template: {
             name: MSG91_RENEWAL_TEMPLATE_NAME,
-            language: { code: MSG91_TEMPLATE_LANG, policy: 'deterministic' },
-            namespace: MSG91_RENEWAL_TEMPLATE_NAMESPACE,
+            language: { code: waTpl.langFor(MSG91_RENEWAL_TEMPLATE_NAME, MSG91_TEMPLATE_LANG), policy: 'deterministic' },
+            namespace: waTpl.namespaceFor(MSG91_RENEWAL_TEMPLATE_NAME, MSG91_RENEWAL_TEMPLATE_NAMESPACE),
             to_and_components: [{
               to: [phone.replace(/\D/g, '')],
-              components: {
+              components: waTpl.fitComponents(MSG91_RENEWAL_TEMPLATE_NAME, {
                 body_1: { type: 'text', value: sanitizeTemplateParam(firstName, 40) || 'there' },
                 body_2: { type: 'text', value: sanitizeTemplateParam(statusLine, 200) || 'your Biomexa Care access has changed.' },
                 body_3: { type: 'text', value: sanitizeTemplateParam(treatmentLine, 300) || '-' }
-              }
+              })
             }]
           }
         }
@@ -1642,6 +1643,48 @@ async function sendRenewalTemplate(phone, firstName, statusLine, treatmentLine) 
     return { success: false, provider: 'msg91', detail: err.message };
   }
 }
+
+// ========== WHATSAPP TEMPLATE SYNC (msg91/templates.js) ==========
+// Every 6 hours (and at start-up) the approved templates are read from MSG91 and each message type
+// is lined up with one: the name set on Render if it's approved, otherwise an approved template
+// that clearly fits. Language code, namespace and variables then come from the template itself.
+const WA_TPL_ENV = {
+  dose: process.env.MSG91_DOSE_TEMPLATE_NAME || 'dose_reminder', risk: process.env.MSG91_RISK_TEMPLATE_NAME,
+  doctor_alert: process.env.MSG91_DOCTOR_ALERT_TEMPLATE_NAME, welcome: process.env.MSG91_WELCOME_TEMPLATE_NAME,
+  treatment_report: process.env.MSG91_TREATMENT_REPORT_TEMPLATE_NAME, report_analysis: process.env.MSG91_REPORT_ANALYSIS_TEMPLATE_NAME,
+  otp: process.env.MSG91_OTP_TEMPLATE_NAME, login: process.env.MSG91_LOGIN_TEMPLATE_NAME, signup: process.env.MSG91_SIGNUP_TEMPLATE_NAME,
+  ivf_update: process.env.MSG91_IVF_UPDATE_TEMPLATE_NAME, renewal: process.env.MSG91_RENEWAL_TEMPLATE_NAME, order: process.env.MSG91_ORDER_TEMPLATE_NAME,
+  course: process.env.MSG91_COURSE_TEMPLATE_NAME, ad: process.env.MSG91_AD_TEMPLATE_NAME, lead: process.env.MSG91_LEAD_TEMPLATE_NAME
+};
+const WA_TPL_SET = {
+  dose: n => { MSG91_DOSE_TEMPLATE_NAME = n; }, risk: n => { MSG91_RISK_TEMPLATE_NAME = n; },
+  doctor_alert: n => { MSG91_DOCTOR_ALERT_TEMPLATE_NAME = n; }, welcome: n => { MSG91_WELCOME_TEMPLATE_NAME = n; },
+  treatment_report: n => { MSG91_TREATMENT_REPORT_TEMPLATE_NAME = n; }, report_analysis: n => { MSG91_REPORT_ANALYSIS_TEMPLATE_NAME = n; },
+  otp: n => { MSG91_OTP_TEMPLATE_NAME = n; }, login: n => { MSG91_LOGIN_TEMPLATE_NAME = n; }, signup: n => { MSG91_SIGNUP_TEMPLATE_NAME = n; },
+  ivf_update: n => { MSG91_IVF_UPDATE_TEMPLATE_NAME = n; }, renewal: n => { MSG91_RENEWAL_TEMPLATE_NAME = n; }, order: n => { MSG91_ORDER_TEMPLATE_NAME = n; },
+  course: n => { MSG91_COURSE_TEMPLATE_NAME = n; }, ad: n => { MSG91_AD_TEMPLATE_NAME = n; }, lead: n => { MSG91_LEAD_TEMPLATE_NAME = n; }
+};
+let waTplSyncing = null;
+async function syncWhatsAppTemplates() {
+  if (!MSG91_CONFIGURED) return null;
+  if (waTplSyncing) return waTplSyncing;
+  waTplSyncing = (async () => {
+    const st = await waTpl.syncTemplates({ authKey: MSG91_AUTH_KEY, integratedNumber: MSG91_INTEGRATED_NUMBER, configured: WA_TPL_ENV });
+    if (st.error) { console.log('⚠️ WhatsApp template sync failed:', st.error); return st; }
+    const lines = [];
+    for (const [k, r] of Object.entries(st.resolved)) {
+      if (r.source === 'auto' && WA_TPL_SET[k]) WA_TPL_SET[k](r.name);
+      lines.push(`${k}=${r.name || '—'}${r.source === 'auto' ? ' (auto)' : r.source === 'render-unapproved' ? ' (NOT APPROVED)' : ''}`);
+      for (const i of r.issues) console.log(`ℹ️ Template ${k}: ${i}`);
+    }
+    const nApproved = new Set(st.templates.filter(t => t.status === 'APPROVED').map(t => t.name)).size;
+    console.log(`📑 WhatsApp templates synced — ${nApproved} approved in MSG91 · ${lines.join(' · ')}`);
+    return st;
+  })().finally(() => { waTplSyncing = null; });
+  return waTplSyncing;
+}
+setTimeout(() => syncWhatsAppTemplates().catch(() => {}), 5000);
+setInterval(() => syncWhatsAppTemplates().catch(() => {}), 6 * 3600e3);
 
 // ========== MONGODB SETUP ==========
 mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/biomexa')
@@ -2329,7 +2372,7 @@ app.post('/api/quick-vitals', signupLimiter, async (req, res) => {
 // then set MSG91_ORDER_TEMPLATE_NAME (and MSG91_ORDER_TEMPLATE_NAMESPACE if different).
 // Most buyers have never messaged the Biomexa number, so free text (which Meta only delivers inside
 // the 24-hour window) can't be relied on; the template is used whenever that window is closed.
-const MSG91_ORDER_TEMPLATE_NAME = process.env.MSG91_ORDER_TEMPLATE_NAME || null;
+let MSG91_ORDER_TEMPLATE_NAME = process.env.MSG91_ORDER_TEMPLATE_NAME || null;
 const MSG91_ORDER_TEMPLATE_NAMESPACE = process.env.MSG91_ORDER_TEMPLATE_NAMESPACE || MSG91_TEMPLATE_NAMESPACE;
 async function sendOrderTemplate(phone, firstName, statusLine, details) {
   if (!MSG91_CONFIGURED || !MSG91_ORDER_TEMPLATE_NAME) return { success: false, provider: 'msg91_order_template_not_configured' };
@@ -2344,15 +2387,15 @@ async function sendOrderTemplate(phone, firstName, statusLine, details) {
           messaging_product: 'whatsapp', type: 'template',
           template: {
             name: MSG91_ORDER_TEMPLATE_NAME,
-            language: { code: MSG91_TEMPLATE_LANG, policy: 'deterministic' },
-            namespace: MSG91_ORDER_TEMPLATE_NAMESPACE,
+            language: { code: waTpl.langFor(MSG91_ORDER_TEMPLATE_NAME, MSG91_TEMPLATE_LANG), policy: 'deterministic' },
+            namespace: waTpl.namespaceFor(MSG91_ORDER_TEMPLATE_NAME, MSG91_ORDER_TEMPLATE_NAMESPACE),
             to_and_components: [{
               to: [phone.replace(/\D/g, '')],
-              components: {
+              components: waTpl.fitComponents(MSG91_ORDER_TEMPLATE_NAME, {
                 body_1: { type: 'text', value: sanitizeTemplateParam(firstName, 40) || 'there' },
                 body_2: { type: 'text', value: sanitizeTemplateParam(statusLine, 250) || 'there is an update on your order.' },
                 body_3: { type: 'text', value: sanitizeTemplateParam(details, 300) || '-' }
-              }
+              })
             }]
           }
         }
@@ -3705,7 +3748,7 @@ const COURSE_MSG_START_HOUR = 9, COURSE_MSG_END_HOUR = 21;
 // Optional approved template so these reach patients outside WhatsApp's 24-hour session window
 // (most will be — the course has ended, so they're no longer replying to dose reminders).
 // Suggested body: "✅ Biomexa — Hi {{1}}, here is an update on your {{2}} treatment course:\n\n{{3}}\n\nThank you for trusting Biomexa with your care. — Biomexa Team" (see .env.example)
-const MSG91_COURSE_TEMPLATE_NAME = process.env.MSG91_COURSE_TEMPLATE_NAME || null;
+let MSG91_COURSE_TEMPLATE_NAME = process.env.MSG91_COURSE_TEMPLATE_NAME || null;
 const MSG91_COURSE_TEMPLATE_NAMESPACE = process.env.MSG91_COURSE_TEMPLATE_NAMESPACE || MSG91_TEMPLATE_NAMESPACE;
 
 async function sendCourseTemplate(phone, patientName, medicineName, summaryLine) {
@@ -3724,15 +3767,15 @@ async function sendCourseTemplate(phone, patientName, medicineName, summaryLine)
           type: 'template',
           template: {
             name: MSG91_COURSE_TEMPLATE_NAME,
-            language: { code: MSG91_TEMPLATE_LANG, policy: 'deterministic' },
-            namespace: MSG91_COURSE_TEMPLATE_NAMESPACE,
+            language: { code: waTpl.langFor(MSG91_COURSE_TEMPLATE_NAME, MSG91_TEMPLATE_LANG), policy: 'deterministic' },
+            namespace: waTpl.namespaceFor(MSG91_COURSE_TEMPLATE_NAME, MSG91_COURSE_TEMPLATE_NAMESPACE),
             to_and_components: [{
               to: [phone.replace(/\D/g, '')],
-              components: {
+              components: waTpl.fitComponents(MSG91_COURSE_TEMPLATE_NAME, {
                 body_1: { type: 'text', value: sanitizeTemplateParam(patientName || 'there', 60), parameter_name: 'patient_name' },
                 body_2: { type: 'text', value: sanitizeTemplateParam(medicineName, 60), parameter_name: 'medicine_name' },
                 body_3: { type: 'text', value: sanitizeTemplateParam(summaryLine, 600), parameter_name: 'summary' }
-              }
+              })
             }]
           }
         }
@@ -3908,7 +3951,7 @@ async function processCompletedCourses() {
 // WhatsApp only delivers unsolicited promotional content through an approved MARKETING template —
 // there is deliberately no free-text fallback. Until MSG91_AD_TEMPLATE_NAME is set this just logs
 // that it skipped. See .env.example for the template to create.
-const MSG91_AD_TEMPLATE_NAME = process.env.MSG91_AD_TEMPLATE_NAME || null;
+let MSG91_AD_TEMPLATE_NAME = process.env.MSG91_AD_TEMPLATE_NAME || null;
 const MSG91_AD_TEMPLATE_NAMESPACE = process.env.MSG91_AD_TEMPLATE_NAMESPACE || MSG91_TEMPLATE_NAMESPACE;
 const AD_INTERVAL_DAYS = Math.max(1, parseInt(process.env.AD_INTERVAL_DAYS, 10) || 10);
 // New sign-ups wait this long before their first product message (keeps it away from the welcome message).
@@ -3967,11 +4010,11 @@ async function sendAdTemplate(phone, patientName, accessLine) {
           type: 'template',
           template: {
             name: MSG91_AD_TEMPLATE_NAME,
-            language: { code: MSG91_TEMPLATE_LANG, policy: 'deterministic' },
-            namespace: MSG91_AD_TEMPLATE_NAMESPACE,
+            language: { code: waTpl.langFor(MSG91_AD_TEMPLATE_NAME, MSG91_TEMPLATE_LANG), policy: 'deterministic' },
+            namespace: waTpl.namespaceFor(MSG91_AD_TEMPLATE_NAME, MSG91_AD_TEMPLATE_NAMESPACE),
             to_and_components: [{
               to: [phone.replace(/\D/g, '')],
-              components: adTemplateComponents(patientName, accessLine)
+              components: waTpl.fitComponents(MSG91_AD_TEMPLATE_NAME, adTemplateComponents(patientName, accessLine))
             }]
           }
         }
@@ -5730,6 +5773,14 @@ app.get('/api/admin/subscriptions', adminAuth, async (req, res) => {
   }
 });
 
+// Which approved MSG91 template each WhatsApp message uses (admin → WhatsApp templates).
+app.get('/api/admin/whatsapp-templates', adminAuth, async (req, res) => {
+  try {
+    if (req.query.refresh || !waTpl._state().syncedAt) await syncWhatsAppTemplates();
+    res.json({ configured: MSG91_CONFIGURED, ...waTpl.report() });
+  } catch (err) { res.status(500).json({ message: err.message }); }
+});
+
 // Journey report for one patient (admin double-check before a renewal reminder).
 async function twinsForPhone(phone) {
   return Patient.find({ phone: { $in: phoneVariants(phone) } }).select('name phone city createdAt subscription medicines renewalReminders lastSubNoticeKey').lean();
@@ -6394,7 +6445,7 @@ function portalLoginMessage(name, lang, segment) {
 //      report shows what you get every month. Sign up in 1 minute: {{2}}  Reply STOP to opt out."
 //   Sample header: upload sample-report.pdf · {{1}} Ravi · {{2}} https://biomexapharmaceuticals.com/reminders.html
 // then set MSG91_SIGNUP_TEMPLATE_NAME (+ _NAMESPACE if different).
-const MSG91_SIGNUP_TEMPLATE_NAME = process.env.MSG91_SIGNUP_TEMPLATE_NAME || null;
+let MSG91_SIGNUP_TEMPLATE_NAME = process.env.MSG91_SIGNUP_TEMPLATE_NAME || null;
 const MSG91_SIGNUP_TEMPLATE_NAMESPACE = process.env.MSG91_SIGNUP_TEMPLATE_NAMESPACE || MSG91_TEMPLATE_NAMESPACE;
 async function sendSignupTemplate(phone, firstName, link) {
   if (!MSG91_CONFIGURED || !MSG91_SIGNUP_TEMPLATE_NAME) return { success: false, provider: 'not_configured' };
@@ -6409,15 +6460,15 @@ async function sendSignupTemplate(phone, firstName, link) {
           messaging_product: 'whatsapp', type: 'template',
           template: {
             name: MSG91_SIGNUP_TEMPLATE_NAME,
-            language: { code: MSG91_TEMPLATE_LANG, policy: 'deterministic' },
-            namespace: MSG91_SIGNUP_TEMPLATE_NAMESPACE,
+            language: { code: waTpl.langFor(MSG91_SIGNUP_TEMPLATE_NAME, MSG91_TEMPLATE_LANG), policy: 'deterministic' },
+            namespace: waTpl.namespaceFor(MSG91_SIGNUP_TEMPLATE_NAME, MSG91_SIGNUP_TEMPLATE_NAMESPACE),
             to_and_components: [{
               to: [phone.replace(/\D/g, '')],
-              components: {
+              components: waTpl.fitComponents(MSG91_SIGNUP_TEMPLATE_NAME, {
                 header_1: { type: 'document', value: SAMPLE_REPORT_URL, filename: SAMPLE_REPORT_FILENAME },
                 body_1: { type: 'text', value: sanitizeTemplateParam(firstName, 40) || 'there' },
                 body_2: { type: 'text', value: link }
-              }
+              })
             }]
           }
         }
@@ -6512,7 +6563,7 @@ app.post('/api/admin/reminder-center/campaign-invite', adminAuth, async (req, re
 // it costs nothing); STOP marks them opted out and they are never messaged again.
 // WhatsApp only allows business-initiated messages through an approved template, so there is no
 // free-text fallback here. See .env.example for the template to create.
-const MSG91_LEAD_TEMPLATE_NAME = process.env.MSG91_LEAD_TEMPLATE_NAME || null;
+let MSG91_LEAD_TEMPLATE_NAME = process.env.MSG91_LEAD_TEMPLATE_NAME || null;
 const MSG91_LEAD_TEMPLATE_NAMESPACE = process.env.MSG91_LEAD_TEMPLATE_NAMESPACE || MSG91_TEMPLATE_NAMESPACE;
 // New contacts are never greeted by name (the name in an uploaded list may be wrong or belong to
 // someone else). With the approved lead_onboarding template ("Hello {{1}} 🙏") the variable is
@@ -6654,13 +6705,13 @@ async function sendLeadTemplate(phone, segment) {
           type: 'template',
           template: {
             name: tpl.name,
-            language: { code: MSG91_TEMPLATE_LANG, policy: 'deterministic' },
-            namespace: MSG91_LEAD_TEMPLATE_NAMESPACE,
+            language: { code: waTpl.langFor(tpl.name, MSG91_TEMPLATE_LANG), policy: 'deterministic' },
+            namespace: waTpl.namespaceFor(tpl.name, MSG91_LEAD_TEMPLATE_NAMESPACE),
             to_and_components: [{
               to: [phone],
-              components: tpl.hasVariable
+              components: waTpl.fitComponents(tpl.name, tpl.hasVariable
                 ? { body_1: { type: 'text', value: LEAD_GREETING_WORD, parameter_name: 'patient_name' } }
-                : {}
+                : {})
             }]
           }
         }

@@ -404,6 +404,17 @@ tbody tr:hover { background: #f6f8fc !important; }
     <p id="doctorAlertTemplateStatus" style="margin-top:4px;font-size:0.78rem;"></p>
   </div>
 
+  <div class="ai-panel" id="waTplPanel" style="border-color: var(--border);">
+    <div class="ai-panel-head">
+      <div>
+        <h2><i class="fas fa-file-lines"></i> WhatsApp templates (MSG91)</h2>
+        <p>Which approved template each message uses. Checked against MSG91 every 6 hours — MSG91 reports "success" even when a template doesn't match, so problems show up here instead.</p>
+      </div>
+      <button class="btn" style="padding:8px 14px;font-size:.85rem" onclick="loadWaTemplates(true)"><i class="fas fa-rotate"></i> Check now</button>
+    </div>
+    <div id="waTplBody" style="font-size:.85rem;color:var(--text-muted)">Loading…</div>
+  </div>
+
   <div class="ai-panel" id="broadcastPanel" style="border-color: var(--danger);">
     <div class="ai-panel-head">
       <div>
@@ -722,6 +733,7 @@ function enterDashboard() {
   loadModelStatus();
   loadData();
   loadWaSystemStatus();
+  loadWaTemplates();
   loadClinicalData();
   loadOrders();
   loadDoctors();
@@ -798,6 +810,35 @@ function loadCare() {
       ? '<table style="width:100%;border-collapse:collapse"><thead><tr style="text-align:left;color:var(--text-muted);font-size:.78rem"><th>Date</th><th>Patient</th><th>Plan</th><th>Amount</th><th>Payment ID</th></tr></thead><tbody>' + rows + '</tbody></table>'
       : '<div style="color:var(--text-muted)">No payments yet.</div>';
   }).catch(e => { document.getElementById('careStatusLine').textContent = 'Could not load subscriptions — ' + e.message; });
+}
+
+function loadWaTemplates(refresh) {
+  const body = document.getElementById('waTplBody');
+  if (refresh) body.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Checking MSG91…';
+  const esc = t => String(t ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  authFetch('/api/admin/whatsapp-templates' + (refresh ? '?refresh=1' : ''))
+    .then(r => r.json().then(d => ({ ok: r.ok, d })))
+    .then(({ ok, d }) => {
+      if (!ok) throw new Error(d.message || 'Could not load');
+      if (!d.configured) { body.innerHTML = 'MSG91 is not configured on Render (MSG91_AUTH_KEY / MSG91_INTEGRATED_NUMBER).'; return; }
+      const head = d.error
+        ? '<div style="color:var(--danger);margin-bottom:8px"><b>Could not read templates from MSG91:</b> ' + esc(d.error) + '</div>'
+        : '<div style="margin-bottom:8px">Last checked ' + (d.syncedAt ? new Date(d.syncedAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—') + ' · ' + new Set(d.templates.filter(t => t.status === 'APPROVED').map(t => t.name)).size + ' approved templates in MSG91</div>';
+      const badge = t => t.source === 'render' && !t.issues.length ? '<span style="color:var(--success);font-weight:700">✓ OK</span>'
+        : t.source === 'render' ? '<span style="color:#b45309;font-weight:700">Check</span>'
+        : t.source === 'auto' ? '<span style="color:#1d4ed8;font-weight:700">Auto-matched</span>'
+        : t.source === 'render-unapproved' ? '<span style="color:var(--danger);font-weight:700">Not approved</span>'
+        : t.source === 'not-synced' ? '<span>—</span>' : '<span style="color:var(--text-muted)">None</span>';
+      const rows = d.types.map(t => '<tr style="border-top:1px solid var(--border)"><td style="padding:7px 6px;color:var(--text)"><b>' + esc(t.label) + '</b><div style="font-size:.72rem">' + esc(t.env) + '</div></td>' +
+        '<td style="padding:7px 6px;color:var(--text)">' + (t.using ? '<code>' + esc(t.using) + '</code>' + (t.language ? ' <span style="font-size:.72rem">(' + esc(t.language) + ')</span>' : '') : '—') +
+        (t.bodyText ? '<div style="font-size:.72rem;max-width:380px;white-space:pre-wrap">' + esc(t.bodyText.slice(0, 160)) + (t.bodyText.length > 160 ? '…' : '') + '</div>' : '') + '</td>' +
+        '<td style="padding:7px 6px">' + badge(t) + (t.issues.length ? '<div style="font-size:.74rem;max-width:300px">' + t.issues.map(esc).join('<br>') + '</div>' : '') + '</td></tr>').join('');
+      const used = new Set(d.types.map(t => t.using));
+      const unused = [...new Set(d.templates.filter(t => t.status === 'APPROVED' && !used.has(t.name)).map(t => t.name))];
+      body.innerHTML = head + '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse"><thead><tr style="text-align:left;font-size:.74rem"><th style="padding:4px 6px">Message</th><th style="padding:4px 6px">Template used</th><th style="padding:4px 6px">Status</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
+        (unused.length ? '<div style="margin-top:10px">Approved but not used by any message: ' + unused.map(n => '<code>' + esc(n) + '</code>').join(', ') + '</div>' : '');
+    })
+    .catch(e => { body.innerHTML = '<span style="color:var(--danger)">' + esc(e.message) + '</span>'; });
 }
 
 function loadWaSystemStatus() {
