@@ -560,6 +560,17 @@ async function extractInto(reportId, files) {
   return update;
 }
 
+// ---------- IVF centre onboarding helpers ----------
+// Centres waiting for (or refused) admin approval are hidden from patients.
+const CENTRE_LIVE = { status: { $nin: ['pending', 'rejected'] } };
+function notifyCentreRequest(center, doctor) {
+  if (!D.notifyAdmin) return;
+  const dn = String(doctor?.name || '').replace(/^dr\.?\s+/i, '');
+  D.notifyAdmin(`🏥 New IVF centre request: ${center.centerName}`,
+    `🏥 *New IVF centre request*\n\n${center.centerName}${center.city ? ', ' + center.city : ''}\nDr. ${dn} · ${doctor?.phone || ''}\nMedical reg. no.: ${doctor?.licenseNumber || '—'}${center.registrationNumber ? `\nART reg. no.: ${center.registrationNumber}` : ''}\n\nApprove or reject it in the admin portal:\n${ivfUrl('admin.html#ivfCentresPanel')}`)
+    .catch(err => console.log('⚠️ Admin notify failed:', err.message));
+}
+
 // ---------- WhatsApp delivery ----------
 // Free text only reaches someone who messaged the Biomexa number in the last 24 hours; outside
 // that window Meta silently drops it. So: free text inside the window, the approved IVF update
@@ -597,8 +608,74 @@ function mount(app, deps) {
   // ---------- public ----------
   app.get(`${R}/meta`, (req, res) => res.json({ stages: IVF_STAGES, protocols: PROTOCOLS, reportCategories: REPORT_CATEGORIES, consentText: CONSENT_TEXT, reportTemplates: Object.fromEntries(Object.keys(REPORT_TEMPLATES).map(k => [k, templateRows(k)])), graphKeys: Object.keys(VALUE_LIMITS) }));
 
+  // ---------- IVF centre onboarding (one step: doctor account + centre, reviewed by the admin) ----------
+  app.post(`${R}/centre-signup`, ...(D.signupLimiter ? [D.signupLimiter] : []), wrap(async (req, res) => {
+    const b = req.body || {};
+    const t = (v, n) => str(v, n) || ''; // str() gives undefined for empty input
+    const name = t(b.doctorName, 80).replace(/^dr\.?\s+/i, '');
+    const centerName = t(b.centerName, 120), city = t(b.city, 80), licenseNumber = t(b.licenseNumber, 60);
+    const password = String(b.password || '');
+    if (!name || !centerName || !city || !licenseNumber || !b.phone) return res.status(400).json({ message: 'Please fill in your name, WhatsApp number, medical registration number, centre name and city.' });
+    const phone = D.normalizePhone(b.phone);
+    if (!/^\+\d{11,15}$/.test(phone)) return res.status(400).json({ message: 'Please enter a valid 10-digit WhatsApp number.' });
+    if (password.length < 6) return res.status(400).json({ message: 'Password must be at least 6 characters.' });
+    const email = t(b.email, 120).toLowerCase();
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ message: 'Please enter a valid email, or leave it empty.' });
+    if (await D.findAccountByPhone('doctor', phone)) return res.status(409).json({ code: 'exists', message: 'This number already has a Biomexa doctor account. Please log in instead; you can set up your centre after logging in.' });
+    if (email && await D.Doctor.exists({ email })) return res.status(409).json({ message: 'This email is already used by another doctor account. Use a different email or leave it empty.' });
+
+    const doctor = await D.Doctor.create({ name, phone, email: email || undefined, password: await D.bcrypt.hash(password, 10), specialty: 'IVF / Reproductive Medicine', licenseNumber, available: false, status: 'pending' });
+    let center;
+    try {
+      center = await IvfCenter.create({ doctorId: String(doctor._id), centerName, city, registrationNumber: str(b.registrationNumber, 60) || undefined, status: 'pending', submittedAt: new Date() });
+    } catch (err) { await D.Doctor.deleteOne({ _id: doctor._id }); throw err; }
+    console.log(`🏥 New IVF centre request: ${centerName}, ${city} — Dr. ${name} (${phone})`);
+    D.sendWhatsAppFree(phone, `🏥 *Thanks for registering ${centerName} on Biomexa IVF Care, Dr. ${name}!*\n\nOur team is verifying your medical registration (${licenseNumber}). This usually takes up to 24 hours.\n\nWe'll message you here as soon as your centre is approved. You can then log in at ${ivfUrl('ivf-doctor.html')} and start adding patients.\n\n- Biomexa Team`).catch(() => {});
+    notifyCentreRequest(center, doctor);
+    res.json({ message: 'Your centre has been registered and sent for approval.', pending: true });
+  }));
+
+  // ---------- admin: IVF centre requests ----------
+  if (D.adminAuth) {
+    app.get(`${R}/admin/centres`, D.adminAuth, wrap(async (req, res) => {
+      const centers = await IvfCenter.find().sort({ submittedAt: -1, createdAt: -1 }).limit(300).lean();
+      const doctors = await D.Doctor.find({ _id: { $in: centers.map(c => c.doctorId).filter(isId) } }).select('name phone email licenseNumber status createdAt').lean();
+      const byId = Object.fromEntries(doctors.map(d => [String(d._id), d]));
+      const patientCounts = await IvfCycle.aggregate([{ $group: { _id: '$doctorId', n: { $sum: 1 } } }]);
+      const pc = Object.fromEntries(patientCounts.map(x => [x._id, x.n]));
+      const list = centers.map(c => ({ ...c, status: c.status || 'approved', doctor: byId[c.doctorId] || null, patients: pc[c.doctorId] || 0 }));
+      res.json({ pending: list.filter(c => c.status === 'pending').length, centres: list });
+    }));
+    app.post(`${R}/admin/centres/:id/:action`, D.adminAuth, wrap(async (req, res) => {
+      const { id, action } = req.params;
+      const next = { approve: 'approved', reject: 'rejected' }[action];
+      if (!next || !isId(id)) return res.status(400).json({ message: 'Unknown action.' });
+      const note = str(req.body?.note, 300);
+      if (next === 'rejected' && !note) return res.status(400).json({ message: 'Please add a short reason. It is sent to the doctor.' });
+      const center = await IvfCenter.findById(id);
+      if (!center) return res.status(404).json({ message: 'Centre not found.' });
+      const by = req.admin?.username || 'admin';
+      Object.assign(center, { status: next, reviewedAt: new Date(), reviewedBy: by, reviewNote: note || undefined });
+      await center.save();
+      const doctor = isId(center.doctorId) ? await D.Doctor.findById(center.doctorId) : null;
+      // Approving the centre also approves its doctor's account if that was still waiting.
+      if (doctor && next === 'approved' && doctor.status !== 'verified') Object.assign(doctor, { status: 'verified', reviewedAt: new Date(), reviewedBy: by });
+      if (doctor && next === 'rejected' && doctor.status === 'pending') Object.assign(doctor, { status: 'rejected', reviewedAt: new Date(), reviewedBy: by, reviewNote: note });
+      if (doctor) await doctor.save();
+      let wa = null;
+      if (doctor) {
+        const dn = String(doctor.name || '').replace(/^dr\.?\s+/i, '');
+        wa = await D.sendWhatsAppFree(doctor.phone, next === 'approved'
+          ? `✅ *${center.centerName} is approved on Biomexa IVF Care, Dr. ${dn}!*\n\nLog in with your WhatsApp number and password:\n${ivfUrl('ivf-doctor.html')}\n\nPatients can now find your centre and request to join. Add your Google Meet link in your centre profile for video follow-ups.\n\n- Biomexa Team`
+          : `Dr. ${dn}, we couldn't approve ${center.centerName} on Biomexa IVF Care.\n\nReason: ${note}\n\nReply to this message if you think this is a mistake.\n\n- Biomexa Team`).catch(() => null);
+      }
+      console.log(`🏥 IVF centre ${center.centerName} -> ${next} by ${by}`);
+      res.json({ message: `${center.centerName} is now ${next}.`, whatsappSent: !!wa?.success });
+    }));
+  }
+
   app.get(`${R}/centers`, wrap(async (req, res) => {
-    const centers = await IvfCenter.find({ acceptingPatients: true }).lean();
+    const centers = await IvfCenter.find({ acceptingPatients: true, ...CENTRE_LIVE }).lean();
     const doctors = await D.Doctor.find({ _id: { $in: centers.map(c => c.doctorId).filter(isId) }, status: 'verified' }).select('name specialty experienceYears available').lean();
     const byId = Object.fromEntries(doctors.map(d => [String(d._id), d]));
     res.json(centers.filter(c => byId[c.doctorId]).map(c => ({
@@ -634,7 +711,7 @@ function mount(app, deps) {
     if (existing) return res.status(400).json({ message: 'You already have an IVF programme in progress.' });
     if (req.body.consent !== true) return res.status(400).json({ message: 'Please read and accept the consent to continue.' });
     const doctorId = String(req.body.doctorId || '');
-    const center = isId(doctorId) ? await IvfCenter.findOne({ doctorId, acceptingPatients: true }) : null;
+    const center = isId(doctorId) ? await IvfCenter.findOne({ doctorId, acceptingPatients: true, ...CENTRE_LIVE }) : null;
     const doctor = center ? await D.Doctor.findOne({ _id: doctorId, status: 'verified' }) : null;
     if (!center || !doctor) return res.status(400).json({ message: 'Please choose an IVF centre from the list.' });
     const patient = await D.Patient.findOne({ phone: { $in: D.phoneVariants(req.user.phone) } });
@@ -841,6 +918,7 @@ function mount(app, deps) {
     const modes = (Array.isArray(req.body.consultationModes) ? req.body.consultationModes : []).filter(m => ['video', 'audio', 'chat'].includes(m));
     const centerMeet = normaliseMeetLink(req.body.meetLink);
     if (centerMeet === null) return res.status(400).json({ message: 'Please paste a Google Meet link, like https://meet.google.com/abc-defg-hij' });
+    const isNew = !(await IvfCenter.exists({ doctorId: String(req.doctor.id) }));
     const center = await IvfCenter.findOneAndUpdate(
       { doctorId: String(req.doctor.id) },
       {
@@ -852,6 +930,13 @@ function mount(app, deps) {
       },
       { new: true, upsert: true, setDefaultsOnInsert: true }
     );
+    if (isNew) {
+      // A new centre is an onboarding request: hidden from patients until the Biomexa admin approves it.
+      center.status = 'pending'; center.submittedAt = new Date(); await center.save();
+      const doctor = await D.Doctor.findById(req.doctor.id).select('name phone licenseNumber');
+      notifyCentreRequest(center, doctor);
+      return res.json({ message: 'IVF centre profile saved and sent to Biomexa for approval. Patients can find your centre once it is approved.', center });
+    }
     res.json({ message: 'IVF centre profile saved.', center });
   }));
 

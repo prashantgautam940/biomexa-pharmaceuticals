@@ -46,6 +46,13 @@ const ivfCenterSchema = new mongoose.Schema({
   acceptingPatients: { type: Boolean, default: true },
   meetLink: String, // doctor's own Google Meet room, used for video/audio follow-ups by default
   lastDigestDate: String, // YYYY-MM-DD of the last daily WhatsApp digest sent to the doctor
+  // Onboarding review by the Biomexa admin: pending (request submitted) | approved | rejected.
+  // Centres created before this existed have no status and count as approved.
+  status: String,
+  submittedAt: Date,
+  reviewedAt: Date,
+  reviewedBy: String,
+  reviewNote: String,
   createdAt: { type: Date, default: Date.now }
 }, { collection: 'ivf_centers' });
 

@@ -7728,6 +7728,22 @@ app.get('/api/whatsapp-status', (req, res) => {
 app.get('/health', (req, res) => res.status(200).json({ status: 'ok', time: new Date().toISOString() }));
 
 // ========== BIOMEXA IVF CARE ==========
+// Tells the Biomexa admin about something that needs a decision (e.g. a new IVF centre request):
+// WhatsApp to ADMIN_NOTIFY_PHONE and email to ADMIN_EMAIL, whichever are configured. Best-effort.
+async function notifyAdmin(subject, text) {
+  const out = { whatsapp: false, email: false };
+  if (process.env.ADMIN_NOTIFY_PHONE) {
+    out.whatsapp = !!(await sendWhatsAppFree(process.env.ADMIN_NOTIFY_PHONE, text).catch(() => null))?.success;
+  }
+  if (emailTransport) {
+    try {
+      await emailTransport.sendMail({ from: `"Biomexa Pharmaceuticals" <${process.env.EMAIL_USER}>`, to: process.env.ADMIN_EMAIL || 'biomexapharmaceuticals@gmail.com', subject, text: text.replace(/\*/g, '') });
+      out.email = true;
+    } catch (err) { console.log('⚠️ Admin email failed:', err.message); }
+  }
+  return out;
+}
+
 // Completely separate feature area (own collections, own /api/ivf routes, own pages ivf.html and
 // ivf-doctor.html). It only borrows the existing logins and WhatsApp senders, passed in here.
 ivfCare.mount(app, {
@@ -7736,6 +7752,7 @@ ivfCare.mount(app, {
   sendWhatsAppFree, sendDoseReminderTemplate, sendRiskAlertTemplate, sendDoctorAlertMessage,
   sendIvfUpdateTemplate, sendReportAnalysisTemplate, whatsappWindowOpen,
   analyzeDocument, extractReportResults, ALLOWED_DOCUMENT_TYPES, MAX_FILES_PER_UPLOAD, MAX_DOCUMENT_BASE64_LENGTH,
+  adminAuth, bcrypt, normalizePhone, findAccountByPhone, signupLimiter, notifyAdmin,
   disableScheduler: process.env.IVF_SCHEDULER_DISABLED === 'true'
 });
 

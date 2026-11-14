@@ -108,7 +108,30 @@
 .ivd-login:hover, .ivd-login:focus-within { transform: none; }
 .ivd-login h2 { font-family: 'Sora', sans-serif; font-size: 1.3rem !important; }
 .ivd-login .btn { width: 100%; justify-content: center; padding: 12px; }
-.ivd-login-foot { margin-top: .9rem; font-size: .85rem; color: #55658a; text-align: center; }
+.ivd-login-foot { margin-top: .9rem; font-size: .9rem; color: #55658a; text-align: center; line-height: 1.6; }
+.ivd-login-foot a { color: #b83a6e; font-weight: 600; }
+/* log in / register switch */
+.ivd-switch { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; margin-bottom: 1.1rem; background: #eef2fa; border-radius: 14px; }
+.ivd-switch button { border: 0; background: transparent; padding: 10px 8px; border-radius: 11px; font: inherit; font-weight: 700; font-size: .95rem; color: #55658a; cursor: pointer; }
+.ivd-switch button[aria-selected="true"] { background: #fff; color: #16336b; box-shadow: 0 2px 8px rgba(19, 33, 61, .12); }
+.ivd-switch button:focus-visible { outline: 3px solid rgba(184, 58, 110, .35); outline-offset: 1px; }
+.ivd-login .field { margin-bottom: .8rem; }
+.ivd-phone, .ivd-pw { display: flex; align-items: stretch; border: 1px solid #d6dbe6; border-radius: 10px; background: #fff; overflow: hidden; }
+.ivd-phone:focus-within, .ivd-pw:focus-within { border-color: #b83a6e; box-shadow: 0 0 0 3px rgba(184, 58, 110, .14); }
+.ivd-phone span { display: grid; place-items: center; padding: 0 12px; background: #f4f6fb; color: #13213d; font-weight: 700; border-right: 1px solid #d6dbe6; }
+.ivd-phone input, .ivd-pw input { border: 0 !important; box-shadow: none !important; flex: 1; min-width: 0; }
+.ivd-eye { border: 0; background: transparent; padding: 0 14px; color: #16336b; font: inherit; font-size: .85rem; font-weight: 700; cursor: pointer; }
+.ivd-tip { display: block; margin-top: 4px; font-size: .8rem; color: #55658a; }
+.ivd-two { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
+@media (max-width: 480px) { .ivd-two { grid-template-columns: 1fr; } }
+.ivd-more { margin: .2rem 0 .9rem; font-size: .9rem; }
+.ivd-more summary { cursor: pointer; color: #16336b; font-weight: 600; padding: 4px 0; }
+.ivd-more[open] summary { margin-bottom: .6rem; }
+.ivd-done { text-align: center; padding: .6rem .2rem; }
+.ivd-done p { color: #3f4b63; line-height: 1.55; margin: .5rem 0; }
+.ivd-done .btn { margin-top: .8rem; }
+.ivd-done-icon { width: 58px; height: 58px; margin: 0 auto .7rem; border-radius: 50%; display: grid; place-items: center; font-size: 1.6rem; font-weight: 800; color: #fff; background: #11663a; }
+.ivd-done-icon.wait { background: #fff4e5; color: #b45309; }
 
 /* nav button while logged out */
 .ivf-nav .btn-rose { background: #b83a6e; color: #fff !important; padding: 7px 14px; border-radius: 10px; font-weight: 600; }

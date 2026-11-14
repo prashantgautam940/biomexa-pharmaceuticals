@@ -123,6 +123,13 @@ tbody tr:hover { background: #f6f8fc !important; }
 .btn, .train-btn { border-radius: 12px !important; }
 
 /* Doctor approvals */
+.ivfc-alert { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; text-decoration: none; color: inherit; background: linear-gradient(135deg, #fff 0%, #fdf0f5 100%); border: 1px solid rgba(184,58,110,.45); border-radius: 16px; padding: 1rem 1.25rem; margin-bottom: 1.5rem; box-shadow: 0 8px 24px rgba(184,58,110,.12); }
+.ivfc-alert > span:nth-child(2) { flex: 1; min-width: 200px; } .ivfc-alert strong { display: block; color: #13213d; } .ivfc-alert > span:nth-child(2) > span { color: var(--text-muted); font-size: .88rem; }
+.ivfc-bell { position: relative; width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center; background: #b83a6e; color: #fff; font-size: 1.2rem; animation: ivfcRing 2.4s ease-in-out infinite; }
+.ivfc-bell b { position: absolute; top: -4px; right: -4px; min-width: 22px; height: 22px; padding: 0 5px; border-radius: 999px; background: #c0262d; color: #fff; font-size: .75rem; display: grid; place-items: center; border: 2px solid #fff; }
+.ivfc-go { font-weight: 700; color: #b83a6e; white-space: nowrap; }
+@keyframes ivfcRing { 0%, 70%, 100% { transform: rotate(0); } 75% { transform: rotate(-12deg); } 85% { transform: rotate(10deg); } 92% { transform: rotate(-5deg); } }
+@media (prefers-reduced-motion: reduce) { .ivfc-bell { animation: none; } }
 .doc-badge { display: inline-block; background: #c0262d; color: #fff; font-size: 0.75rem; font-weight: 700; padding: 2px 9px; border-radius: 999px; vertical-align: middle; margin-left: 6px; }
 .doc-tabs { display: flex; gap: 8px; flex-wrap: wrap; margin: 6px 0 14px; }
 .doc-tab { border: 1px solid #e2e8f2; background: #fff; color: #5b6b86; padding: 8px 14px; border-radius: 999px; font-weight: 600; font-size: 0.85rem; cursor: pointer; }
@@ -205,6 +212,12 @@ tbody tr:hover { background: #f6f8fc !important; }
     <p>Clinical Intelligence Command Center — real-time oversight of all patients and the adherence-risk AI model</p>
   </div>
 
+  <a href="#ivfCentresPanel" id="ivfCentreAlert" class="ivfc-alert" style="display:none" role="status">
+    <span class="ivfc-bell"><i class="fas fa-bell"></i><b id="ivfCentreAlertCount">0</b></span>
+    <span><strong id="ivfCentreAlertTitle">New IVF centre request</strong><span id="ivfCentreAlertSub">Waiting for your approval</span></span>
+    <span class="ivfc-go">Review now <i class="fas fa-arrow-down"></i></span>
+  </a>
+
   <a href="admin-reminders.html" style="display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;text-decoration:none;color:inherit;background:linear-gradient(135deg,#fff 0%,#f1faf5 100%);border:1px solid rgba(28,154,85,.35);border-radius:16px;padding:1rem 1.25rem;margin-bottom:1.5rem;box-shadow:0 1px 2px rgba(19,33,61,.05),0 8px 24px rgba(19,33,61,.07);">
     <span style="display:flex;align-items:center;gap:.85rem;">
       <i class="fas fa-bell" style="font-size:1.4rem;color:var(--success);"></i>
@@ -285,6 +298,22 @@ tbody tr:hover { background: #f6f8fc !important; }
       <div class="stat-card"><h3><i class="fas fa-indian-rupee-sign"></i> Revenue (paid)</h3><div class="number" id="careRevenue">-</div></div>
     </div>
     <div id="carePayments" style="font-size:.88rem;"></div>
+  </div>
+
+  <div class="ai-panel" id="ivfCentresPanel" style="border-color: rgba(184,58,110,.35);">
+    <div class="ai-panel-head">
+      <div>
+        <h2><i class="fas fa-hospital"></i> IVF Centre Requests <span id="pendingIvfBadge" class="doc-badge" style="display:none"></span></h2>
+        <p style="color:var(--text-muted);font-size:0.88rem;margin-top:4px;max-width:720px;">Centres that register on the IVF Care page wait here. Patients can't see a centre until you approve it. Approving also approves the doctor's account and tells them on WhatsApp.</p>
+      </div>
+      <button class="btn" onclick="loadIvfCentres()" style="padding:9px 16px;"><i class="fas fa-rotate"></i> Refresh</button>
+    </div>
+    <div class="doc-tabs">
+      <button class="doc-tab ivfc-tab active" data-status="pending" onclick="setIvfTab('pending')">Waiting <span id="ivfTabCount"></span></button>
+      <button class="doc-tab ivfc-tab" data-status="approved" onclick="setIvfTab('approved')">Approved</button>
+      <button class="doc-tab ivfc-tab" data-status="rejected" onclick="setIvfTab('rejected')">Rejected</button>
+    </div>
+    <div id="ivfCentreList"><div class="loading">Loading IVF centres…</div></div>
   </div>
 
   <div class="ai-panel" id="doctorApprovalsPanel">
@@ -520,7 +549,7 @@ let allDoctors = [], docTab = 'pending';
 function escDoc(t) { return String(t ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 function setDocTab(tab) {
   docTab = tab;
-  document.querySelectorAll('.doc-tab').forEach(b => b.classList.toggle('active', b.dataset.status === tab));
+  document.querySelectorAll('#doctorApprovalsPanel .doc-tab').forEach(b => b.classList.toggle('active', b.dataset.status === tab));
   renderDoctors();
 }
 function loadDoctors() {
@@ -555,6 +584,7 @@ function renderDoctors() {
           <span><b>Email</b>${escDoc(d.email) || '—'}</span>
           <span><b>Signed up</b>${d.createdAt ? new Date(d.createdAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'}</span>
         </div>
+        ${ivfCentreOf(d._id) ? `<div class="doc-bio" style="color:#b83a6e;font-weight:600;"><i class="fas fa-hospital"></i> IVF centre: ${escDoc(ivfCentreOf(d._id).centerName)}${s === 'pending' ? ' (approving the centre above also approves this doctor)' : ''}</div>` : ''}
         ${d.bio ? `<div class="doc-bio">${escDoc(d.bio)}</div>` : ''}
         ${d.reviewNote && s !== 'verified' ? `<div class="doc-note">Reason: ${escDoc(d.reviewNote)}</div>` : ''}
         ${d.reviewedAt ? `<div class="doc-bio">Last reviewed ${new Date(d.reviewedAt).toLocaleDateString('en-IN')} by ${escDoc(d.reviewedBy || 'admin')}</div>` : ''}
@@ -579,6 +609,77 @@ function reviewDoctor(id, action) {
     .catch(e => alert(e.message));
 }
 
+// ========== IVF CENTRE REQUESTS ==========
+var ivfCentres = [], ivfTab = 'pending', ivfPollTimer = null; // var: enterDashboard() can run (saved login) before this line
+const ivfCentreOf = doctorId => ivfCentres.find(c => c.doctorId === String(doctorId));
+function setIvfTab(tab) {
+  ivfTab = tab;
+  document.querySelectorAll('.ivfc-tab').forEach(b => b.classList.toggle('active', b.dataset.status === tab));
+  renderIvfCentres();
+}
+function loadIvfCentres() {
+  return authFetch('/api/ivf/admin/centres').then(r => r.json()).then(data => {
+    ivfCentres = Array.isArray(data.centres) ? data.centres : [];
+    const n = data.pending || 0;
+    const badge = document.getElementById('pendingIvfBadge');
+    badge.textContent = n ? `${n} new` : ''; badge.style.display = n ? 'inline-block' : 'none';
+    document.getElementById('ivfTabCount').textContent = n ? `(${n})` : '';
+    const alertEl = document.getElementById('ivfCentreAlert');
+    alertEl.style.display = n ? 'flex' : 'none';
+    document.getElementById('ivfCentreAlertCount').textContent = n;
+    const newest = ivfCentres.find(c => c.status === 'pending');
+    document.getElementById('ivfCentreAlertTitle').textContent = n === 1 ? 'New IVF centre request' : `${n} new IVF centre requests`;
+    document.getElementById('ivfCentreAlertSub').textContent = newest ? `${newest.centerName}${newest.city ? ', ' + newest.city : ''} is waiting for your approval` : '';
+    document.title = (n ? `(${n}) ` : '') + document.title.replace(/^\(\d+\)\s*/, '');
+    renderIvfCentres(); renderDoctors();
+  }).catch(e => { document.getElementById('ivfCentreList').innerHTML = `<div class="empty">${escDoc(e.message)}</div>`; });
+}
+function renderIvfCentres() {
+  const list = ivfCentres.filter(c => c.status === ivfTab);
+  const el = document.getElementById('ivfCentreList');
+  if (!list.length) { el.innerHTML = `<div class="empty">${ivfTab === 'pending' ? 'No IVF centres waiting for approval. 🎉' : 'Nobody here yet.'}</div>`; return; }
+  const when = d => d ? new Date(d).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—';
+  el.innerHTML = list.map(c => {
+    const d = c.doctor || {};
+    const actions = c.status === 'pending'
+      ? `<button class="doc-approve" onclick="reviewIvfCentre('${c._id}','approve')"><i class="fas fa-check"></i> Approve</button><button class="doc-reject" onclick="reviewIvfCentre('${c._id}','reject')">Reject</button>`
+      : c.status === 'rejected' ? `<button class="doc-approve" onclick="reviewIvfCentre('${c._id}','approve')">Approve</button>` : `<button class="doc-reject" onclick="reviewIvfCentre('${c._id}','reject')">Reject</button>`;
+    return `<div class="doc-card">
+      <div>
+        <h3>${escDoc(c.centerName)} <span class="doc-status ${c.status === 'approved' ? 'verified' : c.status}">${c.status}</span></h3>
+        <div class="doc-meta">
+          <span><b>City</b>${escDoc(c.city) || '—'}</span>
+          <span><b>Doctor</b>Dr. ${escDoc(String(d.name || '').replace(/^dr\.?\s+/i, '')) || '—'}</span>
+          <span><b>Medical reg. no.</b>${escDoc(d.licenseNumber) || '—'}</span>
+          <span><b>ART reg. no.</b>${escDoc(c.registrationNumber) || '—'}</span>
+          <span><b>WhatsApp</b>${d.phone ? `<a href="https://wa.me/${escDoc(String(d.phone).replace(/\D/g, ''))}" target="_blank" rel="noopener">${escDoc(d.phone)}</a>` : '—'}</span>
+          <span><b>Email</b>${escDoc(d.email) || '—'}</span>
+          <span><b>Submitted</b>${when(c.submittedAt || c.createdAt)}</span>
+          <span><b>Patients</b>${c.patients || 0}</span>
+        </div>
+        ${c.reviewNote && c.status === 'rejected' ? `<div class="doc-note">Reason: ${escDoc(c.reviewNote)}</div>` : ''}
+        ${c.reviewedAt ? `<div class="doc-bio">Last reviewed ${new Date(c.reviewedAt).toLocaleDateString('en-IN')} by ${escDoc(c.reviewedBy || 'admin')}</div>` : ''}
+      </div>
+      <div class="doc-actions">${actions}</div>
+    </div>`;
+  }).join('');
+}
+function reviewIvfCentre(id, action) {
+  const c = ivfCentres.find(x => x._id === id); if (!c) return;
+  let note = '';
+  if (action === 'approve') {
+    if (!confirm(`Approve ${c.centerName}?\n\nPatients will be able to find this centre and the doctor gets access to the IVF dashboard. Check medical registration ${c.doctor?.licenseNumber || ''} first.`)) return;
+  } else {
+    note = prompt(`Reject ${c.centerName}? Reason (sent to the doctor on WhatsApp):`);
+    if (note === null) return;
+    if (!note.trim()) { alert('Please enter a short reason.'); return; }
+  }
+  authFetch(`/api/ivf/admin/centres/${id}/${action}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ note }) })
+    .then(r => r.json().then(data => ({ ok: r.ok, data })))
+    .then(({ ok, data }) => { if (!ok) throw new Error(data.message); alert(data.message + (data.whatsappSent ? '\nThe doctor has been notified on WhatsApp.' : '')); loadIvfCentres(); loadDoctors(); })
+    .catch(e => alert(e.message));
+}
+
 function enterDashboard() {
   document.getElementById('loginSection').classList.add('hidden');
   document.getElementById('dashboardSection').classList.remove('hidden');
@@ -589,6 +690,8 @@ function enterDashboard() {
   loadClinicalData();
   loadOrders();
   loadDoctors();
+  loadIvfCentres();
+  clearInterval(ivfPollTimer); ivfPollTimer = setInterval(loadIvfCentres, 60000); // new requests show up without a refresh
   loadCare();
   loadTickets();
 }
