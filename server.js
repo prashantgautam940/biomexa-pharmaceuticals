@@ -2036,7 +2036,9 @@ const paymentSchema = new mongoose.Schema({
   refundedAmount: Number,  // paise
   refundedAt: Date,
   failedAt: Date,
-  events: [{ at: { type: Date, default: Date.now }, type: String, note: String }],
+  // `type` must be written as { type: String } — a bare `type: String` makes Mongoose treat the whole
+  // entry as a plain string, and every save fails with a CastError.
+  events: [{ at: { type: Date, default: Date.now }, type: { type: String }, note: String }],
   createdAt: { type: Date, default: Date.now }
 });
 const Payment = mongoose.model('Payment', paymentSchema);
