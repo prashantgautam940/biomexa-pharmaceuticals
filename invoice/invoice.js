@@ -136,7 +136,7 @@ function buildInvoicePdf(inv) {
     txt('BILLED TO', L + 12, y + 9, { bold: true, size: 8, color: MUTED });
     txt(inv.patientName || 'Biomexa patient', L + 12, y + 22, { bold: true, size: 11 });
     txt(['+91 ' + String(inv.patientPhone || '').replace(/\D/g, '').slice(-10), inv.payerEmail].filter(Boolean).join('  ·  '), L + 12, y + 39, { size: 9, color: MUTED });
-    txt('Unregistered (B2C)', L + 12, y + 9, { size: 8, color: MUTED, width: CW - 24, align: 'right' });
+    txt('Individual customer', L + 12, y + 9, { size: 8, color: MUTED, width: CW - 24, align: 'right' });
     y += 74;
 
     // ---- items table
