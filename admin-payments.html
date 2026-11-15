@@ -150,10 +150,12 @@ let data = { payments: [], people: [], totals: {} };
 let view = 'payments', filter = 'all';
 const STATUS = {
   paid: ['Paid', 'b-paid', 'fa-circle-check'], part_refunded: ['Part refunded', 'b-part_refunded', 'fa-rotate-left'], refunded: ['Refunded', 'b-refunded', 'fa-rotate-left'],
-  failed: ['Failed', 'b-failed', 'fa-circle-xmark'], abandoned: ['Abandoned', 'b-abandoned', 'fa-door-open'], pending: ['In checkout', 'b-pending', 'fa-hourglass-half']
+  failed: ['Failed', 'b-failed', 'fa-circle-xmark'], abandoned: ['Abandoned', 'b-abandoned', 'fa-door-open'], pending: ['In checkout', 'b-pending', 'fa-hourglass-half'],
+  link_sent: ['Link sent', 'b-pending', 'fa-link'], expired: ['Link expired', 'b-abandoned', 'fa-link-slash']
 };
+const SOURCE = { website: 'Website', quick: 'Website (phone only)', whatsapp: 'WhatsApp reply', reminder: 'Renewal reminder', admin: 'Sent by admin' };
 const METHOD = { upi: 'UPI', card: 'Card', netbanking: 'Net banking', wallet: 'Wallet', emi: 'EMI', paylater: 'Pay later', cardless_emi: 'Cardless EMI' };
-const EVENT = { checkout_opened: 'Opened checkout', paid: 'Paid', failed: 'Payment failed', signature_mismatch: 'Website couldn\'t verify payment', webhook_payment_captured: 'Razorpay confirmed (captured)', webhook_order_paid: 'Razorpay confirmed (order paid)', refund_created: 'Refund started', refund_processed: 'Refund completed', synced: 'Checked with Razorpay' };
+const EVENT = { link_created: 'Payment link created', checkout_opened: 'Opened checkout', paid: 'Paid', failed: 'Payment failed', signature_mismatch: 'Website couldn\'t verify payment', webhook_payment_captured: 'Razorpay confirmed (captured)', webhook_order_paid: 'Razorpay confirmed (order paid)', refund_created: 'Refund started', refund_processed: 'Refund completed', synced: 'Checked with Razorpay' };
 
 function fetchRetry(url, opts, tries) {
   tries = tries === undefined ? 2 : tries;
@@ -221,7 +223,7 @@ function shownPayments() {
 function render() {
   const base = data.payments.filter(p => inRange(p.createdAt) && matches(p));
   const count = f => base.filter(p => f === 'all' || (f === 'paid' && isPaid(p.status)) || (f === 'refunded' && p.refunded > 0) || p.status === f).length;
-  const tabs = view === 'payments' ? [['all', 'All'], ['paid', 'Paid'], ['failed', 'Failed'], ['abandoned', 'Abandoned'], ['refunded', 'Refunded']] : [];
+  const tabs = view === 'payments' ? [['all', 'All'], ['paid', 'Paid'], ['link_sent', 'Links sent'], ['failed', 'Failed'], ['abandoned', 'Abandoned'], ['refunded', 'Refunded']] : [];
   document.getElementById('tabs').innerHTML = tabs.map(([f, l]) => '<button class="tab' + (filter === f ? ' on' : '') + '" onclick="setFilter(\'' + f + '\')">' + l + '<span class="n">' + count(f) + '</span></button>').join('');
   const el = document.getElementById('list');
 
@@ -234,7 +236,7 @@ function render() {
         '<td><b>' + esc(p.patientName || '—') + '</b><div class="s">' + esc(p.patientPhone) + '</div><div class="s show-sm">' + stamp(p.paidAt || p.failedAt || p.createdAt) + ' · ' + esc(p.planName) + '</div></td>' +
         '<td class="hide-sm">' + esc(p.planName) + (p.periodEnd && isPaid(p.status) ? '<div class="s">till ' + day(p.periodEnd) + '</div>' : '') + '</td>' +
         '<td class="num"><b>' + rupees(p.amount) + '</b>' + (p.refunded ? '<div class="s">−' + rupees(p.refunded) + ' refunded</div>' : '') + '</td>' +
-        '<td>' + badge(p.status) + (p.status === 'failed' && p.failureReason ? '<div class="s" style="max-width:220px">' + esc(p.failureReason) + '</div>' : '') + '</td>' +
+        '<td>' + badge(p.status) + '<div class="s">via ' + esc(SOURCE[p.source] || p.source || 'website') + '</div>' + (p.status === 'failed' && p.failureReason ? '<div class="s" style="max-width:220px">' + esc(p.failureReason) + '</div>' : '') + '</td>' +
         '<td class="hide-sm">' + how(p) + '</td>' +
         '<td class="hide-sm num">' + (p.fee != null ? rupees(p.fee) : '<span class="s">—</span>') + '</td>' +
         '<td class="hide-sm">' + (p.paymentId ? '<code>' + esc(p.paymentId) + '</code>' : '<span class="s">—</span>') + '</td></tr>').join('') + '</tbody></table>';
@@ -266,7 +268,9 @@ function openPatient(key, highlight) {
   const card = p => '<div class="pay" id="o-' + esc(p.orderId) + '"' + (p.orderId === highlight ? ' style="border-color:var(--navy);box-shadow:0 0 0 2px rgba(22,51,107,.15)"' : '') + '>' +
     '<div class="pay-top"><div><b>' + rupees(p.amount) + '</b> · ' + esc(p.planName) + '</div>' + badge(p.status) + '</div>' +
     '<div class="kv">' +
-      '<div class="k">Checkout opened</div><div>' + stamp(p.createdAt) + '</div>' +
+      '<div class="k">' + (p.linkUrl ? 'Link created' : 'Checkout opened') + '</div><div>' + stamp(p.createdAt) + '</div>' +
+      '<div class="k">Paid from</div><div>' + esc(SOURCE[p.source] || p.source || 'Website') + '</div>' +
+      (p.linkUrl && !isPaid(p.status) ? '<div class="k">Payment link</div><div><a href="' + esc(p.linkUrl) + '" target="_blank" rel="noopener">' + esc(p.linkUrl) + '</a></div>' : '') +
       (p.paidAt ? '<div class="k">Paid</div><div>' + stamp(p.paidAt) + '</div>' : '') +
       (p.periodEnd && isPaid(p.status) ? '<div class="k">Plan period</div><div>' + day(p.periodStart) + ' → ' + day(p.periodEnd) + '</div>' : '') +
       (p.method ? '<div class="k">Paid with</div><div>' + esc(METHOD[p.method] || p.method) + (p.methodDetail ? ' · ' + esc(p.methodDetail) : '') + '</div>' : '') +
@@ -319,8 +323,8 @@ function exportCsv() {
   const cell = v => '"' + String(v ?? '').replace(/"/g, '""') + '"';
   let lines;
   if (view === 'payments') {
-    lines = [['Date', 'Patient', 'Phone', 'Plan', 'Amount (₹)', 'Refunded (₹)', 'Status', 'Method', 'UPI / card', 'Razorpay fee (₹)', 'Payment ID', 'Order ID', 'Plan until', 'Failure reason']]
-      .concat(shownPayments().map(p => [stamp(p.paidAt || p.failedAt || p.createdAt), p.patientName, p.patientPhone, p.planName, p.amount, p.refunded, (STATUS[p.status] || [p.status])[0], METHOD[p.method] || p.method || '', p.methodDetail || '', p.fee ?? '', p.paymentId || '', p.orderId, isPaid(p.status) ? day(p.periodEnd) : '', p.failureReason || '']));
+    lines = [['Date', 'Patient', 'Phone', 'Plan', 'Amount (₹)', 'Refunded (₹)', 'Status', 'Method', 'UPI / card', 'Razorpay fee (₹)', 'Payment ID', 'Order ID', 'Plan until', 'Failure reason', 'Paid from']]
+      .concat(shownPayments().map(p => [stamp(p.paidAt || p.failedAt || p.createdAt), p.patientName, p.patientPhone, p.planName, p.amount, p.refunded, (STATUS[p.status] || [p.status])[0], METHOD[p.method] || p.method || '', p.methodDetail || '', p.fee ?? '', p.paymentId || '', p.orderId, isPaid(p.status) ? day(p.periodEnd) : '', p.failureReason || '', SOURCE[p.source] || p.source || '']));
   } else {
     lines = [['Patient', 'Phone', 'Total paid (₹)', 'Refunded (₹)', 'Paid', 'Checkouts', 'Failed', 'Abandoned', 'Plan now', 'Plan until', 'Last payment']]
       .concat(data.people.filter(g => inRange(g.lastAt) && matches(g)).map(g => [g.name, g.phone, g.net, g.refunded, g.paidCount, g.attempts, g.failedCount, g.abandonedCount, g.access?.tier === 'subscribed' ? g.access.planName : (g.access?.tier || ''), g.access?.tier === 'subscribed' ? day(g.access.expiresAt) : '', g.lastPaidAt ? day(g.lastPaidAt) : '']));

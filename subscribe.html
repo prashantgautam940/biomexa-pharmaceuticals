@@ -126,6 +126,28 @@ footer a { color: var(--navy); }
 .jtile .s { font-size: .78rem; color: #5b6b86; margin-top: 2px; }
 .jmeds { max-width: 980px; margin: 14px auto 0; display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
 .jmeds span { background: #e8f6ee; color: #146c3c; border-radius: 999px; padding: 6px 12px; font-size: .82rem; font-weight: 600; }
+.qp-bg { position: fixed; inset: 0; background: rgba(19,33,61,.5); display: none; align-items: flex-end; justify-content: center; z-index: 200; padding: 0; }
+.qp-bg.open { display: flex; }
+.qp { background: #fff; width: 100%; max-width: 440px; border-radius: 22px 22px 0 0; padding: 22px 20px 26px; box-shadow: 0 -10px 40px rgba(19,33,61,.25); position: relative; }
+@media (min-width: 600px) { .qp-bg { align-items: center; padding: 16px; } .qp { border-radius: 22px; } }
+.qp .x { position: absolute; top: 12px; right: 12px; width: 34px; height: 34px; border: 1px solid var(--line); background: #fff; border-radius: 10px; cursor: pointer; font-size: 1rem; }
+.qp h3 { font-size: 1.15rem; margin-right: 40px; }
+.qp .plan-chip { display: inline-flex; gap: 6px; align-items: center; background: var(--green-soft); color: #11663a; font-weight: 700; font-size: .85rem; padding: 5px 11px; border-radius: 99px; margin: 10px 0 14px; }
+.qp label { font-size: .82rem; font-weight: 600; color: var(--muted); display: block; margin-bottom: 6px; }
+.qp .ph { display: flex; border: 1px solid #cfd8e6; border-radius: 12px; overflow: hidden; }
+.qp .ph span { padding: 13px 12px; background: var(--inner); color: var(--muted); font-weight: 600; border-right: 1px solid #cfd8e6; }
+.qp .ph input { flex: 1; border: 0; padding: 13px 12px; font: inherit; font-size: 1.05rem; letter-spacing: .03em; min-width: 0; }
+.qp .ph input:focus { outline: none; }
+.qp .ph:focus-within { border-color: var(--navy); box-shadow: 0 0 0 3px rgba(31,68,148,.15); }
+.qp .acts { display: grid; gap: 10px; margin-top: 14px; }
+.qp .btn.wa { background: #fff; color: #128c4a; border: 1.5px solid #25d366; }
+.qp .msg { font-size: .86rem; margin-top: 12px; padding: 10px 12px; border-radius: 10px; display: none; line-height: 1.5; }
+.qp .msg.ok { display: block; background: var(--green-soft); color: #11663a; }
+.qp .msg.err { display: block; background: #fdecec; color: var(--danger); }
+.qp .small { font-size: .8rem; color: var(--muted); margin-top: 14px; text-align: center; line-height: 1.6; }
+.qp .small a { color: var(--navy); font-weight: 600; }
+.alt-pay { text-align: center; margin-top: 10px; font-size: .86rem; color: var(--muted); }
+.alt-pay button { background: none; border: 0; color: #128c4a; font: inherit; font-weight: 700; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
 </style>
 <link rel="stylesheet" href="css/mobile.css">
 <script>/* remove any old service worker left on this domain */if("serviceWorker"in navigator){navigator.serviceWorker.getRegistrations().then(function(r){r.forEach(function(x){x.update().catch(function(){});x.unregister()})}).catch(function(){});if(window.caches)caches.keys().then(function(k){k.forEach(function(n){caches.delete(n)})}).catch(function(){})}</script>
@@ -233,6 +255,7 @@ footer a { color: var(--navy); }
         <button class="btn navy block" onclick="buy('halfyearly')">Choose 6 Months</button>
       </div>
     </div>
+    <p class="alt-pay"><i class="fab fa-whatsapp" style="color:#25d366"></i> UPI app not opening? <button type="button" onclick="altPay()">Get a one-tap payment link on WhatsApp</button></p>
     <p class="pay-note" id="payNote"><i class="fas fa-lock"></i> Secure payment by Razorpay — UPI, cards, netbanking and wallets. Time left on a current plan is never lost: a new plan starts when the old one ends.</p>
   </section>
 
@@ -277,10 +300,26 @@ footer a { color: var(--navy); }
 <footer>© Biomexa Pharmaceuticals · <a href="index.html">Home</a> · <a href="patient.html">Patient Portal</a> · <a href="reminders.html">Free reminders</a></footer>
 <div class="toast" id="toast"></div>
 
+<div class="qp-bg" id="qp" onclick="if(event.target===this)closeQuick()">
+  <div class="qp" role="dialog" aria-modal="true" aria-labelledby="qpTitle">
+    <button class="x" onclick="closeQuick()" aria-label="Close">×</button>
+    <h3 id="qpTitle">Pay with your mobile number</h3>
+    <div class="plan-chip" id="qpPlan"></div>
+    <label for="qpPhone">Mobile number registered with Biomexa</label>
+    <div class="ph"><span>+91</span><input id="qpPhone" type="tel" inputmode="numeric" autocomplete="tel" maxlength="18" placeholder="98765 43210"></div>
+    <div class="acts">
+      <button class="btn green block" id="qpPay" onclick="quickPay()"><i class="fas fa-bolt"></i> Pay now — UPI, card or net banking</button>
+      <button class="btn wa block" id="qpLink" onclick="quickLink()"><i class="fab fa-whatsapp"></i> Send payment link to my WhatsApp</button>
+    </div>
+    <div class="msg" id="qpMsg"></div>
+    <p class="small">No password needed — your plan is added to this number's Biomexa account.<br>Have a password? <a href="#" id="qpLogin">Log in</a> · New here? <a href="signup.html?next=subscribe.html%23plans">Create free account</a></p>
+  </div>
+</div>
+
 <script src="https://checkout.razorpay.com/v1/checkout.js" defer></script>
 <script>
 const API_URL = (location.hostname === 'localhost' || location.hostname === '127.0.0.1') ? 'http://localhost:3000' : 'https://biomexa-api-f9f6.onrender.com';
-const token = localStorage.getItem('token');
+let token = localStorage.getItem('token');
 let paymentsEnabled = true;
 let access = null;
 
@@ -382,7 +421,7 @@ function loadJourney() {
 }
 
 async function buy(plan) {
-  if (!token) { location.href = 'login.html?next=' + encodeURIComponent('subscribe.html?plan=' + plan); return; }
+  if (!token) { openQuick(plan); return; }
   const btn = document.querySelector(`.plan[data-plan="${plan}"] button`);
   if (!btn || btn.disabled) return;
   const label = btn.innerHTML;
@@ -392,25 +431,119 @@ async function buy(plan) {
     if (!paymentsEnabled) { toast('Online payment is being switched on — you still have full access during your free trial.', ''); return; }
     const r = await fetch(API_URL + '/api/patient/subscription/order', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token }, body: JSON.stringify({ plan }) });
     const o = await r.json();
-    if (r.status === 401) { localStorage.removeItem('token'); location.href = 'login.html?next=' + encodeURIComponent('subscribe.html?plan=' + plan); return; }
+    if (r.status === 401) { localStorage.removeItem('token'); token = null; openQuick(plan); return; }
     if (!r.ok) throw new Error(o.message || 'Could not start payment');
-    if (!(await razorpayReady())) throw new Error('The payment window could not load — check your internet (or turn off an ad-blocker) and try again.');
-    const rzp = new Razorpay({
-      key: o.keyId, order_id: o.orderId, amount: o.amount, currency: o.currency,
-      name: 'Biomexa Pharmaceuticals', description: `Biomexa Care — ${o.plan.name}`, image: 'https://biomexapharmaceuticals.com/images/logo-square.png',
-      prefill: o.prefill, notes: { plan }, theme: { color: '#1c9a55' },
-      handler: resp => verify(resp),
-      retry: { enabled: true, max_count: 3 },
-      modal: { ondismiss: () => toast('Payment cancelled — you can try again any time.') }
-    });
-    rzp.on('payment.failed', e => toast((e.error && e.error.description) || 'Payment failed — no money was taken. Please try again.', 'err'));
-    rzp.open();
+    await openCheckout(o, plan, resp => verify(resp));
   } catch (e) {
     toast(e.message, 'err');
   } finally {
     btn.disabled = false; btn.innerHTML = label;
   }
 }
+
+// UPI first (apps on phones, QR on computers), then cards / net banking / wallets.
+async function openCheckout(o, plan, onPaid) {
+  if (!(await razorpayReady())) throw new Error('The payment window could not load — check your internet (or turn off an ad-blocker) and try again.');
+  const rzp = new Razorpay({
+    key: o.keyId, order_id: o.orderId, amount: o.amount, currency: o.currency,
+    name: 'Biomexa Pharmaceuticals', description: `Biomexa Care — ${o.plan.name}`, image: 'https://biomexapharmaceuticals.com/images/logo-square.png',
+    prefill: o.prefill, notes: { plan }, theme: { color: '#1c9a55' },
+    config: { display: {
+      blocks: { upi: { name: 'Pay with UPI (GPay, PhonePe, Paytm…)', instruments: [{ method: 'upi' }] } },
+      sequence: ['block.upi'], preferences: { show_default_blocks: true }
+    } },
+    handler: onPaid,
+    retry: { enabled: true, max_count: 3 },
+    modal: { ondismiss: () => toast('Payment not completed. Tip: tap "Get a one-tap payment link on WhatsApp" below the plans to pay from your UPI app.'), confirm_close: true }
+  });
+  rzp.on('payment.failed', e => toast((e.error && e.error.description) || 'Payment failed — no money was taken. Please try again.', 'err'));
+  rzp.open();
+}
+
+// ---- Quick pay: mobile number only (no password) ----
+let qpPlan = 'monthly';
+const PLAN_LABEL = { monthly: 'Monthly · ₹99', halfyearly: '6 Months · ₹499', yearly: 'Yearly · ₹899' };
+function storedPhone() { try { return localStorage.getItem('bxPayPhone') || (JSON.parse(localStorage.getItem('user') || '{}').phone || ''); } catch { return ''; } }
+function openQuick(plan) {
+  qpPlan = PLAN_LABEL[plan] ? plan : 'monthly';
+  document.getElementById('qpPlan').innerHTML = '<i class="fas fa-crown"></i> Biomexa Care — ' + PLAN_LABEL[qpPlan];
+  document.getElementById('qpLogin').href = 'login.html?next=' + encodeURIComponent('subscribe.html?plan=' + qpPlan);
+  const m = document.getElementById('qpMsg'); m.className = 'msg'; m.textContent = '';
+  const inp = document.getElementById('qpPhone');
+  if (!inp.value) inp.value = String(storedPhone()).replace(/\D/g, '').slice(-10);
+  document.getElementById('qp').classList.add('open');
+  setTimeout(() => inp.focus(), 60);
+}
+function closeQuick() { document.getElementById('qp').classList.remove('open'); }
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeQuick(); });
+function qpPhone() {
+  const d = document.getElementById('qpPhone').value.replace(/\D/g, '').slice(-10);
+  if (!/^[6-9]\d{9}$/.test(d)) { qpMsg('Please enter your 10-digit mobile number.', 'err'); return null; }
+  try { localStorage.setItem('bxPayPhone', d); } catch {}
+  return d;
+}
+function qpMsg(text, kind, html) { const m = document.getElementById('qpMsg'); m.className = 'msg ' + kind; if (html) m.innerHTML = text; else m.textContent = text; }
+async function qpBusy(id, busy, label) {
+  const b = document.getElementById(id);
+  if (busy) { b.dataset.l = b.innerHTML; b.disabled = true; b.innerHTML = '<i class="fas fa-spinner fa-spin"></i> ' + label; }
+  else { b.disabled = false; if (b.dataset.l) b.innerHTML = b.dataset.l; }
+}
+async function quickPay() {
+  const phone = qpPhone(); if (!phone) return;
+  await qpBusy('qpPay', true, 'Opening payment…');
+  try {
+    if (!(await (plansReady || loadPlans()))) await loadPlans();
+    if (!paymentsEnabled) throw new Error('Online payment is being switched on — please try again soon.');
+    const r = await fetch(API_URL + '/api/subscription/quick-order', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone, plan: qpPlan }) });
+    const o = await r.json();
+    if (!r.ok) { if (o.signup) { qpMsg(esc(o.message) + ' <a href="signup.html?next=subscribe.html%23plans">Create free account →</a>', 'err', true); return; } throw new Error(o.message || 'Could not start payment'); }
+    closeQuick();
+    await openCheckout(o, qpPlan, resp => quickVerify(resp));
+  } catch (e) { qpMsg(e.message, 'err'); }
+  finally { qpBusy('qpPay', false); }
+}
+async function quickVerify(resp) {
+  toast('Confirming your payment…');
+  try {
+    const r = await fetch(API_URL + '/api/subscription/quick-verify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(resp) });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.message);
+    showPaid(d.message + ' A receipt has been sent to your WhatsApp.');
+  } catch (e) {
+    showPaid('Payment received (ID ' + resp.razorpay_payment_id + '). Your plan will be active within a few minutes and a receipt will come on WhatsApp.');
+  }
+}
+async function quickLink() {
+  const phone = qpPhone(); if (!phone) return;
+  await qpBusy('qpLink', true, 'Sending…');
+  try {
+    const r = await fetch(API_URL + '/api/subscription/send-link', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone, plan: qpPlan }) });
+    const d = await r.json();
+    if (!r.ok) { if (d.signup) { qpMsg(esc(d.message) + ' <a href="signup.html?next=subscribe.html%23plans">Create free account →</a>', 'err', true); return; } throw new Error(d.message); }
+    qpMsg(esc(d.message) + (d.url ? '<br><a href="' + esc(d.url) + '" style="font-weight:700;color:#11663a">Or open the payment page here →</a>' : ''), d.sent ? 'ok' : 'err', true);
+  } catch (e) { qpMsg(e.message, 'err'); }
+  finally { qpBusy('qpLink', false); }
+}
+// "UPI app not opening?" — logged in: open Razorpay's own payment page (works with every UPI app
+// and shows a QR on computers); logged out: the quick-pay sheet with its WhatsApp-link button.
+async function altPay() {
+  if (!token) { openQuick('monthly'); return; }
+  try {
+    toast('Creating your payment link…');
+    const r = await fetch(API_URL + '/api/patient/subscription/link', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token }, body: JSON.stringify({ plan: 'monthly' }) });
+    const d = await r.json();
+    if (!r.ok || !d.url) throw new Error(d.message || 'Could not create the link');
+    location.href = d.url;
+  } catch (e) { toast(e.message, 'err'); }
+}
+function showPaid(text) {
+  closeQuick();
+  document.getElementById('successText').textContent = text;
+  const box = document.getElementById('successBox'); box.style.display = 'block';
+  box.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  toast('Payment successful 🎉', 'ok');
+}
+const esc = t => String(t ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 async function verify(resp) {
   toast('Confirming your payment…');
@@ -445,6 +578,14 @@ async function verify(resp) {
 }
 
 load();
+(function linkReturn() {
+  const q = new URLSearchParams(location.search);
+  const st = q.get('razorpay_payment_link_status');
+  if (!q.get('paid') && !st) return;
+  if (st && st !== 'paid') { toast('Payment not completed — you can try again any time.', 'err'); return; }
+  window.addEventListener('load', () => showPaid('Payment received ✅ Your Biomexa Care plan is now active (it can take up to a minute). A receipt has been sent to your WhatsApp.'));
+  if (token) setTimeout(load, 4000);
+})();
 const wanted = new URLSearchParams(location.search).get('plan');
 if (wanted && token) window.addEventListener('load', () => { document.getElementById('plans').scrollIntoView(); setTimeout(() => buy(wanted), 400); });
 </script>

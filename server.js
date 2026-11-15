@@ -2039,6 +2039,11 @@ const paymentSchema = new mongoose.Schema({
   // `type` must be written as { type: String } — a bare `type: String` makes Mongoose treat the whole
   // entry as a plain string, and every save fails with a CastError.
   events: [{ at: { type: Date, default: Date.now }, type: { type: String }, note: String }],
+  // Razorpay Payment Link (one-tap pay from WhatsApp, no login). orderId is then "plink_<id>".
+  linkId: { type: String, index: true },
+  linkUrl: String,
+  linkExpiresAt: Date,
+  source: String,          // website | quick (website, phone only) | whatsapp | admin | reminder
   createdAt: { type: Date, default: Date.now }
 });
 const Payment = mongoose.model('Payment', paymentSchema);
@@ -4512,6 +4517,20 @@ app.post('/api/webhooks/msg91-whatsapp', async (req, res) => {
       return;
     }
 
+    // PAY / RENEW / SUBSCRIBE → personal one-tap payment links (they just messaged, so free text works).
+    if (patient && PAY_KEYWORD_RE.test(freeText || buttonText || '')) {
+      const first = String(patient.name || '').trim().split(/\s+/)[0] || 'there';
+      const a = await accessForPhone(phone);
+      const head = a.tier === 'subscribed'
+        ? `Hi ${first}, your Biomexa Care ${a.planName} plan is active until ${new Date(a.expiresAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}. Paying now adds the new plan after that date — nothing is lost.`
+        : `Hi ${first}, here are your Biomexa Care payment links 👇`;
+      const pay = PAYMENTS_CONFIGURED ? await payLinksText(phone, 'whatsapp') : null;
+      await sendWhatsAppFree(phone, pay && pay.monthly
+        ? `${head}\n\n${pay.full}\n\nTap a link → choose GPay / PhonePe / Paytm or any UPI app → done. Your plan starts the moment you pay and you'll get a receipt here.\n\n- Biomexa Team`
+        : `${head}\n\nPlans from ₹99/month: ${SITE_URL}/subscribe.html\n\n- Biomexa Team`);
+      return;
+    }
+
     // IVF Care replies (IVF medicine / trigger-shot buttons, WhatsApp check-ins, and the CHECKIN /
     // PROGRESS keywords) are handled by the IVF module.
     const ivfKeyword = /^\s*(check\s*-?\s*in|checkin|progress|my progress|summary)\s*$/i.test(freeText || buttonText || '') || /^\s*hi\s+biomexa\s+ivf/i.test(freeText || '');
@@ -5781,6 +5800,166 @@ async function logPaymentEvent(orderId, type, note) {
   await Payment.updateOne({ orderId }, { $push: { events: { $each: [{ at: new Date(), type, note: note || '' }], $slice: -30 } } }).catch(() => {});
 }
 
+// ========== ONE-TAP PAYMENT LINKS (WhatsApp, no login) ==========
+// A personal Razorpay Payment Link per patient + plan (rzp.io/…). Tapping it opens Razorpay's
+// page with UPI apps, QR, cards — no Biomexa login. Paid links activate the plan through the
+// payment_link.paid webhook, and a 3-minute poller as a safety net (works even if that webhook
+// event isn't ticked). An unpaid, unexpired link is reused, so patients never get a pile of links.
+const LINK_VALID_DAYS = 7;
+const PAY_KEYWORD_RE = /^\s*(pay|pay now|payment|renew|renew now|subscribe|subscribe now|plan|plans|buy|upgrade)\s*[.!]*\s*$/i;
+async function paymentLinkFor(phone, planId, source = 'whatsapp') {
+  if (!PAYMENTS_CONFIGURED) return null;
+  const plan = SUBSCRIPTION_PLANS[planId];
+  if (!plan) return null;
+  const twins = await Patient.find({ phone: { $in: phoneVariants(phone) } }).select('name phone email').lean();
+  if (!twins.length) return null;
+  const main = twins.find(x => !/\s/.test(x.phone)) || twins[0];
+  const reuse = await Payment.findOne({ patientPhone: { $in: phoneVariants(phone) }, plan: plan.id, linkId: { $ne: null }, status: 'created', linkExpiresAt: { $gt: new Date(Date.now() + 12 * 3600e3) } }).sort({ createdAt: -1 }).lean();
+  if (reuse) return { url: reuse.linkUrl, plan, reused: true };
+  const expire = Math.floor(Date.now() / 1000) + LINK_VALID_DAYS * 86400;
+  const r = await fetch('https://api.razorpay.com/v1/payment_links', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: razorpayAuthHeader() },
+    body: JSON.stringify({
+      amount: plan.price * 100, currency: 'INR', accept_partial: false,
+      description: `Biomexa Care — ${plan.name} (${plan.label})`,
+      customer: { name: String(main.name || '').slice(0, 60) || 'Biomexa patient', contact: '+91' + last10(main.phone), ...(main.email ? { email: main.email } : {}) },
+      notify: { sms: false, email: false }, reminder_enable: false,
+      reference_id: `bxl_${Date.now().toString(36)}_${last10(main.phone)}`.slice(0, 40),
+      notes: { plan: plan.id, phone: main.phone, product: 'Biomexa Care', source },
+      callback_url: `${SITE_URL}/subscribe.html?paid=1`, callback_method: 'get',
+      expire_by: expire
+    }),
+    signal: AbortSignal.timeout(15000)
+  });
+  const link = await r.json().catch(() => ({}));
+  if (!r.ok || !link.id || !link.short_url) { console.log('⚠️ Razorpay payment link failed:', JSON.stringify(link).slice(0, 300)); return null; }
+  await Payment.create({
+    patientPhone: main.phone, patientName: main.name, plan: plan.id, amount: plan.price * 100, currency: 'INR',
+    orderId: 'plink_' + link.id, linkId: link.id, linkUrl: link.short_url, linkExpiresAt: new Date(expire * 1000), source,
+    events: [{ type: 'link_created', note: `${plan.name} ₹${plan.price} · ${source}` }]
+  });
+  return { url: link.short_url, plan, reused: false };
+}
+// "Monthly ₹99: rzp.io/… · Yearly ₹899: rzp.io/…" for messages; falls back to the website.
+async function payLinksText(phone, source) {
+  try {
+    const [m, y] = await Promise.all([paymentLinkFor(phone, 'monthly', source), paymentLinkFor(phone, 'yearly', source)]);
+    if (m && y) return { short: `Pay ₹99 in one tap: ${m.url}`, full: `💳 *Pay in one tap* (UPI, card or net banking — no login):\n• Monthly ₹99 → ${m.url}\n• Yearly ₹899 (best value) → ${y.url}\n\nAll plans: ${SITE_URL}/subscribe.html`, monthly: m.url, yearly: y.url };
+  } catch (err) { console.log('⚠️ Pay links not created:', err.message); }
+  return { short: `Renew: ${SITE_URL}/subscribe.html`, full: `Plans from ₹99/month (₹899/year):\n${SITE_URL}/subscribe.html`, monthly: null, yearly: null };
+}
+async function settlePaymentLink(linkId, paymentEntity) {
+  const pay = await Payment.findOne({ linkId });
+  if (!pay) return false;
+  const pid = paymentEntity?.id;
+  if (!pid) return false;
+  if (pay.status !== 'paid' && pay.status !== 'refunded') await activateSubscription(pay.orderId, pid);
+  if (paymentEntity && typeof paymentEntity === 'object' && paymentEntity.method) await Payment.updateOne({ _id: pay._id }, { $set: paymentDetailsFrom(paymentEntity) });
+  return true;
+}
+// Safety net: ask Razorpay about open links every 3 minutes.
+let linkPollRunning = false;
+async function pollPaymentLinks() {
+  if (!PAYMENTS_CONFIGURED || linkPollRunning) return;
+  linkPollRunning = true;
+  try {
+    const open = await Payment.find({ linkId: { $ne: null }, status: 'created', linkExpiresAt: { $gt: new Date(Date.now() - 86400000) } }).select('linkId').limit(60).lean();
+    for (const p of open) {
+      try {
+        const l = await fetchRazorpay('/payment_links/' + encodeURIComponent(p.linkId));
+        if (l.status === 'paid') {
+          const pid = (l.payments || []).find(x => x.status === 'captured')?.payment_id || (l.payments || [])[0]?.payment_id;
+          if (pid) { await settlePaymentLink(p.linkId, { id: pid }); enrichPayment('plink_' + p.linkId, pid); console.log(`💳 Payment link ${p.linkId} paid (found by poller)`); }
+        }
+      } catch (e) { /* one bad link shouldn't stop the rest */ }
+    }
+  } finally { linkPollRunning = false; }
+}
+setInterval(() => pollPaymentLinks().catch(() => {}), 3 * 60000);
+
+// Website "quick pay": phone number only, no password. Safe — it can only ever extend that
+// number's own plan, and the Razorpay signature still proves the payment.
+const quickPayLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 12, message: 'Too many tries — please wait a few minutes.' });
+const linkSendLimit = new Map(); // phone → last WhatsApp link send (max one per 5 min per number)
+async function patientForQuickPay(phoneIn) {
+  const ph = normalizePhone(phoneIn) || '';
+  if (last10(ph).length !== 10) return { error: 'Please enter your 10-digit mobile number.' };
+  const twins = await Patient.find({ phone: { $in: phoneVariants(ph) } });
+  if (!twins.length) return { error: 'No Biomexa account with this number yet — create a free account first (it takes 30 seconds).', signup: true };
+  return { patient: twins.find(x => !/\s/.test(x.phone)) || twins[0], twins };
+}
+async function createCheckoutOrder(patient, plan, source) {
+  const receipt = `bx_${Date.now()}_${last10(patient.phone)}`.slice(0, 40);
+  const r = await fetch('https://api.razorpay.com/v1/orders', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: razorpayAuthHeader() },
+    body: JSON.stringify({ amount: plan.price * 100, currency: 'INR', receipt, notes: { plan: plan.id, phone: patient.phone, product: 'Biomexa Care', source } }),
+    signal: AbortSignal.timeout(15000)
+  });
+  const order = await r.json();
+  if (!r.ok || !order.id) { console.log('⚠️ Razorpay order failed:', JSON.stringify(order).slice(0, 300)); return null; }
+  await Payment.create({ patientPhone: patient.phone, patientName: patient.name, plan: plan.id, amount: order.amount, currency: order.currency, orderId: order.id, source, events: [{ type: 'checkout_opened', note: `${plan.name} ₹${plan.price} · ${source}` }] });
+  return {
+    keyId: RAZORPAY_KEY_ID, orderId: order.id, amount: order.amount, currency: order.currency,
+    plan, prefill: { name: patient.name || '', contact: last10(patient.phone), email: patient.email || '' }
+  };
+}
+app.post('/api/subscription/quick-order', quickPayLimiter, async (req, res) => {
+  try {
+    if (!PAYMENTS_CONFIGURED) return res.status(503).json({ message: 'Online payment is not switched on yet — please try again soon.' });
+    const plan = SUBSCRIPTION_PLANS[req.body?.plan];
+    if (!plan) return res.status(400).json({ message: 'Please choose a plan.' });
+    const f = await patientForQuickPay(req.body?.phone);
+    if (f.error) return res.status(f.signup ? 404 : 400).json({ message: f.error, signup: !!f.signup });
+    const o = await createCheckoutOrder(f.patient, plan, 'quick');
+    if (!o) return res.status(502).json({ message: 'Could not start the payment. Please try again in a minute.' });
+    const first = String(f.patient.name || '').trim().split(/\s+/)[0];
+    res.json({ ...o, greeting: first ? `Paying for ${first}'s Biomexa Care` : null });
+  } catch (err) { res.status(500).json({ message: err.message }); }
+});
+app.post('/api/subscription/quick-verify', quickPayLimiter, async (req, res) => {
+  try {
+    if (!PAYMENTS_CONFIGURED) return res.status(503).json({ message: 'Payments are not configured.' });
+    const { razorpay_order_id: orderId, razorpay_payment_id: paymentId, razorpay_signature: signature } = req.body || {};
+    if (!orderId || !paymentId || !signature) return res.status(400).json({ message: 'Payment details missing.' });
+    const expected = crypto.createHmac('sha256', RAZORPAY_KEY_SECRET).update(`${orderId}|${paymentId}`).digest('hex');
+    if (!safeEqualHex(expected, signature)) return res.status(400).json({ message: 'Payment could not be verified. If money was deducted, it will be refunded by Razorpay — or contact Biomexa.' });
+    const known = await Payment.findOne({ orderId });
+    if (!known) return res.status(404).json({ message: 'Order not found.' });
+    const r = await activateSubscription(orderId, paymentId);
+    const access = await accessForPhone(known.patientPhone);
+    res.json({ message: `Payment successful — Biomexa Care is active until ${new Date(access.expiresAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}.`, access, already: !!r.already });
+  } catch (err) { res.status(500).json({ message: err.message }); }
+});
+// "Send me a payment link on WhatsApp" — for patients who'd rather pay from their UPI app later.
+app.post('/api/subscription/send-link', quickPayLimiter, async (req, res) => {
+  try {
+    if (!PAYMENTS_CONFIGURED) return res.status(503).json({ message: 'Online payment is not switched on yet.' });
+    const plan = SUBSCRIPTION_PLANS[req.body?.plan] || SUBSCRIPTION_PLANS.monthly;
+    const f = await patientForQuickPay(req.body?.phone);
+    if (f.error) return res.status(f.signup ? 404 : 400).json({ message: f.error, signup: !!f.signup });
+    const k = last10(f.patient.phone);
+    if (Date.now() - (linkSendLimit.get(k) || 0) < 5 * 60000) return res.status(429).json({ message: 'A payment link was just sent to this number — please check WhatsApp.' });
+    const l = await paymentLinkFor(f.patient.phone, plan.id, 'website');
+    if (!l) return res.status(502).json({ message: 'Could not create the payment link — please try again.' });
+    const first = String(f.patient.name || '').trim().split(/\s+/)[0] || 'there';
+    const text = `💳 Hi ${first}, here is your Biomexa Care payment link:\n\n*${plan.name} — ₹${plan.price}*\n${l.url}\n\nTap it, choose your UPI app (or card / net banking) and you're done — no login needed. Your plan starts the moment you pay.\n\n- Biomexa Team`;
+    let sent = await sendWhatsAppFree(f.patient.phone, text);
+    if (!sent?.success && MSG91_RENEWAL_TEMPLATE_NAME) sent = await sendRenewalTemplate(f.patient.phone, first, `here is your Biomexa Care ${plan.name} payment link (₹${plan.price}) — pay in one tap: ${l.url}`, 'tap the link, choose your UPI app and you are done');
+    linkSendLimit.set(k, Date.now());
+    res.json({ message: sent?.success ? 'Payment link sent on WhatsApp ✅ — open WhatsApp and tap it.' : 'We could not reach your WhatsApp — use the link below instead.', url: l.url, sent: !!sent?.success });
+  } catch (err) { res.status(500).json({ message: err.message }); }
+});
+// Logged-in patient: their own link (used by the portal "Pay later from WhatsApp" button).
+app.post('/api/patient/subscription/link', auth, async (req, res) => {
+  try {
+    const l = await paymentLinkFor(req.user.phone, req.body?.plan || 'monthly', 'website');
+    if (!l) return res.status(502).json({ message: 'Could not create the payment link — please try again.' });
+    res.json({ url: l.url });
+  } catch (err) { res.status(500).json({ message: err.message }); }
+});
+
 // Step 1 — create a Razorpay order for the chosen plan; the page opens Razorpay Checkout with it.
 app.post('/api/patient/subscription/order', auth, async (req, res) => {
   try {
@@ -5790,23 +5969,9 @@ app.post('/api/patient/subscription/order', auth, async (req, res) => {
     const patient = (await Patient.findOne({ phone: req.user.phone })) || (await findAccountByPhone('patient', req.user.phone));
     if (!patient) return res.status(404).json({ message: 'Patient not found.' });
 
-    const receipt = `bx_${Date.now()}_${last10(patient.phone)}`.slice(0, 40);
-    const r = await fetch('https://api.razorpay.com/v1/orders', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: razorpayAuthHeader() },
-      body: JSON.stringify({ amount: plan.price * 100, currency: 'INR', receipt, notes: { plan: plan.id, phone: patient.phone, product: 'Biomexa Care' } }),
-      signal: AbortSignal.timeout(15000)
-    });
-    const order = await r.json();
-    if (!r.ok || !order.id) {
-      console.log('⚠️ Razorpay order failed:', JSON.stringify(order).slice(0, 300));
-      return res.status(502).json({ message: 'Could not start the payment. Please try again in a minute.' });
-    }
-    await Payment.create({ patientPhone: patient.phone, patientName: patient.name, plan: plan.id, amount: order.amount, currency: order.currency, orderId: order.id, events: [{ type: 'checkout_opened', note: `${plan.name} ₹${plan.price}` }] });
-    res.json({
-      keyId: RAZORPAY_KEY_ID, orderId: order.id, amount: order.amount, currency: order.currency,
-      plan, prefill: { name: patient.name || '', contact: patient.phone.replace(/\D/g, '').slice(-10), email: patient.email || '' }
-    });
+    const o = await createCheckoutOrder(patient, plan, 'website');
+    if (!o) return res.status(502).json({ message: 'Could not start the payment. Please try again in a minute.' });
+    res.json(o);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -5876,6 +6041,16 @@ app.post('/api/razorpay/webhook', async (req, res) => {
     const ev = req.body?.event;
     const payEnt = req.body?.payload?.payment?.entity;
     const refEnt = req.body?.payload?.refund?.entity;
+    const linkEnt = req.body?.payload?.payment_link?.entity;
+    if (ev === 'payment_link.paid' && linkEnt?.id) {
+      await settlePaymentLink(linkEnt.id, payEnt || { id: (linkEnt.payments || [])[0]?.payment_id });
+      return res.json({ ok: true });
+    }
+    // payment.captured for a payment-link payment carries Razorpay's own order id; match it by link.
+    if (ev === 'payment.captured' && payEnt && payEnt.order_id && !(await Payment.exists({ orderId: payEnt.order_id }))) {
+      const lid = payEnt.notes?.payment_link_id || payEnt.payment_link_id;
+      if (lid) { await settlePaymentLink(lid, payEnt); return res.json({ ok: true }); }
+    }
     if ((ev === 'payment.captured' || ev === 'order.paid') && payEnt?.order_id) {
       const known = await Payment.findOne({ orderId: payEnt.order_id });
       if (known) {
@@ -5910,7 +6085,9 @@ app.post('/api/razorpay/webhook', async (req, res) => {
 const ABANDON_AFTER_MS = 30 * 60000;
 function paymentView(p, now = Date.now()) {
   let status = p.status || 'created';
-  if (status === 'created') status = now - new Date(p.createdAt) > ABANDON_AFTER_MS ? 'abandoned' : 'pending';
+  if (status === 'created') status = p.linkId
+    ? (p.linkExpiresAt && new Date(p.linkExpiresAt) < now ? 'expired' : 'link_sent')
+    : (now - new Date(p.createdAt) > ABANDON_AFTER_MS ? 'abandoned' : 'pending');
   if (status === 'paid' && p.refundedAmount > 0 && p.refundedAmount < p.amount) status = 'part_refunded';
   const plan = SUBSCRIPTION_PLANS[p.plan];
   return {
@@ -5921,7 +6098,8 @@ function paymentView(p, now = Date.now()) {
     method: p.method || null, methodDetail: p.methodDetail || null, payerEmail: p.payerEmail || null,
     failureReason: p.failureReason || null, periodStart: p.periodStart || null, periodEnd: p.periodEnd || null,
     createdAt: p.createdAt, paidAt: p.paidAt || null, failedAt: p.failedAt || null, refundedAt: p.refundedAt || null,
-    events: (p.events || []).map(e => ({ at: e.at, type: e.type, note: e.note }))
+    events: (p.events || []).map(e => ({ at: e.at, type: e.type, note: e.note })),
+    source: p.source || (p.linkId ? 'whatsapp' : 'website'), linkUrl: p.linkUrl || null
   };
 }
 app.get('/api/admin/payments', adminAuth, async (req, res) => {
@@ -5968,6 +6146,20 @@ app.get('/api/admin/payments', adminAuth, async (req, res) => {
 async function syncOrderWithRazorpay(orderId) {
   const pay = await Payment.findOne({ orderId });
   if (!pay) throw new Error('Order not found');
+  if (pay.linkId) {
+    const l = await fetchRazorpay('/payment_links/' + encodeURIComponent(pay.linkId));
+    let changed = `link ${l.status}`;
+    const pid = (l.payments || []).find(x => x.status === 'captured')?.payment_id || (l.payments || [])[0]?.payment_id;
+    if (l.status === 'paid' && pid) {
+      const wasPaid = pay.status === 'paid';
+      await settlePaymentLink(pay.linkId, { id: pid });
+      await enrichPayment(orderId, pid);
+      changed = wasPaid ? 'details updated' : 'payment found — marked paid and plan activated';
+    } else if (l.status === 'expired' || l.status === 'cancelled') changed = `link ${l.status} — not paid`;
+    else changed = 'link sent — not paid yet';
+    await logPaymentEvent(orderId, 'synced', changed);
+    return { changed, payment: paymentView((await Payment.findOne({ orderId }).lean())) };
+  }
   const list = await fetchRazorpay('/orders/' + encodeURIComponent(orderId) + '/payments');
   const items = (list.items || []).sort((a, b) => a.created_at - b.created_at);
   const captured = items.find(i => i.status === 'captured' || i.status === 'refunded');
@@ -6000,7 +6192,7 @@ app.post('/api/admin/payments/sync-all', adminAuth, async (req, res) => {
   try {
     if (!PAYMENTS_CONFIGURED) return res.status(503).json({ message: 'Razorpay is not configured.' });
     const since = new Date(Date.now() - 30 * 86400000);
-    const todo = await Payment.find({ createdAt: { $gte: since }, $or: [{ status: { $in: ['created', 'failed'] } }, { status: 'paid', method: { $in: [null, ''] } }] }).select('orderId').limit(100).lean();
+    const todo = await Payment.find({ createdAt: { $gte: since }, $or: [{ status: { $in: ['created', 'failed'] } }, { status: 'paid', method: { $in: [null, ''] } }] }).select('orderId').sort({ createdAt: -1 }).limit(100).lean();
     let fixed = 0, errors = 0;
     for (const p of todo) {
       try { const r = await syncOrderWithRazorpay(p.orderId); if (/marked paid|marked failed|details updated/.test(r.changed)) fixed++; } catch { errors++; }
@@ -6053,7 +6245,8 @@ app.get('/api/admin/patients/:phone/journey', adminAuth, async (req, res) => {
     const j = await buildPatientJourney(twins);
     const first = String(j.name || '').trim().split(/\s+/)[0] || 'there';
     const status = renewalStatusLine(j);
-    res.json({ ...j, whatsappPreview: { statusLine: status, summaryLine: journeySummaryLine(j), fullText: journeyWhatsAppText(j, first, status), templateConfigured: !!MSG91_RENEWAL_TEMPLATE_NAME } });
+    const samplePay = PAYMENTS_CONFIGURED ? { monthly: 'rzp.io/…', full: '💳 *Pay in one tap* (UPI, card or net banking — no login):\n• Monthly ₹99 → [personal Razorpay link]\n• Yearly ₹899 (best value) → [personal Razorpay link]\n\nAll plans: ' + SITE_URL + '/subscribe.html', short: 'Pay ₹99 in one tap: [personal Razorpay link]' } : null;
+    res.json({ ...j, whatsappPreview: { statusLine: status + (samplePay ? ' ' + samplePay.short : ''), summaryLine: journeySummaryLine(j), fullText: journeyWhatsAppText(j, first, status, samplePay), templateConfigured: !!MSG91_RENEWAL_TEMPLATE_NAME } });
   } catch (err) {
     console.log('❌ Journey report failed:', err.message);
     res.status(500).json({ message: 'Could not build the journey report — ' + err.message });
@@ -6075,7 +6268,8 @@ app.post('/api/admin/patients/:phone/renewal-reminder', adminAuth, async (req, r
     const first = String(j.name || '').trim().split(/\s+/)[0] || 'there';
     const status = renewalStatusLine(j);
     const target = twins.find(x => !/\s/.test(x.phone)) || twins[0];
-    const r = await sendSubscriptionNotice(target.phone, first, status, journeySummaryLine(j), journeyWhatsAppText(j, first, status));
+    const pay = await payLinksText(target.phone, 'admin');
+    const r = await sendSubscriptionNotice(target.phone, first, `${status} ${pay.short}`, journeySummaryLine(j), journeyWhatsAppText(j, first, status, pay));
     const ok = !!r?.success;
     await Patient.updateMany({ _id: { $in: twins.map(x => x._id) } }, { $push: { renewalReminders: { at: new Date(), by: 'admin', kind: `manual-${j.access.tier}`, ok, to: waNumber(target.phone) } } });
     // Read MSG91's logs again in ~3 minutes so the journey shows the real delivery result soon.
@@ -6261,7 +6455,7 @@ function journeySummaryLine(j) {
 }
 
 // Full WhatsApp text (used inside the 24-hour window, where free text is allowed).
-function journeyWhatsAppText(j, first, statusLine) {
+function journeyWhatsAppText(j, first, statusLine, pay) {
   const L = [`Hi ${first}, ${statusLine}`, '', `📋 *Your journey with Biomexa* (${j.daysOnPlatform} days)`];
   if (j.medicines.length) L.push(`💊 Medicines tracked: ${j.medicines.map(m => m.name).slice(0, 4).join(', ')}${j.medicines.length > 4 ? '…' : ''}`);
   if (j.doses.remindersSent) L.push(`⏰ WhatsApp dose reminders sent: ${j.doses.remindersSent}`);
@@ -6271,8 +6465,8 @@ function journeyWhatsAppText(j, first, statusLine) {
   if (j.vitals.readings) L.push(`📈 Vitals readings logged: ${j.vitals.readings}`);
   if (j.reports.analysed) L.push(`🧾 Reports analysed by AI: ${j.reports.analysed}`);
   if (j.doctorConnects.length) L.push(`👨‍⚕️ Doctor consult requests: ${j.doctorConnects.length}`);
-  L.push('', 'Keep Talk to a Doctor, treatment reports, AI report analysis and reminders for all your medicines — plans from ₹99/month (₹899/year).',
-    `See your full journey and renew: ${SITE_URL}/subscribe.html`, '', '- Biomexa Team');
+  L.push('', 'Keep Talk to a Doctor, treatment reports, AI report analysis and reminders for all your medicines.', '',
+    pay && pay.monthly ? pay.full : `Plans from ₹99/month (₹899/year): ${SITE_URL}/subscribe.html`, '', '- Biomexa Team');
   return L.join('\n');
 }
 
@@ -6325,9 +6519,10 @@ async function broadcastTrialExpired(now = new Date()) {
       const endedOn = new Date(a.trialEndsAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' });
       const status = `your ${TRIAL_DAYS}-day free trial ended on ${endedOn}. Please subscribe to keep these services.`;
       const treatment = await treatmentSummaryFor(twins);
-      const msg = `Hi ${first}, your *${TRIAL_DAYS}-day free trial* of Biomexa Care ended on ${endedOn}.\n\n💊 Your treatment: ${treatment}.\n\nTo keep using Talk to a Doctor, treatment reports, AI prescription & lab report analysis and reminders for all your medicines, please subscribe — otherwise these services will stop.\n\nPlans from ₹99/month (₹899/year):\n${SITE_URL}/subscribe.html\n\n- Biomexa Team`;
       const target = twins.find(x => !/\s/.test(x.phone)) || p;
-      const r = await sendSubscriptionNotice(target.phone, first, status, treatment, msg);
+      const pay = await payLinksText(target.phone, 'reminder');
+      const msg = `Hi ${first}, your *${TRIAL_DAYS}-day free trial* of Biomexa Care ended on ${endedOn}.\n\n💊 Your treatment: ${treatment}.\n\nTo keep using Talk to a Doctor, treatment reports, AI prescription & lab report analysis and reminders for all your medicines, please subscribe — otherwise these services will stop.\n\n${pay.full}\n\n- Biomexa Team`;
+      const r = await sendSubscriptionNotice(target.phone, first, `${status} ${pay.short}`, treatment, msg);
       if (r?.success) {
         sent++;
         // Mark it, and count it as today's scheduled trial-ended reminder so that isn't sent too.
@@ -6361,7 +6556,6 @@ async function processSubscriptionNotices(now = new Date()) {
       const a = accessFor(twins);
       let key = null, status = null, kind = null;
       const first = String(p.name || '').trim().split(/\s+/)[0] || 'there';
-      const link = `${SITE_URL}/subscribe.html`;
 
       if (a.tier === 'subscribed') {
         const left = dayDiff(today, localDateStr(a.expiresAt));
@@ -6388,10 +6582,11 @@ async function processSubscriptionNotices(now = new Date()) {
       if (!key || twins.some(x => x.lastSubNoticeKey === key)) continue;
       const target = twins.find(x => !/\s/.test(x.phone)) || p;
       const treatment = await treatmentSummaryFor(twins);
+      const pay = await payLinksText(target.phone, 'reminder');
       const msg = kind === 'plan-ending'
-        ? `⏳ Hi ${first}, ${status}\n\n💊 Your treatment: ${treatment}.\n\nRenew to keep Talk to a Doctor, treatment reports, AI report analysis and reminders for all your medicines — from ₹99/month (₹899/year):\n${link}\n\n- Biomexa Team`
-        : `Hi ${first}, ${kind === 'trial' ? `your *${TRIAL_DAYS}-day free trial* of Biomexa Care has ended` : 'your *Biomexa Care plan* has ended'}.\n\n💊 Your treatment: ${treatment}.\n\nTo keep using Talk to a Doctor, treatment reports, AI prescription & lab report analysis and reminders for all your medicines, please ${kind === 'trial' ? 'subscribe' : 'renew'} — otherwise these services will stop.\n\nPlans from ₹99/month (₹899/year):\n${link}\n\n- Biomexa Team`;
-      const r = await sendSubscriptionNotice(target.phone, first, status, treatment, msg);
+        ? `⏳ Hi ${first}, ${status}\n\n💊 Your treatment: ${treatment}.\n\nRenew to keep Talk to a Doctor, treatment reports, AI report analysis and reminders for all your medicines.\n\n${pay.full}\n\n- Biomexa Team`
+        : `Hi ${first}, ${kind === 'trial' ? `your *${TRIAL_DAYS}-day free trial* of Biomexa Care has ended` : 'your *Biomexa Care plan* has ended'}.\n\n💊 Your treatment: ${treatment}.\n\nTo keep using Talk to a Doctor, treatment reports, AI prescription & lab report analysis and reminders for all your medicines, please ${kind === 'trial' ? 'subscribe' : 'renew'} — otherwise these services will stop.\n\n${pay.full}\n\n- Biomexa Team`;
+      const r = await sendSubscriptionNotice(target.phone, first, `${status} ${pay.short}`, treatment, msg);
       if (r?.success) {
         sent++;
         await Patient.updateMany({ _id: { $in: twins.map(x => x._id) } }, { lastSubNoticeKey: key, $push: { renewalReminders: { at: new Date(), by: 'auto', kind: key, ok: true } } });
