@@ -1691,6 +1691,7 @@ async function syncWhatsAppTemplates() {
       lines.push(`${k}=${r.name || '—'}${r.source === 'auto' ? ' (auto)' : r.source === 'render-unapproved' ? ' (NOT APPROVED)' : ''}`);
       for (const i of r.issues) console.log(`ℹ️ Template ${k}: ${i}`);
     }
+    ensureReceiptTemplate().catch(() => {});
     const nApproved = new Set(st.templates.filter(t => t.status === 'APPROVED').map(t => t.name)).size;
     console.log(`📑 WhatsApp templates synced — ${nApproved} approved in MSG91 · ${lines.join(' · ')}`);
     return st;
@@ -4523,6 +4524,19 @@ app.post('/api/webhooks/msg91-whatsapp', async (req, res) => {
       return;
     }
 
+    // INVOICE / RECEIPT / BILL → their latest invoice PDF (they just messaged, so the PDF can be sent).
+    if (patient && /^\s*(invoice|receipt|bill|gst invoice|my invoice)\s*[.!]*\s*$/i.test(freeText || buttonText || '')) {
+      const first = String(patient.name || '').trim().split(/\s+/)[0] || 'there';
+      const last = await Payment.findOne({ patientPhone: { $in: phoneVariants(phone) }, status: { $in: ['paid', 'refunded'] } }).sort({ paidAt: -1 });
+      if (!last) { await sendWhatsAppFree(phone, `Hi ${first}, we couldn't find a Biomexa Care payment on this number yet. Reply PAY to get your payment link.\n\n- Biomexa Team`); return; }
+      const inv = await ensureInvoice(last);
+      const url = invoiceUrlFor(inv);
+      await sendWhatsAppFree(phone, `🧾 Hi ${first}, here is your ${invoiceSeller().gstin ? 'GST tax invoice' : 'receipt'} ${inv.invoiceNo} for Biomexa Care (₹${(inv.amount || 0) / 100}).\n\nDownload: ${url}\n\n- Biomexa Team`);
+      await sendMsg91Document(phone, url, invoiceFileName(inv), `🧾 Invoice ${inv.invoiceNo} — Biomexa Care`);
+      await logPaymentEvent(inv.orderId, 'invoice_sent', `${inv.invoiceNo} · INVOICE reply`);
+      return;
+    }
+
     // PAY / RENEW / SUBSCRIBE → personal one-tap payment links (they just messaged, so free text works).
     if (patient && PAY_KEYWORD_RE.test(freeText || buttonText || '')) {
       const first = String(patient.name || '').trim().split(/\s+/)[0] || 'there';
@@ -5748,7 +5762,8 @@ app.get('/api/admin/patients', adminAuth, async (req, res) => {
 app.get('/api/subscription/plans', (req, res) => {
   res.json({
     plans: Object.values(SUBSCRIPTION_PLANS), trialDays: TRIAL_DAYS, freeMedicineLimit: FREE_MEDICINE_LIMIT, enforced: SUBSCRIPTION_ENFORCED,
-    paymentsEnabled: PAYMENTS_CONFIGURED
+    paymentsEnabled: PAYMENTS_CONFIGURED,
+    whatsappNumber: MSG91_INTEGRATED_NUMBER ? String(MSG91_INTEGRATED_NUMBER).replace(/\D/g, '') : null
   });
 });
 
@@ -5867,27 +5882,70 @@ app.get('/api/invoice/:token/:file?', async (req, res) => {
 // it's a normal message plus the PDF as a document; outside it, the approved receipt template
 // (MSG91_RECEIPT_TEMPLATE_NAME, header DOCUMENT) if set, else the renewal template with the link.
 let MSG91_RECEIPT_TEMPLATE_NAME = process.env.MSG91_RECEIPT_TEMPLATE_NAME || null;
-async function sendReceiptTemplate(phone, first, planText, endTxt, url, filename) {
-  if (!MSG91_CONFIGURED || !MSG91_RECEIPT_TEMPLATE_NAME) return { success: false, provider: 'not_configured' };
+// Biomexa's own receipt template — created automatically in MSG91 (UTILITY, so WhatsApp delivers
+// it to anyone, even a patient who never messaged us). Body + a "Download invoice" URL button:
+//   "Hi {{1}}, we have received your payment of ₹{{2}} for Biomexa Care ({{3}}). Your plan is
+//    active until {{4}}. Invoice number: {{5}}. Tap the button below to download your GST invoice."
+//   Button: Download invoice → <API>/api/invoice/{{1}}
+const RECEIPT_TEMPLATE = 'biomexa_payment_receipt';
+async function ensureReceiptTemplate() {
+  if (!MSG91_CONFIGURED || process.env.MSG91_RECEIPT_TEMPLATE_NAME) return;
+  const st = waTpl._state();
+  if (!st.syncedAt || st.error) return;                       // only when we can see the template list
+  if (st.templates.some(t => t.name === RECEIPT_TEMPLATE)) return; // already created (any status)
   try {
+    const res = await fetch('https://api.msg91.com/api/v5/whatsapp/client-panel-template/', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', authkey: MSG91_AUTH_KEY },
+      body: JSON.stringify({
+        integrated_number: String(MSG91_INTEGRATED_NUMBER).replace(/\D/g, ''),
+        template_name: RECEIPT_TEMPLATE, language: 'en', category: 'UTILITY', button_url: true,
+        components: [
+          { type: 'HEADER', format: 'TEXT', text: 'Payment received' },
+          { type: 'BODY', text: 'Hi {{1}}, we have received your payment of ₹{{2}} for Biomexa Care ({{3}}). Your plan is active until {{4}}. Invoice number: {{5}}. Tap the button below to download your GST invoice.',
+            example: { body_text: [['Ravi', '99', 'Monthly plan', '15 Dec 2026', 'BX/26-27/0001']] } },
+          { type: 'FOOTER', text: 'Biomexa Pharmaceuticals' },
+          { type: 'BUTTONS', buttons: [{ type: 'URL', text: 'Download invoice', url: `${API_PUBLIC_URL}/api/invoice/{{1}}`, example: [`${API_PUBLIC_URL}/api/invoice/0a1b2c3d4e5f60718293a4b5c6d7e8f90a1b/Biomexa-invoice.pdf`] }] }
+        ]
+      }),
+      signal: AbortSignal.timeout(20000)
+    });
+    const data = await res.json().catch(() => ({}));
+    console.log(res.ok && !data.hasError
+      ? `📑 Receipt template "${RECEIPT_TEMPLATE}" submitted to WhatsApp for approval — used automatically once approved.`
+      : `⚠️ Receipt template could not be created: ${JSON.stringify(data).slice(0, 300)}`);
+  } catch (err) { console.log('⚠️ Receipt template create error:', err.message); }
+}
+function receiptTemplateName() {
+  if (MSG91_RECEIPT_TEMPLATE_NAME) return MSG91_RECEIPT_TEMPLATE_NAME;
+  const t = waTpl._state().byName.get(RECEIPT_TEMPLATE);
+  return t && t.status === 'APPROVED' ? RECEIPT_TEMPLATE : null;
+}
+async function sendReceiptTemplate(phone, first, amount, planText, endTxt, invoiceNo, url) {
+  const name = receiptTemplateName();
+  if (!MSG91_CONFIGURED || !name || !url) return { success: false, provider: 'not_configured' };
+  try {
+    const suffix = url.split('/api/invoice/')[1] || '';
     const res = await fetch('https://api.msg91.com/api/v5/whatsapp/whatsapp-outbound-message/bulk/', {
       method: 'POST', headers: { 'Content-Type': 'application/json', authkey: MSG91_AUTH_KEY },
       body: JSON.stringify({ integrated_number: MSG91_INTEGRATED_NUMBER, content_type: 'template', payload: { messaging_product: 'whatsapp', type: 'template', template: {
-        name: MSG91_RECEIPT_TEMPLATE_NAME,
-        language: { code: waTpl.langFor(MSG91_RECEIPT_TEMPLATE_NAME, MSG91_TEMPLATE_LANG), policy: 'deterministic' },
-        namespace: waTpl.namespaceFor(MSG91_RECEIPT_TEMPLATE_NAME, MSG91_TEMPLATE_NAMESPACE),
-        to_and_components: [{ to: [waNumber(phone)], components: waTpl.fitComponents(MSG91_RECEIPT_TEMPLATE_NAME, {
-          header_1: { type: 'document', value: url, filename },
+        name,
+        language: { code: waTpl.langFor(name, 'en'), policy: 'deterministic' },
+        namespace: waTpl.namespaceFor(name, MSG91_TEMPLATE_NAMESPACE),
+        to_and_components: [{ to: [waNumber(phone)], components: waTpl.fitComponents(name, {
           body_1: { type: 'text', value: sanitizeTemplateParam(first, 40) || 'there' },
-          body_2: { type: 'text', value: sanitizeTemplateParam(planText, 120) },
-          body_3: { type: 'text', value: sanitizeTemplateParam(endTxt, 60) }
+          body_2: { type: 'text', value: String(amount) },
+          body_3: { type: 'text', value: sanitizeTemplateParam(planText, 60) },
+          body_4: { type: 'text', value: sanitizeTemplateParam(endTxt, 40) },
+          body_5: { type: 'text', value: sanitizeTemplateParam(invoiceNo, 30) },
+          button_1: { subtype: 'url', type: 'text', value: suffix }
         }) }]
       } } }),
       signal: AbortSignal.timeout(15000)
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok || data.hasError) { console.log('⚠️ Receipt template failed:', JSON.stringify(data).slice(0, 300)); return { success: false }; }
-    return { success: true, provider: 'msg91_template' };
+    console.log('✅ MSG91 receipt template sent to', phone);
+    return { success: true, provider: 'msg91_receipt_template' };
   } catch (err) { return { success: false, detail: err.message }; }
 }
 async function sendPaymentReceipt(payIn) {
@@ -5900,14 +5958,14 @@ async function sendPaymentReceipt(payIn) {
     const s = invoiceSeller();
     const g = gstSplit(plan.price, s.rate, false);
     const gstLine = s.gstin ? `\n₹${plan.price} = ₹${g.taxable.toFixed(2)} + GST ₹${g.tax.toFixed(2)} (CGST ₹${g.cgst.toFixed(2)} + SGST ₹${g.sgst.toFixed(2)})` : '';
-    const text = `✅ *Payment received — welcome to Biomexa Care!*\n\nHi ${first}, your ${plan.name} plan (₹${plan.price}) is active until *${endTxt}*.\n\nUnlocked for you:\n• Talk to a Doctor\n• Treatment reports on WhatsApp\n• AI prescription & lab report analysis\n• Reminders for all your medicines\n\n🧾 ${s.gstin ? 'Tax invoice' : 'Receipt'} ${pay.invoiceNo}${gstLine}\nDownload: ${url}\nPayment ID: ${pay.paymentId}\n\n- Biomexa Team`;
+    const text = `✅ *Payment received — welcome to Biomexa Care!*\n\nHi ${first}, your ${plan.name} plan (₹${plan.price}) is active until *${endTxt}*.\n\nUnlocked for you:\n• Talk to a Doctor\n• Treatment reports on WhatsApp\n• AI prescription & lab report analysis\n• Reminders for all your medicines\n\n🧾 ${s.gstin ? 'Tax invoice' : 'Receipt'} ${pay.invoiceNo}${gstLine}\nDownload: ${url}\nPayment ID: ${pay.paymentId}\n\nReply INVOICE any time to get it again.\n\n- Biomexa Team`;
     if (await whatsappWindowOpen(pay.patientPhone)) {
       await sendWhatsAppFree(pay.patientPhone, text);
       if (url) await sendMsg91Document(pay.patientPhone, url, file, `🧾 ${s.gstin ? 'Tax invoice' : 'Payment receipt'} ${pay.invoiceNo} — Biomexa Care ${plan.name}, ₹${plan.price}`);
       await logPaymentEvent(pay.orderId, 'invoice_sent', `${pay.invoiceNo} · WhatsApp`);
       return;
     }
-    let r = await sendReceiptTemplate(pay.patientPhone, first, `Biomexa Care ${plan.name} plan (₹${plan.price})`, endTxt, url, file);
+    let r = await sendReceiptTemplate(pay.patientPhone, first, plan.price, `${plan.name} plan`, endTxt, pay.invoiceNo, url);
     if (!r.success && MSG91_RENEWAL_TEMPLATE_NAME) r = await sendRenewalTemplate(pay.patientPhone, first, `thank you — your payment of ₹${plan.price} is received and Biomexa Care ${plan.name} is active until ${endTxt}. Invoice ${pay.invoiceNo}: ${url}`, 'Talk to a Doctor, treatment reports, report analysis and reminders for all your medicines are now unlocked');
     if (!r.success) r = await sendWhatsAppFree(pay.patientPhone, text);
     await logPaymentEvent(pay.orderId, r?.success ? 'invoice_sent' : 'invoice_not_sent', `${pay.invoiceNo} · ${r?.provider || 'WhatsApp'}`);
@@ -6968,7 +7026,8 @@ app.get('/api/admin/reminder-center', adminAuth, async (req, res) => {
     rows.forEach(r => counts[r.status]++);
     counts.started = startedRows.length;
     counts.campaign = rows.filter(r => r.campaign).length;
-    res.json({ counts, total: rows.length, patients: [...rows, ...startedRows] });
+    // Which approved template (if any) reaches people whose 24-hour window has closed.
+    res.json({ counts, total: rows.length, patients: [...rows, ...startedRows], signupTemplate: MSG91_SIGNUP_TEMPLATE_NAME || null });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

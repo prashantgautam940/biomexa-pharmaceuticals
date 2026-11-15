@@ -291,7 +291,9 @@ function render() {
 
 function windowBadge(p) {
   const c = p.campaign.windowClosesAt;
-  if (!c) return '<div class="win closed"><i class="fas fa-lock"></i> 24h WhatsApp window closed</div>';
+  if (!c) return p.status === 'started' && data.signupTemplate
+    ? '<div class="win closed"><i class="fas fa-file-lines"></i> 24h window closed — will use approved template</div>'
+    : '<div class="win closed"><i class="fas fa-lock"></i> 24h WhatsApp window closed</div>';
   const h = Math.max(0, (new Date(c) - Date.now()) / 3600000);
   return `<div class="win open"><i class="fas fa-circle-check"></i> Can message for ${h >= 1 ? Math.floor(h) + 'h ' : ''}${Math.round((h % 1) * 60)}m more</div>`;
 }
@@ -308,7 +310,7 @@ function leadRow(p) {
     <div class="who"><strong>${esc(p.name)}</strong><div class="ph">${esc(p.phone)}</div>
       <span class="pill started"><i class="fas fa-play"></i> Tapped START — not signed up</span><div class="meta">${meta}</div>${windowBadge(p)}</div>
     <div class="meds"><div class="none-txt">No Biomexa account yet.${fromList ? ` From their list: <b>${fromList}</b>` : ''}</div></div>
-    <div class="actions"><button class="btn wa sm" ${c.windowClosesAt ? '' : 'disabled title="No message from them in the last 24 hours — WhatsApp would block it"'} onclick="sendLeadMsg('started', '${encodeURIComponent(p.phone)}', this)"><i class="fab fa-whatsapp"></i> Send sign-up message</button></div>
+    <div class="actions"><button class="btn wa sm" ${c.windowClosesAt || data.signupTemplate ? '' : 'disabled title="No message from them in the last 24 hours — WhatsApp would block it"'} ${!c.windowClosesAt && data.signupTemplate ? `title="Window closed — sent with your approved template ${data.signupTemplate} (sample report attached)"` : ''} onclick="sendLeadMsg('started', '${encodeURIComponent(p.phone)}', this)"><i class="fab fa-whatsapp"></i> Send sign-up message${!c.windowClosesAt && data.signupTemplate ? ' <span style="font-weight:500;opacity:.85">(template)</span>' : ''}</button></div>
   </div>`;
 }
 
@@ -320,7 +322,7 @@ function sendLeadMsg(audience, encPhone, rowBtn) {
   if (!phone) {
     const n = data.counts[audience] || 0;
     if (!n) { showResult('leadResult', false, 'There is nobody in that group yet.'); return; }
-    if (!confirm(`Send the ${audience === 'started' ? 'sign-up' : 'portal'} message to ${names[audience]} (${n})?\n\nOnly people who messaged Biomexa in the last 24 hours will get it. Anyone who got it in the last day is skipped.`)) return;
+    if (!confirm(`Send the ${audience === 'started' ? 'sign-up' : 'portal'} message to ${names[audience]} (${n})?\n\n${audience === 'started' && data.signupTemplate ? 'People who messaged in the last 24 hours get the normal message; everyone else gets your approved template (' + data.signupTemplate + ') with the sample report.' : 'Only people who messaged Biomexa in the last 24 hours will get it.'} Anyone who got it in the last day is skipped.`)) return;
   }
   const btn = rowBtn || document.getElementById('leadBtn');
   const old = btn.innerHTML;

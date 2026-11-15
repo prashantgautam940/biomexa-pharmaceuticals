@@ -9,12 +9,14 @@ const sample = { status: 'success', data: [
   { name: 'course_complete', languages: [{ language: 'en', status: 'APPROVED', code: body('Hi {{patient_name}}, your {{medicine_name}} course is done. {{summary}} Thanks.') }] },
   { name: 'welcome_msg', languages: [{ language: 'en', status: 'REJECTED', code: body('Welcome {{1}} to Biomexa.') }] },
   { name: 'biomexa_otp', languages: [{ language: 'en', status: 'APPROVED', category: 'AUTHENTICATION', code: body('{{1}} is your verification code.') }] },
+  { name: 'biomexa_signup_followup', languages: [{ language: 'en', status: 'APPROVED', category: 'MARKETING', code: body('Hi {{1}}, sign up for free medicine reminders: {{2}} Reply STOP to opt out.') }] },
+  { name: 'biomexa_payment_receipt', languages: [{ language: 'en', status: 'APPROVED', category: 'UTILITY', code: [{ type: 'HEADER', format: 'TEXT', text: 'Payment received' }, ...body('Hi {{1}}, paid ₹{{2}} for {{3}} until {{4}}, invoice {{5}}. Download below.'), { type: 'BUTTONS', buttons: [{ type: 'URL', text: 'Download invoice', url: 'https://x/api/invoice/{{1}}' }] }] }] },
   { name: 'order_update', languages: [{ language: 'en', status: 'PENDING', code: body('Order {{1}} {{2}} {{3}} ok') }] },
 ] };
 
 test('parses MSG91 templates with languages, status and variables', () => {
   const list = T.parseTemplates(sample);
-  assert.equal(list.length, 6);
+  assert.equal(list.length, 8);
   const d = list.find(t => t.name === 'dose_reminder');
   assert.deepEqual([d.language, d.status, d.bodyVars.length, d.named], ['en_US', 'APPROVED', 2, false]);
   assert.equal(list.find(t => t.name === 'course_complete').named, true);
@@ -45,4 +47,11 @@ test('variables are fitted to the template at send time', async () => {
   // extra values dropped, buttons kept
   const otp = T.fitComponents('biomexa_otp', { body_1: { type: 'text', value: '1234' }, body_2: { type: 'text', value: 'x' }, button_1: { subtype: 'url', type: 'text', value: '1234' } });
   assert.deepEqual(Object.keys(otp).sort(), ['body_1', 'button_1']);
+});
+
+test('header / button only sent when the approved template has them', async () => {
+  const signup = T.fitComponents('biomexa_signup_followup', { header_1: { type: 'document', value: 'https://x/sample.pdf', filename: 's.pdf' }, body_1: { type: 'text', value: 'Ravi' }, body_2: { type: 'text', value: 'https://b/r' } });
+  assert.deepEqual(Object.keys(signup).sort(), ['body_1', 'body_2']);
+  const rc = T.fitComponents('biomexa_payment_receipt', { body_1: { type: 'text', value: 'A' }, body_2: { type: 'text', value: '99' }, body_3: { type: 'text', value: 'Monthly plan' }, body_4: { type: 'text', value: '15 Dec' }, body_5: { type: 'text', value: 'BX/1' }, button_1: { subtype: 'url', type: 'text', value: 'tok/f.pdf' } });
+  assert.deepEqual(Object.keys(rc).sort(), ['body_1', 'body_2', 'body_3', 'body_4', 'body_5', 'button_1']);
 });

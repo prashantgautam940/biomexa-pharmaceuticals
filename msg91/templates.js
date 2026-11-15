@@ -27,7 +27,7 @@ const TYPES = {
   course:          { label: 'Course complete / refill',    env: 'MSG91_COURSE_TEMPLATE_NAME',          vars: 3, re: /course|refill/i },
   ad:              { label: '10-day product message',      env: 'MSG91_AD_TEMPLATE_NAME',              vars: null, re: /product|promo|offer|ad_|marketing/i },
   lead:            { label: 'Lead invite',                 env: 'MSG91_LEAD_TEMPLATE_NAME',            vars: null, re: /lead|invite/i },
-  receipt:         { label: 'Payment receipt + invoice',   env: 'MSG91_RECEIPT_TEMPLATE_NAME',         vars: 3, re: /receipt|invoice|payment_(success|confirm|received)/i }
+  receipt:         { label: 'Payment receipt + invoice',   env: 'MSG91_RECEIPT_TEMPLATE_NAME',         vars: 5, re: /receipt|invoice|payment_(success|confirm|received)/i }
 };
 
 let state = { syncedAt: null, error: null, templates: [], byName: new Map(), resolved: {} };
@@ -145,7 +145,21 @@ function fitComponents(name, components) {
   if (!t.bodyText) return components;               // body not readable (e.g. some OTP templates) — don't guess
   const out = {};
   const bodyKeys = Object.keys(components).filter(k => /^body_\d+$/.test(k)).sort((a, b) => +a.split('_')[1] - +b.split('_')[1]);
-  for (const [k, v] of Object.entries(components)) if (!/^body_\d+$/.test(k)) out[k] = v;
+  // Header / buttons only if the approved template actually has them — e.g. a sign-up template
+  // approved without a document header must not get one (Meta rejects the whole message).
+  const hdr = String(t.headerFormat || '').toUpperCase();
+  const hasUrlBtn = (t.buttons || []).some(b => /URL|OTP|COPY_CODE/i.test(b.type || ''));
+  for (const [k, v] of Object.entries(components)) {
+    if (/^body_\d+$/.test(k)) continue;
+    if (/^header_/.test(k)) {
+      const want = String(v && v.type || '').toUpperCase();
+      if (!hdr) continue;                                              // template has no header
+      if (['DOCUMENT', 'IMAGE', 'VIDEO'].includes(want) && want !== hdr) continue;
+      if (want === 'TEXT' && (hdr !== 'TEXT' || !(t.headerVars || []).length)) continue;
+    }
+    if (/^button_/.test(k) && !hasUrlBtn && t.category !== 'AUTHENTICATION') continue; // OTP buttons aren't always listed
+    out[k] = v;
+  }
   bodyKeys.forEach((k, i) => {
     if (i >= t.bodyVars.length) return;            // template has fewer variables — drop the extra
     const v = { ...components[k] };

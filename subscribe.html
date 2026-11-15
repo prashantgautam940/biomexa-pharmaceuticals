@@ -197,6 +197,7 @@ footer a { color: var(--navy); }
       <a href="patient.html#doctor" class="btn green"><i class="fas fa-user-doctor"></i> Talk to a doctor</a>
       <a href="patient.html" class="btn navy">Go to my portal</a>
       <a href="#" id="invoiceBtn" class="btn white" style="display:none;border:1px solid var(--line)" target="_blank" rel="noopener"><i class="fas fa-file-pdf" style="color:#c0262d"></i> Download invoice</a>
+      <a href="#" id="waInvoiceBtn" class="btn white" style="display:none;border:1.5px solid #25d366;color:#128c4a" target="_blank" rel="noopener"><i class="fab fa-whatsapp"></i> Get invoice on WhatsApp</a>
     </div>
   </div>
 
@@ -358,9 +359,11 @@ function renderStatus() {
 // Whether online payment is on. Kept as a promise so a click (or the auto-start after login)
 // never runs before the answer arrives — and is asked again if the first try failed (server waking).
 let plansReady = null;
+let waNumber = '919625339181';
 function loadPlans() {
   plansReady = fetch(API_URL + '/api/subscription/plans').then(r => r.json()).then(d => {
     paymentsEnabled = !!d.paymentsEnabled;
+    if (d.whatsappNumber) waNumber = d.whatsappNumber;
     document.getElementById('payNote').innerHTML = paymentsEnabled
       ? '<i class="fas fa-lock"></i> Secure payment by Razorpay — UPI, cards, netbanking and wallets. Time left on a current plan is never lost: a new plan starts when the old one ends.'
       : '<i class="fas fa-clock"></i> Online payment is being switched on — every patient has the full 25-day free trial in the meantime.';
@@ -541,6 +544,9 @@ function showPaid(text, invoiceUrl) {
   closeQuick();
   const ib = document.getElementById('invoiceBtn');
   if (invoiceUrl) { ib.href = invoiceUrl; ib.style.display = ''; }
+  // Messaging Biomexa "INVOICE" opens WhatsApp's 24-hour window, so the PDF itself is sent back.
+  const wb = document.getElementById('waInvoiceBtn');
+  wb.href = 'https://wa.me/' + waNumber + '?text=' + encodeURIComponent('INVOICE'); wb.style.display = '';
   document.getElementById('successText').textContent = text;
   const box = document.getElementById('successBox'); box.style.display = 'block';
   box.scrollIntoView({ behavior: 'smooth', block: 'center' });
