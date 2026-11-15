@@ -213,6 +213,7 @@ tbody tr:hover { background: #f6f8fc !important; }
     <a href="ai-assistant.html">AI Assistant</a>
     <a href="doctor.html">Doctor</a>
     <a href="patient.html">Patient</a>
+    <a href="admin-payments.html">Payments</a>
     <a href="admin-reminders.html">Reminders</a>
     <a href="admin-leads.html">Campaigns</a>
     <a href="admin-analytics.html">Insights</a>
@@ -323,7 +324,7 @@ tbody tr:hover { background: #f6f8fc !important; }
         <h2><i class="fas fa-crown"></i> Biomexa Care subscriptions</h2>
         <p style="color:var(--text-muted);font-size:0.88rem;margin-top:4px;" id="careStatusLine">Loading…</p>
       </div>
-      <button class="btn" onclick="loadCare()" style="padding:9px 16px;"><i class="fas fa-rotate"></i> Refresh</button>
+      <div style="display:flex;gap:8px;flex-wrap:wrap"><a class="btn" href="admin-payments.html" style="padding:9px 16px;text-decoration:none"><i class="fas fa-indian-rupee-sign"></i> Payment log</a><button class="btn" onclick="loadCare()" style="padding:9px 16px;background:#fff;color:var(--primary);border:1px solid var(--border)"><i class="fas fa-rotate"></i> Refresh</button></div>
     </div>
     <div class="stats-row" style="margin-bottom:1rem;">
       <div class="stat-card success"><h3><i class="fas fa-crown"></i> Paying subscribers</h3><div class="number" id="careSubs">-</div></div>
@@ -1353,7 +1354,7 @@ function renderJourney(j) {
   const vitals = vit.length ? '<table><thead><tr><th>Vital</th><th>First reading</th><th>Latest reading</th></tr></thead><tbody>' + vit.join('') + '</tbody></table>' : '<div style="color:var(--text-muted)">No BP or sugar readings logged yet.</div>';
 
   const other = [];
-  other.push('<tr><td>Payments</td><td>' + (j.payments.length ? j.payments.map(p => jrEsc(p.plan) + ' ₹' + p.amount + ' (' + jrShort(p.paidAt) + ')').join(', ') : 'None yet') + '</td></tr>');
+  other.push('<tr><td>Payments</td><td>' + (j.payments.length ? j.payments.map(p => jrEsc(p.plan) + ' ₹' + p.amount + ' (' + jrShort(p.paidAt) + ')').join(', ') : 'None yet') + ' <a class="jr-noprint" href="admin-payments.html?phone=' + encodeURIComponent(j.phone) + '" style="font-size:.8rem;margin-left:6px">Payment log →</a></td></tr>');
   other.push('<tr><td>Doctor consult requests</td><td>' + (j.doctorConnects.length ? j.doctorConnects.map(c => 'Dr. ' + jrEsc(String(c.doctorName || '').replace(/^dr\.?\s+/i, '')) + ' (' + jrShort(c.at) + ')').join(', ') : 'None') + '</td></tr>');
   other.push('<tr><td>Support tickets</td><td>' + (j.tickets.length ? j.tickets.map(t => jrEsc(t.ticketNo) + ' — ' + jrEsc(t.subject) + ' (' + jrEsc(t.status) + ')').join('<br>') : 'None') + '</td></tr>');
 

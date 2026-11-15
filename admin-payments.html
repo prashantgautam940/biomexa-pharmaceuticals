@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Payments | Biomexa Admin</title>
+<link rel="icon" type="image/svg+xml" href="logo.svg">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<style>
+:root { --navy: #16336b; --green: #1c9a55; --green-soft: #e8f6ee; --amber: #b45309; --amber-soft: #fff6e6; --danger: #c0262d; --danger-soft: #fdecec; --blue-soft: #e8eefb; --bg: #f3f6fb; --card: #fff; --inner: #f6f8fc; --text: #13213d; --muted: #5b6b86; --line: #e2e8f2; --shadow: 0 1px 2px rgba(19,33,61,.05), 0 8px 24px rgba(19,33,61,.07); }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+header { background: rgba(255,255,255,.95); border-bottom: 1px solid var(--line); padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 50; gap: 1rem; flex-wrap: wrap; }
+header nav { display: flex; gap: 1.25rem; align-items: center; flex-wrap: wrap; }
+header nav a { color: var(--muted); text-decoration: none; font-weight: 500; font-size: .9rem; }
+header nav a:hover, header nav a.active { color: var(--navy); }
+.container { max-width: 1200px; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+h1 { font-size: 1.7rem; letter-spacing: -.02em; display: flex; align-items: center; gap: .6rem; }
+h1 i { color: var(--green); }
+.sub { color: var(--muted); margin-top: .35rem; font-size: .93rem; max-width: 780px; }
+.status-line { margin-top: .8rem; font-size: .85rem; display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; }
+.badge { display: inline-flex; align-items: center; gap: 5px; font-size: .74rem; font-weight: 700; padding: 3px 10px; border-radius: 999px; white-space: nowrap; }
+.b-paid { background: var(--green-soft); color: #11663a; }
+.b-failed { background: var(--danger-soft); color: var(--danger); }
+.b-abandoned { background: #eef1f6; color: var(--muted); }
+.b-pending { background: var(--amber-soft); color: var(--amber); }
+.b-refunded, .b-part_refunded { background: #f1ebff; color: #6d28d9; }
+.b-live { background: var(--green-soft); color: #11663a; } .b-test { background: var(--amber-soft); color: var(--amber); } .b-off { background: var(--danger-soft); color: var(--danger); }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(165px, 1fr)); gap: 1rem; margin: 1.5rem 0; }
+.stat { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 1.1rem 1.2rem; box-shadow: var(--shadow); }
+.stat .lbl { font-size: .8rem; color: var(--muted); font-weight: 600; display: flex; align-items: center; gap: .45rem; }
+.stat .num { font-size: 1.75rem; font-weight: 800; margin-top: .35rem; font-variant-numeric: tabular-nums; }
+.stat .hint { font-size: .75rem; color: var(--muted); margin-top: 2px; }
+.stat.money .num { color: var(--green); }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 18px; box-shadow: var(--shadow); padding: 1.2rem; margin-bottom: 1.5rem; }
+select, input { padding: 9px 12px; border: 1px solid #cfd8e6; border-radius: 10px; font: inherit; font-size: .88rem; background: #fff; color: var(--text); }
+select:focus, input:focus { outline: none; border-color: var(--navy); box-shadow: 0 0 0 3px rgba(31,68,148,.15); }
+.btn { display: inline-flex; align-items: center; gap: .5rem; padding: 9px 16px; border-radius: 10px; border: 0; font: inherit; font-weight: 700; font-size: .86rem; cursor: pointer; background: var(--navy); color: #fff; white-space: nowrap; }
+.btn.ghost { background: #fff; color: var(--navy); border: 1px solid var(--line); }
+.btn.sm { padding: 6px 11px; font-size: .78rem; }
+.btn:disabled { opacity: .55; cursor: not-allowed; }
+.toolbar { display: flex; gap: .75rem; align-items: center; justify-content: space-between; flex-wrap: wrap; margin-bottom: 1rem; }
+.tabs { display: flex; gap: .4rem; flex-wrap: wrap; }
+.tab { padding: 7px 13px; border-radius: 999px; border: 1px solid var(--line); background: #fff; font: inherit; font-size: .83rem; font-weight: 600; color: var(--muted); cursor: pointer; }
+.tab.on { background: var(--navy); color: #fff; border-color: var(--navy); }
+.tab .n { opacity: .7; margin-left: 3px; font-weight: 500; }
+.views { display: inline-flex; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.views button { border: 0; background: #fff; padding: 8px 13px; font: inherit; font-size: .83rem; font-weight: 600; color: var(--muted); cursor: pointer; }
+.views button.on { background: var(--navy); color: #fff; }
+.search { position: relative; }
+.search input { padding-left: 32px; width: 240px; max-width: 100%; }
+.search i { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: var(--muted); font-size: .82rem; }
+.tbl-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: .86rem; }
+th { text-align: left; font-size: .74rem; color: var(--muted); font-weight: 600; padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+td { padding: 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+tr.click { cursor: pointer; } tr.click:hover td { background: var(--inner); }
+td .s { color: var(--muted); font-size: .76rem; margin-top: 2px; }
+td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.show-sm { display: none; }
+code { font-size: .76rem; background: var(--inner); padding: 1px 5px; border-radius: 5px; }
+.empty, .loading { text-align: center; color: var(--muted); padding: 2.5rem 1rem; }
+.result { margin-top: .7rem; font-size: .86rem; padding: .65rem .9rem; border-radius: 10px; display: none; }
+.result.ok { display: block; background: var(--green-soft); color: #11663a; }
+.result.err { display: block; background: var(--danger-soft); color: var(--danger); }
+/* patient drawer */
+.drawer-bg { position: fixed; inset: 0; background: rgba(19,33,61,.45); display: none; z-index: 100; }
+.drawer-bg.open { display: block; }
+.drawer { position: absolute; right: 0; top: 0; bottom: 0; width: min(620px, 100%); background: #fff; overflow-y: auto; padding: 1.5rem; box-shadow: -10px 0 40px rgba(19,33,61,.2); }
+.drawer h2 { font-size: 1.2rem; margin-right: 40px; }
+.drawer .close { position: absolute; top: 14px; right: 14px; border: 1px solid var(--line); background: #fff; width: 34px; height: 34px; border-radius: 8px; cursor: pointer; font-size: 1rem; }
+.mini { display: grid; grid-template-columns: repeat(3, 1fr); gap: .6rem; margin: 1rem 0; }
+.mini > div { border: 1px solid var(--line); border-radius: 12px; padding: .7rem .8rem; }
+.mini .k { font-size: .72rem; color: var(--muted); } .mini .v { font-size: 1.15rem; font-weight: 800; margin-top: 2px; }
+.pay { border: 1px solid var(--line); border-radius: 14px; padding: .9rem 1rem; margin-bottom: .7rem; }
+.pay-top { display: flex; justify-content: space-between; gap: .5rem; align-items: center; flex-wrap: wrap; }
+.pay-top b { font-size: 1.05rem; }
+.kv { display: grid; grid-template-columns: 130px 1fr; gap: 4px 10px; font-size: .82rem; margin-top: .6rem; }
+.kv .k { color: var(--muted); }
+.timeline { margin-top: .6rem; border-left: 2px solid var(--line); padding-left: .8rem; font-size: .78rem; color: var(--muted); }
+.timeline div { margin-bottom: 3px; }
+@media (max-width: 760px) {
+  header { padding: .8rem 16px; } .container { padding: 1.25rem 16px 3rem; }
+  .hide-sm { display: none; } .show-sm { display: block !important; }
+  td, th { padding: 8px 6px; } .card { padding: 1rem .8rem; } .mini { grid-template-columns: 1fr 1fr; } .kv { grid-template-columns: 110px 1fr; }
+  .search input { width: 100%; }
+}
+</style>
+</head>
+<body>
+
+<header>
+  <a href="index.html"><img src="images/logo-full.png" alt="Biomexa Pharmaceuticals" style="height:30px;width:auto;"></a>
+  <nav>
+    <a href="admin.html"><i class="fas fa-arrow-left"></i> Admin Panel</a>
+    <a href="admin-payments.html" class="active">Payments</a>
+    <a href="admin-reminders.html">Reminder Center</a>
+    <a href="admin-leads.html">WhatsApp Campaigns</a>
+    <a href="admin-analytics.html">Campaign Insights</a>
+    <a href="#" onclick="logout();return false;">Logout</a>
+  </nav>
+</header>
+
+<div class="container">
+  <h1><i class="fas fa-indian-rupee-sign"></i> Payments</h1>
+  <p class="sub">Every Biomexa Care payment, from Razorpay: who paid, how (UPI ID or card), Razorpay's fee, which plan it switched on, and every failed or abandoned checkout. Open a patient to see their full payment history.</p>
+  <div class="status-line" id="statusLine"></div>
+
+  <div class="stats" id="stats">
+    <div class="stat money"><div class="lbl"><i class="fas fa-wallet"></i> Net collected</div><div class="num" id="sNet">–</div><div class="hint" id="sNetHint"></div></div>
+    <div class="stat"><div class="lbl"><i class="fas fa-circle-check" style="color:var(--green)"></i> Successful payments</div><div class="num" id="sPaid">–</div><div class="hint" id="sPaidHint"></div></div>
+    <div class="stat"><div class="lbl"><i class="fas fa-circle-xmark" style="color:var(--danger)"></i> Failed</div><div class="num" id="sFailed">–</div><div class="hint">payment tried, didn't go through</div></div>
+    <div class="stat"><div class="lbl"><i class="fas fa-door-open" style="color:var(--muted)"></i> Abandoned</div><div class="num" id="sAbandoned">–</div><div class="hint">opened checkout, never paid</div></div>
+    <div class="stat"><div class="lbl"><i class="fas fa-receipt" style="color:var(--amber)"></i> Razorpay fees</div><div class="num" id="sFees">–</div><div class="hint">incl. GST</div></div>
+  </div>
+
+  <div class="card">
+    <div class="toolbar">
+      <div style="display:flex;gap:.6rem;flex-wrap:wrap;align-items:center">
+        <div class="views"><button id="vPay" class="on" onclick="setView('payments')"><i class="fas fa-list"></i> All payments</button><button id="vPeople" onclick="setView('people')"><i class="fas fa-users"></i> By patient</button></div>
+        <div class="tabs" id="tabs"></div>
+      </div>
+      <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;">
+        <select id="range" onchange="render()" aria-label="Date range"><option value="7">Last 7 days</option><option value="30">Last 30 days</option><option value="90">Last 90 days</option><option value="all" selected>All time</option></select>
+        <div class="search"><i class="fas fa-search"></i><input id="q" placeholder="Name, number, UPI ID or payment ID" oninput="render()"></div>
+        <button class="btn ghost sm" onclick="exportCsv()" title="Download what's shown as a spreadsheet"><i class="fas fa-file-csv"></i> Export</button>
+        <button class="btn ghost sm" id="syncAll" onclick="syncAll()" title="Ask Razorpay about unsettled orders from the last 30 days"><i class="fas fa-arrows-rotate"></i> Check with Razorpay</button>
+        <button class="btn ghost sm" onclick="load()"><i class="fas fa-rotate"></i> Refresh</button>
+      </div>
+    </div>
+    <div id="syncResult" class="result"></div>
+    <div class="tbl-wrap" id="list"><div class="loading"><i class="fas fa-spinner fa-spin"></i> Loading payments…</div></div>
+  </div>
+</div>
+
+<div class="drawer-bg" id="drawer" onclick="if(event.target===this)closeDrawer()">
+  <div class="drawer" role="dialog" aria-modal="true" aria-labelledby="dTitle">
+    <button class="close" onclick="closeDrawer()" aria-label="Close">×</button>
+    <div id="dBody"></div>
+  </div>
+</div>
+
+<script>
+const API_BASE = (location.hostname === 'localhost' || location.hostname === '127.0.0.1') ? 'http://localhost:3000' : 'https://biomexa-api-f9f6.onrender.com';
+const authHeader = sessionStorage.getItem('adminAuthHeader') || '';
+if (!authHeader) location.href = 'admin.html';
+
+let data = { payments: [], people: [], totals: {} };
+let view = 'payments', filter = 'all';
+const STATUS = {
+  paid: ['Paid', 'b-paid', 'fa-circle-check'], part_refunded: ['Part refunded', 'b-part_refunded', 'fa-rotate-left'], refunded: ['Refunded', 'b-refunded', 'fa-rotate-left'],
+  failed: ['Failed', 'b-failed', 'fa-circle-xmark'], abandoned: ['Abandoned', 'b-abandoned', 'fa-door-open'], pending: ['In checkout', 'b-pending', 'fa-hourglass-half']
+};
+const METHOD = { upi: 'UPI', card: 'Card', netbanking: 'Net banking', wallet: 'Wallet', emi: 'EMI', paylater: 'Pay later', cardless_emi: 'Cardless EMI' };
+const EVENT = { checkout_opened: 'Opened checkout', paid: 'Paid', failed: 'Payment failed', signature_mismatch: 'Website couldn\'t verify payment', webhook_payment_captured: 'Razorpay confirmed (captured)', webhook_order_paid: 'Razorpay confirmed (order paid)', refund_created: 'Refund started', refund_processed: 'Refund completed', synced: 'Checked with Razorpay' };
+
+function fetchRetry(url, opts, tries) {
+  tries = tries === undefined ? 2 : tries;
+  const isRead = !opts || !opts.method || opts.method === 'GET';
+  return fetch(url, opts).catch(() => {
+    if (!isRead || tries <= 0) throw new Error('Could not reach the Biomexa server — check your internet and press Refresh.');
+    return new Promise(r => setTimeout(r, tries === 2 ? 1500 : 4000)).then(() => fetchRetry(url, opts, tries - 1));
+  });
+}
+function authFetch(path, opts = {}) {
+  opts.headers = Object.assign({ Authorization: authHeader }, opts.headers || {});
+  return fetchRetry(API_BASE + path, opts).then(r => { if (r.status === 401) { logout(); throw new Error('Session expired'); } return r; });
+}
+function logout() { sessionStorage.removeItem('adminAuthHeader'); location.href = 'admin.html'; }
+const esc = t => String(t ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const rupees = n => '₹' + Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 });
+const day = d => d ? new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
+const stamp = d => d ? new Date(d).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : '—';
+const badge = st => { const s = STATUS[st] || [st, 'b-abandoned', 'fa-circle']; return '<span class="badge ' + s[1] + '"><i class="fas ' + s[2] + '"></i> ' + s[0] + '</span>'; };
+const how = p => p.method ? (METHOD[p.method] || p.method) + (p.methodDetail ? '<div class="s">' + esc(p.methodDetail) + '</div>' : '') : '<span class="s">—</span>';
+const isPaid = st => st === 'paid' || st === 'part_refunded' || st === 'refunded';
+
+function load() {
+  document.getElementById('list').innerHTML = '<div class="loading"><i class="fas fa-spinner fa-spin"></i> Loading payments…</div>';
+  authFetch('/api/admin/payments').then(r => r.json().then(d => ({ ok: r.ok, d }))).then(({ ok, d }) => {
+    if (!ok) throw new Error(d.message || 'Could not load payments');
+    data = d;
+    const t = d.totals;
+    document.getElementById('statusLine').innerHTML = d.paymentsEnabled
+      ? '<span class="badge ' + (d.mode === 'live' ? 'b-live' : 'b-test') + '"><i class="fas fa-circle" style="font-size:.5rem"></i> Razorpay ' + (d.mode === 'live' ? 'LIVE' : 'TEST mode') + '</span><span style="color:var(--muted)">' + t.payingPatients + ' paying patient' + (t.payingPatients === 1 ? '' : 's') + (t.pending ? ' · ' + t.pending + ' in checkout right now' : '') + '</span>'
+      : '<span class="badge b-off">Razorpay not connected</span><span style="color:var(--muted)">Add RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET on Render.</span>';
+    document.getElementById('sNet').textContent = rupees(t.net);
+    document.getElementById('sNetHint').textContent = t.refunded ? rupees(t.collected) + ' collected − ' + rupees(t.refunded) + ' refunded' : 'after refunds';
+    document.getElementById('sPaid').textContent = t.paid;
+    const attempts = t.paid + t.failed + t.abandoned;
+    document.getElementById('sPaidHint').textContent = attempts ? Math.round(100 * t.paid / attempts) + '% of checkouts' : 'no checkouts yet';
+    document.getElementById('sFailed').textContent = t.failed;
+    document.getElementById('sAbandoned').textContent = t.abandoned;
+    document.getElementById('sFees').textContent = rupees(t.fees);
+    render();
+    const open = new URLSearchParams(location.search).get('phone');
+    if (open) { const k = open.replace(/\D/g, '').slice(-10); if (data.people.some(p => p.key === k)) openPatient(k); }
+  }).catch(e => { document.getElementById('list').innerHTML = '<div class="empty" style="color:var(--danger)">' + esc(e.message) + '</div>'; });
+}
+
+function setView(v) { view = v; document.getElementById('vPay').classList.toggle('on', v === 'payments'); document.getElementById('vPeople').classList.toggle('on', v === 'people'); render(); }
+function setFilter(f) { filter = f; render(); }
+
+function inRange(d) {
+  const r = document.getElementById('range').value;
+  return r === 'all' || (d && Date.now() - new Date(d) <= Number(r) * 86400000);
+}
+function matches(p) {
+  const q = document.getElementById('q').value.trim().toLowerCase();
+  if (!q) return true;
+  const qd = q.replace(/\D/g, '');
+  return [p.patientName, p.name, p.methodDetail, p.paymentId, p.orderId, p.payerEmail].some(x => String(x || '').toLowerCase().includes(q))
+    || (qd.length >= 4 && String(p.patientPhone || p.phone || '').replace(/\D/g, '').includes(qd));
+}
+function shownPayments() {
+  return data.payments.filter(p => inRange(p.createdAt) && matches(p) && (filter === 'all'
+    || (filter === 'paid' && isPaid(p.status)) || (filter === 'refunded' && p.refunded > 0) || p.status === filter));
+}
+
+function render() {
+  const base = data.payments.filter(p => inRange(p.createdAt) && matches(p));
+  const count = f => base.filter(p => f === 'all' || (f === 'paid' && isPaid(p.status)) || (f === 'refunded' && p.refunded > 0) || p.status === f).length;
+  const tabs = view === 'payments' ? [['all', 'All'], ['paid', 'Paid'], ['failed', 'Failed'], ['abandoned', 'Abandoned'], ['refunded', 'Refunded']] : [];
+  document.getElementById('tabs').innerHTML = tabs.map(([f, l]) => '<button class="tab' + (filter === f ? ' on' : '') + '" onclick="setFilter(\'' + f + '\')">' + l + '<span class="n">' + count(f) + '</span></button>').join('');
+  const el = document.getElementById('list');
+
+  if (view === 'payments') {
+    const rows = shownPayments();
+    if (!rows.length) { el.innerHTML = '<div class="empty">' + (data.payments.length ? 'No payments match.' : 'No payments yet. They appear here as soon as a patient opens checkout on the renew page.') + '</div>'; return; }
+    el.innerHTML = '<table><thead><tr><th class="hide-sm">Date</th><th>Patient</th><th class="hide-sm">Plan</th><th>Amount</th><th>Status</th><th class="hide-sm">Paid with</th><th class="hide-sm">Razorpay fee</th><th class="hide-sm">Payment ID</th></tr></thead><tbody>' +
+      rows.map(p => '<tr class="click" onclick="openPatient(\'' + p.key + '\', \'' + esc(p.orderId) + '\')">' +
+        '<td class="num hide-sm">' + stamp(p.paidAt || p.failedAt || p.createdAt) + '</td>' +
+        '<td><b>' + esc(p.patientName || '—') + '</b><div class="s">' + esc(p.patientPhone) + '</div><div class="s show-sm">' + stamp(p.paidAt || p.failedAt || p.createdAt) + ' · ' + esc(p.planName) + '</div></td>' +
+        '<td class="hide-sm">' + esc(p.planName) + (p.periodEnd && isPaid(p.status) ? '<div class="s">till ' + day(p.periodEnd) + '</div>' : '') + '</td>' +
+        '<td class="num"><b>' + rupees(p.amount) + '</b>' + (p.refunded ? '<div class="s">−' + rupees(p.refunded) + ' refunded</div>' : '') + '</td>' +
+        '<td>' + badge(p.status) + (p.status === 'failed' && p.failureReason ? '<div class="s" style="max-width:220px">' + esc(p.failureReason) + '</div>' : '') + '</td>' +
+        '<td class="hide-sm">' + how(p) + '</td>' +
+        '<td class="hide-sm num">' + (p.fee != null ? rupees(p.fee) : '<span class="s">—</span>') + '</td>' +
+        '<td class="hide-sm">' + (p.paymentId ? '<code>' + esc(p.paymentId) + '</code>' : '<span class="s">—</span>') + '</td></tr>').join('') + '</tbody></table>';
+  } else {
+    const people = data.people.filter(g => inRange(g.lastAt) && matches(g));
+    if (!people.length) { el.innerHTML = '<div class="empty">' + (data.people.length ? 'No patients match.' : 'No patient has opened checkout yet.') + '</div>'; return; }
+    el.innerHTML = '<table><thead><tr><th>Patient</th><th>Total paid</th><th>Payments</th><th class="hide-sm">Failed / abandoned</th><th>Plan now</th><th class="hide-sm">Last payment</th></tr></thead><tbody>' +
+      people.map(g => '<tr class="click" onclick="openPatient(\'' + g.key + '\')">' +
+        '<td><b>' + esc(g.name || '—') + '</b><div class="s">' + esc(g.phone) + '</div></td>' +
+        '<td class="num"><b>' + rupees(g.net) + '</b>' + (g.refunded ? '<div class="s">' + rupees(g.refunded) + ' refunded</div>' : '') + '</td>' +
+        '<td class="num">' + g.paidCount + ' paid<div class="s">' + g.attempts + ' checkout' + (g.attempts === 1 ? '' : 's') + '</div></td>' +
+        '<td class="hide-sm num">' + (g.failedCount ? '<span style="color:var(--danger)">' + g.failedCount + ' failed</span>' : '0 failed') + '<div class="s">' + g.abandonedCount + ' abandoned</div></td>' +
+        '<td>' + planNow(g.access) + '</td>' +
+        '<td class="hide-sm num">' + (g.lastPaidAt ? day(g.lastPaidAt) : '<span class="s">never paid</span>') + '</td></tr>').join('') + '</tbody></table>';
+  }
+}
+
+function planNow(a) {
+  if (!a) return '<span class="s">—</span>';
+  if (a.tier === 'subscribed') return '<span class="badge b-paid">' + esc(a.planName || 'Paid') + '</span><div class="s">till ' + day(a.expiresAt) + ' · ' + a.daysLeft + 'd left</div>';
+  if (a.tier === 'trial') return '<span class="badge b-pending">Trial</span><div class="s">' + a.daysLeft + 'd left</div>';
+  return '<span class="badge b-abandoned">Free</span><div class="s">no active plan</div>';
+}
+
+function openPatient(key, highlight) {
+  const g = data.people.find(p => p.key === key);
+  const pays = data.payments.filter(p => p.key === key);
+  if (!g) return;
+  const card = p => '<div class="pay" id="o-' + esc(p.orderId) + '"' + (p.orderId === highlight ? ' style="border-color:var(--navy);box-shadow:0 0 0 2px rgba(22,51,107,.15)"' : '') + '>' +
+    '<div class="pay-top"><div><b>' + rupees(p.amount) + '</b> · ' + esc(p.planName) + '</div>' + badge(p.status) + '</div>' +
+    '<div class="kv">' +
+      '<div class="k">Checkout opened</div><div>' + stamp(p.createdAt) + '</div>' +
+      (p.paidAt ? '<div class="k">Paid</div><div>' + stamp(p.paidAt) + '</div>' : '') +
+      (p.periodEnd && isPaid(p.status) ? '<div class="k">Plan period</div><div>' + day(p.periodStart) + ' → ' + day(p.periodEnd) + '</div>' : '') +
+      (p.method ? '<div class="k">Paid with</div><div>' + esc(METHOD[p.method] || p.method) + (p.methodDetail ? ' · ' + esc(p.methodDetail) : '') + '</div>' : '') +
+      (p.fee != null ? '<div class="k">Razorpay fee</div><div>' + rupees(p.fee) + (p.tax != null ? ' (incl. ' + rupees(p.tax) + ' GST)' : '') + ' · you receive ' + rupees(p.amount - p.fee) + '</div>' : '') +
+      (p.refunded ? '<div class="k">Refunded</div><div>' + rupees(p.refunded) + ' on ' + day(p.refundedAt) + '</div>' : '') +
+      (p.failureReason ? '<div class="k">Why it failed</div><div style="color:var(--danger)">' + esc(p.failureReason) + '</div>' : '') +
+      (p.payerEmail ? '<div class="k">Email</div><div>' + esc(p.payerEmail) + '</div>' : '') +
+      '<div class="k">Order ID</div><div><code>' + esc(p.orderId) + '</code></div>' +
+      (p.paymentId ? '<div class="k">Payment ID</div><div><code>' + esc(p.paymentId) + '</code></div>' : '') +
+    '</div>' +
+    (p.events.length ? '<div class="timeline">' + p.events.slice().reverse().map(e => '<div>' + stamp(e.at) + ' — ' + esc(EVENT[e.type] || e.type) + (e.note && e.type !== 'paid' ? ': ' + esc(e.note) : '') + '</div>').join('') + '</div>' : '') +
+    '<div style="margin-top:.6rem;display:flex;gap:.5rem;flex-wrap:wrap"><button class="btn ghost sm" onclick="syncOne(\'' + esc(p.orderId) + '\', \'' + key + '\', this)"><i class="fas fa-arrows-rotate"></i> Check with Razorpay</button>' +
+    (p.paymentId ? '<a class="btn ghost sm" style="text-decoration:none" target="_blank" rel="noopener" href="https://dashboard.razorpay.com/app/payments/' + encodeURIComponent(p.paymentId) + '"><i class="fas fa-arrow-up-right-from-square"></i> Open in Razorpay</a>' : '') + '</div></div>';
+  document.getElementById('dBody').innerHTML =
+    '<h2 id="dTitle">' + esc(g.name || 'Patient') + '</h2><div style="color:var(--muted);font-size:.86rem;margin-top:2px">' + esc(g.phone) + '</div>' +
+    '<div class="mini"><div><div class="k">Total paid</div><div class="v" style="color:var(--green)">' + rupees(g.net) + '</div></div>' +
+    '<div><div class="k">Payments</div><div class="v">' + g.paidCount + ' <span style="font-size:.8rem;color:var(--muted);font-weight:500">of ' + g.attempts + '</span></div></div>' +
+    '<div><div class="k">Plan now</div><div class="v" style="font-size:.95rem">' + planNow(g.access) + '</div></div></div>' +
+    '<h3 style="font-size:.95rem;margin:1rem 0 .6rem">Payment history</h3>' + pays.map(card).join('');
+  document.getElementById('drawer').classList.add('open');
+  if (highlight) setTimeout(() => document.getElementById('o-' + highlight)?.scrollIntoView({ block: 'center' }), 50);
+}
+function closeDrawer() { document.getElementById('drawer').classList.remove('open'); }
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDrawer(); });
+
+function syncOne(orderId, key, btn) {
+  btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Checking…';
+  authFetch('/api/admin/payments/' + encodeURIComponent(orderId) + '/sync', { method: 'POST' })
+    .then(r => r.json().then(d => ({ ok: r.ok, d })))
+    .then(({ ok, d }) => {
+      if (!ok) throw new Error(d.message);
+      const i = data.payments.findIndex(p => p.orderId === orderId);
+      if (i >= 0) data.payments[i] = d.payment;
+      btn.innerHTML = '<i class="fas fa-check"></i> ' + esc(d.changed);
+      if (/marked paid|marked failed|details/.test(d.changed)) setTimeout(() => { load(); }, 1200);
+    })
+    .catch(e => { btn.disabled = false; btn.innerHTML = '<i class="fas fa-triangle-exclamation"></i> ' + esc(e.message); });
+}
+function syncAll() {
+  const btn = document.getElementById('syncAll'), out = document.getElementById('syncResult');
+  btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Checking…';
+  authFetch('/api/admin/payments/sync-all', { method: 'POST' })
+    .then(r => r.json().then(d => ({ ok: r.ok, d })))
+    .then(({ ok, d }) => { out.className = 'result ' + (ok ? 'ok' : 'err'); out.textContent = d.message; if (ok && d.updated) load(); })
+    .catch(e => { out.className = 'result err'; out.textContent = e.message; })
+    .finally(() => { btn.disabled = false; btn.innerHTML = '<i class="fas fa-arrows-rotate"></i> Check with Razorpay'; });
+}
+
+function exportCsv() {
+  const cell = v => '"' + String(v ?? '').replace(/"/g, '""') + '"';
+  let lines;
+  if (view === 'payments') {
+    lines = [['Date', 'Patient', 'Phone', 'Plan', 'Amount (₹)', 'Refunded (₹)', 'Status', 'Method', 'UPI / card', 'Razorpay fee (₹)', 'Payment ID', 'Order ID', 'Plan until', 'Failure reason']]
+      .concat(shownPayments().map(p => [stamp(p.paidAt || p.failedAt || p.createdAt), p.patientName, p.patientPhone, p.planName, p.amount, p.refunded, (STATUS[p.status] || [p.status])[0], METHOD[p.method] || p.method || '', p.methodDetail || '', p.fee ?? '', p.paymentId || '', p.orderId, isPaid(p.status) ? day(p.periodEnd) : '', p.failureReason || '']));
+  } else {
+    lines = [['Patient', 'Phone', 'Total paid (₹)', 'Refunded (₹)', 'Paid', 'Checkouts', 'Failed', 'Abandoned', 'Plan now', 'Plan until', 'Last payment']]
+      .concat(data.people.filter(g => inRange(g.lastAt) && matches(g)).map(g => [g.name, g.phone, g.net, g.refunded, g.paidCount, g.attempts, g.failedCount, g.abandonedCount, g.access?.tier === 'subscribed' ? g.access.planName : (g.access?.tier || ''), g.access?.tier === 'subscribed' ? day(g.access.expiresAt) : '', g.lastPaidAt ? day(g.lastPaidAt) : '']));
+  }
+  const blob = new Blob(['﻿' + lines.map(r => r.map(cell).join(',')).join('\n')], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'biomexa-payments-' + (view === 'people' ? 'by-patient-' : '') + new Date().toISOString().slice(0, 10) + '.csv';
+  a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+load();
+</script>
+</body>
+</html>

@@ -2021,10 +2021,22 @@ const paymentSchema = new mongoose.Schema({
   currency: { type: String, default: 'INR' },
   orderId: { type: String, unique: true },
   paymentId: String,
-  status: { type: String, default: 'created' }, // created | paid | failed
+  status: { type: String, default: 'created' }, // created | paid | failed | refunded
   periodStart: Date,
   periodEnd: Date,
   paidAt: Date,
+  // Filled from Razorpay (webhook payload or GET /v1/payments/:id) for the admin payment log.
+  method: String,          // upi | card | netbanking | wallet | emi …
+  methodDetail: String,    // UPI id, "Visa •• 4242", bank or wallet name
+  payerEmail: String,
+  payerContact: String,
+  fee: Number,             // Razorpay fee incl. GST, paise
+  tax: Number,             // GST part of the fee, paise
+  failureReason: String,
+  refundedAmount: Number,  // paise
+  refundedAt: Date,
+  failedAt: Date,
+  events: [{ at: { type: Date, default: Date.now }, type: String, note: String }],
   createdAt: { type: Date, default: Date.now }
 });
 const Payment = mongoose.model('Payment', paymentSchema);
@@ -5733,6 +5745,40 @@ function safeEqualHex(a, b) {
   return x.length === y.length && crypto.timingSafeEqual(x, y);
 }
 
+// Copy the useful details of a Razorpay payment entity onto our Payment row (for the admin log).
+function paymentDetailsFrom(e) {
+  if (!e || typeof e !== 'object') return {};
+  const out = {};
+  if (e.method) out.method = e.method;
+  const card = e.card || {};
+  out.methodDetail = e.vpa || (e.method === 'card' && (card.network || card.last4) ? `${card.network || 'Card'}${card.last4 ? ' •• ' + card.last4 : ''}` : '') || e.bank || e.wallet || '';
+  if (!out.methodDetail) delete out.methodDetail;
+  if (e.email) out.payerEmail = e.email;
+  if (e.contact) out.payerContact = e.contact;
+  if (typeof e.fee === 'number') out.fee = e.fee;
+  if (typeof e.tax === 'number') out.tax = e.tax;
+  if (e.error_description || e.error_reason) out.failureReason = [e.error_description, e.error_reason && `(${String(e.error_reason).replace(/_/g, ' ')})`].filter(Boolean).join(' ');
+  if (typeof e.amount_refunded === 'number' && e.amount_refunded > 0) out.refundedAmount = e.amount_refunded;
+  return out;
+}
+async function fetchRazorpay(path) {
+  const r = await fetch('https://api.razorpay.com/v1' + path, { headers: { Authorization: razorpayAuthHeader() }, signal: AbortSignal.timeout(15000) });
+  const body = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(body?.error?.description || `Razorpay HTTP ${r.status}`);
+  return body;
+}
+// Fill in method / UPI id / fee for one payment from Razorpay (best effort, never throws).
+async function enrichPayment(orderId, paymentId) {
+  try {
+    if (!PAYMENTS_CONFIGURED || !paymentId) return;
+    const e = await fetchRazorpay('/payments/' + encodeURIComponent(paymentId));
+    await Payment.updateOne({ orderId }, { $set: paymentDetailsFrom(e) });
+  } catch (err) { console.log('⚠️ Razorpay payment details not fetched:', err.message); }
+}
+async function logPaymentEvent(orderId, type, note) {
+  await Payment.updateOne({ orderId }, { $push: { events: { $each: [{ at: new Date(), type, note: note || '' }], $slice: -30 } } }).catch(() => {});
+}
+
 // Step 1 — create a Razorpay order for the chosen plan; the page opens Razorpay Checkout with it.
 app.post('/api/patient/subscription/order', auth, async (req, res) => {
   try {
@@ -5754,7 +5800,7 @@ app.post('/api/patient/subscription/order', auth, async (req, res) => {
       console.log('⚠️ Razorpay order failed:', JSON.stringify(order).slice(0, 300));
       return res.status(502).json({ message: 'Could not start the payment. Please try again in a minute.' });
     }
-    await Payment.create({ patientPhone: patient.phone, patientName: patient.name, plan: plan.id, amount: order.amount, currency: order.currency, orderId: order.id });
+    await Payment.create({ patientPhone: patient.phone, patientName: patient.name, plan: plan.id, amount: order.amount, currency: order.currency, orderId: order.id, events: [{ type: 'checkout_opened', note: `${plan.name} ₹${plan.price}` }] });
     res.json({
       keyId: RAZORPAY_KEY_ID, orderId: order.id, amount: order.amount, currency: order.currency,
       plan, prefill: { name: patient.name || '', contact: patient.phone.replace(/\D/g, '').slice(-10), email: patient.email || '' }
@@ -5766,13 +5812,15 @@ app.post('/api/patient/subscription/order', auth, async (req, res) => {
 
 // Marks a payment paid and extends the plan. Idempotent — the browser callback and the Razorpay
 // webhook can both arrive for the same payment; only the first one extends the subscription.
-async function activateSubscription(orderId, paymentId) {
+async function activateSubscription(orderId, paymentId, via) {
   const pay = await Payment.findOneAndUpdate(
-    { orderId, status: { $ne: 'paid' } },
-    { status: 'paid', paymentId, paidAt: new Date() },
+    { orderId, status: { $nin: ['paid', 'refunded'] } },
+    { status: 'paid', paymentId, paidAt: new Date(), failureReason: null },
     { new: true }
   );
   if (!pay) return { already: true, payment: await Payment.findOne({ orderId }) };
+  logPaymentEvent(orderId, 'paid', paymentId);
+  enrichPayment(orderId, paymentId);
   const plan = SUBSCRIPTION_PLANS[pay.plan];
   const records = await Patient.find({ phone: { $in: phoneVariants(pay.patientPhone) } });
   const access = accessFor(records);
@@ -5800,7 +5848,8 @@ app.post('/api/patient/subscription/verify', auth, async (req, res) => {
     if (!orderId || !paymentId || !signature) return res.status(400).json({ message: 'Payment details missing.' });
     const expected = crypto.createHmac('sha256', RAZORPAY_KEY_SECRET).update(`${orderId}|${paymentId}`).digest('hex');
     if (!safeEqualHex(expected, signature)) {
-      await Payment.updateOne({ orderId, status: 'created' }, { status: 'failed', paymentId });
+      await Payment.updateOne({ orderId, status: 'created' }, { status: 'failed', paymentId, failedAt: new Date(), failureReason: 'Signature check failed on the website' });
+      logPaymentEvent(orderId, 'signature_mismatch', paymentId);
       console.log(`⚠️ Razorpay signature mismatch for ${orderId}`);
       return res.status(400).json({ message: 'Payment could not be verified. If money was deducted, it will be refunded by Razorpay — or contact Biomexa.' });
     }
@@ -5824,17 +5873,138 @@ app.post('/api/razorpay/webhook', async (req, res) => {
     if (!safeEqualHex(expected, req.headers['x-razorpay-signature'])) return res.status(400).json({ message: 'Bad signature' });
     const ev = req.body?.event;
     const payEnt = req.body?.payload?.payment?.entity;
+    const refEnt = req.body?.payload?.refund?.entity;
     if ((ev === 'payment.captured' || ev === 'order.paid') && payEnt?.order_id) {
       const known = await Payment.findOne({ orderId: payEnt.order_id });
-      if (known) await activateSubscription(payEnt.order_id, payEnt.id);
+      if (known) {
+        await activateSubscription(payEnt.order_id, payEnt.id);
+        await Payment.updateOne({ orderId: payEnt.order_id }, { $set: paymentDetailsFrom(payEnt) });
+        logPaymentEvent(payEnt.order_id, 'webhook_' + ev.replace('.', '_'), payEnt.id);
+      }
     } else if (ev === 'payment.failed' && payEnt?.order_id) {
-      await Payment.updateOne({ orderId: payEnt.order_id, status: 'created' }, { status: 'failed', paymentId: payEnt.id });
+      // A failed attempt doesn't end the order — the patient may retry and pay. Only mark failed if not paid.
+      await Payment.updateOne({ orderId: payEnt.order_id, status: { $in: ['created', 'failed'] } },
+        { $set: { status: 'failed', paymentId: payEnt.id, failedAt: new Date(), ...paymentDetailsFrom(payEnt) } });
+      logPaymentEvent(payEnt.order_id, 'failed', paymentDetailsFrom(payEnt).failureReason || payEnt.id);
+    } else if (/^refund\./.test(ev || '') && (refEnt?.payment_id || payEnt?.id)) {
+      const pid = refEnt?.payment_id || payEnt?.id;
+      const pay = await Payment.findOne({ paymentId: pid });
+      if (pay && (ev === 'refund.processed' || ev === 'refund.created')) {
+        const amt = (payEnt && payEnt.amount_refunded) || ((pay.refundedAmount || 0) + (refEnt?.amount || 0));
+        await Payment.updateOne({ _id: pay._id }, { $set: { refundedAmount: Math.min(amt, pay.amount), refundedAt: new Date(), ...(amt >= pay.amount ? { status: 'refunded' } : {}) } });
+        logPaymentEvent(pay.orderId, ev.replace('.', '_'), `₹${(refEnt?.amount || 0) / 100}`);
+      }
     }
     res.json({ ok: true });
   } catch (err) {
     console.error('❌ Razorpay webhook error:', err.message);
     res.status(500).json({ message: err.message });
   }
+});
+
+// ========== ADMIN PAYMENT LOG (admin-payments.html) ==========
+// Every checkout attempt: paid, failed, abandoned (opened checkout, never paid) and refunded,
+// with the patient, plan, method (UPI id / card), Razorpay fee and a per-patient summary.
+const ABANDON_AFTER_MS = 30 * 60000;
+function paymentView(p, now = Date.now()) {
+  let status = p.status || 'created';
+  if (status === 'created') status = now - new Date(p.createdAt) > ABANDON_AFTER_MS ? 'abandoned' : 'pending';
+  if (status === 'paid' && p.refundedAmount > 0 && p.refundedAmount < p.amount) status = 'part_refunded';
+  const plan = SUBSCRIPTION_PLANS[p.plan];
+  return {
+    orderId: p.orderId, paymentId: p.paymentId || null, status,
+    patientName: p.patientName || '', patientPhone: p.patientPhone || '', key: last10(p.patientPhone),
+    plan: p.plan, planName: plan?.name || p.plan, amount: (p.amount || 0) / 100,
+    refunded: (p.refundedAmount || 0) / 100, fee: p.fee != null ? p.fee / 100 : null, tax: p.tax != null ? p.tax / 100 : null,
+    method: p.method || null, methodDetail: p.methodDetail || null, payerEmail: p.payerEmail || null,
+    failureReason: p.failureReason || null, periodStart: p.periodStart || null, periodEnd: p.periodEnd || null,
+    createdAt: p.createdAt, paidAt: p.paidAt || null, failedAt: p.failedAt || null, refundedAt: p.refundedAt || null,
+    events: (p.events || []).map(e => ({ at: e.at, type: e.type, note: e.note }))
+  };
+}
+app.get('/api/admin/payments', adminAuth, async (req, res) => {
+  try {
+    const rows = (await Payment.find().sort({ createdAt: -1 }).limit(5000).lean()).map(p => paymentView(p));
+    const patients = await Patient.find().select('name phone createdAt subscription').lean();
+    const accBy = new Map();
+    for (const p of patients) { const k = last10(p.phone); (accBy.get(k) || accBy.set(k, []).get(k)).push(p); }
+    const by = new Map();
+    for (const r of rows) {
+      const g = by.get(r.key) || { key: r.key, name: r.patientName, phone: r.patientPhone, paid: 0, refunded: 0, fees: 0, paidCount: 0, failedCount: 0, abandonedCount: 0, attempts: 0, lastAt: null, lastPaidAt: null };
+      g.attempts++;
+      if (['paid', 'part_refunded', 'refunded'].includes(r.status)) { g.paid += r.amount; g.paidCount++; g.fees += r.fee || 0; if (!g.lastPaidAt || new Date(r.paidAt) > new Date(g.lastPaidAt)) g.lastPaidAt = r.paidAt; }
+      g.refunded += r.refunded;
+      if (r.status === 'failed') g.failedCount++;
+      if (r.status === 'abandoned') g.abandonedCount++;
+      if (!g.lastAt || new Date(r.createdAt) > new Date(g.lastAt)) { g.lastAt = r.createdAt; g.name = r.patientName || g.name; }
+      by.set(r.key, g);
+    }
+    const people = [...by.values()].map(g => {
+      const recs = accBy.get(g.key);
+      const a = recs ? accessFor(recs) : null;
+      return { ...g, net: Math.round((g.paid - g.refunded) * 100) / 100, access: a ? { tier: a.tier, planName: a.planName, expiresAt: a.expiresAt, daysLeft: a.daysLeft } : null };
+    }).sort((x, y) => new Date(y.lastAt) - new Date(x.lastAt));
+    const sum = f => Math.round(rows.reduce((t, r) => t + (f(r) || 0), 0) * 100) / 100;
+    const isPaid = r => ['paid', 'part_refunded', 'refunded'].includes(r.status);
+    res.json({
+      paymentsEnabled: PAYMENTS_CONFIGURED,
+      mode: /^rzp_live_/.test(RAZORPAY_KEY_ID) ? 'live' : /^rzp_test_/.test(RAZORPAY_KEY_ID) ? 'test' : null,
+      totals: {
+        collected: sum(r => isPaid(r) ? r.amount : 0), refunded: sum(r => r.refunded), fees: sum(r => isPaid(r) ? r.fee : 0),
+        net: Math.round((sum(r => isPaid(r) ? r.amount : 0) - sum(r => r.refunded)) * 100) / 100,
+        paid: rows.filter(isPaid).length, failed: rows.filter(r => r.status === 'failed').length,
+        abandoned: rows.filter(r => r.status === 'abandoned').length, pending: rows.filter(r => r.status === 'pending').length,
+        refundedCount: rows.filter(r => r.refunded > 0).length, payingPatients: people.filter(p => p.paidCount > 0).length
+      },
+      payments: rows, people
+    });
+  } catch (err) { res.status(500).json({ message: err.message }); }
+});
+
+// Check one order against Razorpay: catches a payment that succeeded but never reached us
+// (browser closed + webhook missed), and fills in method / UPI id / fee / refunds.
+async function syncOrderWithRazorpay(orderId) {
+  const pay = await Payment.findOne({ orderId });
+  if (!pay) throw new Error('Order not found');
+  const list = await fetchRazorpay('/orders/' + encodeURIComponent(orderId) + '/payments');
+  const items = (list.items || []).sort((a, b) => a.created_at - b.created_at);
+  const captured = items.find(i => i.status === 'captured' || i.status === 'refunded');
+  let changed = 'no change';
+  if (captured) {
+    if (pay.status !== 'paid' && pay.status !== 'refunded') { await activateSubscription(orderId, captured.id, 'sync'); changed = 'payment found — marked paid and plan activated'; }
+    const d = paymentDetailsFrom(captured);
+    const set = { ...d, paymentId: captured.id };
+    if (captured.amount_refunded > 0) { set.refundedAmount = captured.amount_refunded; set.refundedAt = pay.refundedAt || new Date(); if (captured.amount_refunded >= captured.amount) set.status = 'refunded'; }
+    await Payment.updateOne({ orderId }, { $set: set });
+    if (changed === 'no change') changed = 'details updated';
+  } else if (items.length) {
+    const last = items[items.length - 1];
+    if (last.status === 'failed' && pay.status === 'created') {
+      await Payment.updateOne({ orderId }, { $set: { status: 'failed', paymentId: last.id, failedAt: new Date(last.created_at * 1000), ...paymentDetailsFrom(last) } });
+      changed = 'marked failed';
+    } else changed = `latest attempt: ${last.status}`;
+  } else changed = 'no payment attempt on Razorpay (patient closed checkout)';
+  await logPaymentEvent(orderId, 'synced', changed);
+  return { changed, payment: paymentView((await Payment.findOne({ orderId }).lean())) };
+}
+app.post('/api/admin/payments/:orderId/sync', adminAuth, async (req, res) => {
+  try {
+    if (!PAYMENTS_CONFIGURED) return res.status(503).json({ message: 'Razorpay is not configured.' });
+    res.json(await syncOrderWithRazorpay(req.params.orderId));
+  } catch (err) { res.status(500).json({ message: err.message }); }
+});
+// Sync every order that isn't settled yet (or is missing details) from the last 30 days.
+app.post('/api/admin/payments/sync-all', adminAuth, async (req, res) => {
+  try {
+    if (!PAYMENTS_CONFIGURED) return res.status(503).json({ message: 'Razorpay is not configured.' });
+    const since = new Date(Date.now() - 30 * 86400000);
+    const todo = await Payment.find({ createdAt: { $gte: since }, $or: [{ status: { $in: ['created', 'failed'] } }, { status: 'paid', method: { $in: [null, ''] } }] }).select('orderId').limit(100).lean();
+    let fixed = 0, errors = 0;
+    for (const p of todo) {
+      try { const r = await syncOrderWithRazorpay(p.orderId); if (/marked paid|marked failed|details updated/.test(r.changed)) fixed++; } catch { errors++; }
+    }
+    res.json({ checked: todo.length, updated: fixed, errors, message: `Checked ${todo.length} order(s) with Razorpay — ${fixed} updated${errors ? `, ${errors} could not be checked` : ''}.` });
+  } catch (err) { res.status(500).json({ message: err.message }); }
 });
 
 app.get('/api/admin/subscriptions', adminAuth, async (req, res) => {
