@@ -2096,6 +2096,23 @@ const RAZORPAY_KEY_ID = process.env.RAZORPAY_KEY_ID || '';
 const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET || '';
 const RAZORPAY_WEBHOOK_SECRET = process.env.RAZORPAY_WEBHOOK_SECRET || '';
 const PAYMENTS_CONFIGURED = !!(RAZORPAY_KEY_ID && RAZORPAY_KEY_SECRET);
+// Start-up check: are the keys present, which mode, and does Razorpay accept them? (Never logs the secret.)
+setTimeout(async () => {
+  if (!PAYMENTS_CONFIGURED) {
+    console.log(`💳 Razorpay: NOT configured — missing ${[!RAZORPAY_KEY_ID && 'RAZORPAY_KEY_ID', !RAZORPAY_KEY_SECRET && 'RAZORPAY_KEY_SECRET'].filter(Boolean).join(' and ')} on Render`);
+    return;
+  }
+  const mode = /^rzp_live_/.test(RAZORPAY_KEY_ID) ? 'LIVE' : /^rzp_test_/.test(RAZORPAY_KEY_ID) ? 'TEST' : 'UNKNOWN (Key ID should start with rzp_live_ or rzp_test_)';
+  let check = '';
+  try {
+    const r = await fetch('https://api.razorpay.com/v1/orders?count=1', { headers: { Authorization: 'Basic ' + Buffer.from(`${RAZORPAY_KEY_ID.trim()}:${RAZORPAY_KEY_SECRET.trim()}`).toString('base64') }, signal: AbortSignal.timeout(10000) });
+    const body = await r.json().catch(() => ({}));
+    check = r.ok ? 'keys accepted by Razorpay ✅' : `Razorpay REJECTED the keys (HTTP ${r.status}: ${body?.error?.description || 'unknown'}) ❌`;
+  } catch (e) { check = 'could not reach Razorpay to test the keys (' + e.message + ')'; }
+  const ws = RAZORPAY_WEBHOOK_SECRET ? 'webhook secret set' : 'webhook secret MISSING (RAZORPAY_WEBHOOK_SECRET)';
+  const spaces = (RAZORPAY_KEY_ID !== RAZORPAY_KEY_ID.trim() || RAZORPAY_KEY_SECRET !== RAZORPAY_KEY_SECRET.trim()) ? ' · ⚠️ a key has extra spaces — remove them on Render' : '';
+  console.log(`💳 Razorpay: ${mode} mode, key …${RAZORPAY_KEY_ID.slice(-4)} · ${check} · ${ws}${spaces}`);
+}, 3000);
 // Test-run switch. While false (the default), nothing is locked — every patient keeps every
 // feature even after their trial — but trial tracking and the day-26 "subscribe" WhatsApp
 // reminders still run. Set SUBSCRIPTION_ENFORCED=true on Render to start locking features.
