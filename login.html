@@ -280,6 +280,11 @@
       const next = new URLSearchParams(location.search).get('next') || '';
       return /^(patient|subscribe)\.html(#[A-Za-z0-9_-]+)?(\?plan=[a-z]+)?$/.test(next) ? next : 'patient.html';
     }
+    // Sign-up links keep ?next= so a patient who came to buy a plan lands back on it after signing up.
+    (function carryNext() {
+      const n = new URLSearchParams(location.search).get('next');
+      if (n) document.querySelectorAll('a[href="signup.html"]').forEach(a => { a.href = 'signup.html?next=' + encodeURIComponent(n); });
+    })();
     // IVF Care has its own sign-in page and session now; send any old IVF links there.
     if (/^ivf\.html/.test(new URLSearchParams(location.search).get('next') || '')) location.replace('ivf-auth.html');
     const API_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'

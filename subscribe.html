@@ -161,7 +161,7 @@ footer a { color: var(--navy); }
       <div class="big" id="stBig">25 days free</div>
       <div class="small" id="stSmall">Every new patient gets the full Biomexa Care experience free for 25 days. No card needed to start.</div>
       <div class="meter" id="stMeter" style="display:none"><i id="stBar" style="width:0%"></i></div>
-      <div style="margin-top:16px" id="stAction"><a href="signup.html" class="btn white block"><i class="fas fa-user-plus"></i> Create free account</a></div>
+      <div style="margin-top:16px" id="stAction"><a href="signup.html?next=subscribe.html%23plans" class="btn white block"><i class="fas fa-user-plus"></i> Create free account</a></div>
     </div>
   </div>
 </div>
@@ -315,11 +315,33 @@ function renderStatus() {
   }
 }
 
-function load() {
-  fetch(API_URL + '/api/subscription/plans').then(r => r.json()).then(d => {
+// Whether online payment is on. Kept as a promise so a click (or the auto-start after login)
+// never runs before the answer arrives — and is asked again if the first try failed (server waking).
+let plansReady = null;
+function loadPlans() {
+  plansReady = fetch(API_URL + '/api/subscription/plans').then(r => r.json()).then(d => {
     paymentsEnabled = !!d.paymentsEnabled;
-    if (!paymentsEnabled) document.getElementById('payNote').innerHTML = '<i class="fas fa-clock"></i> Online payment is being switched on — every patient has the full 25-day free trial in the meantime.';
-  }).catch(() => {});
+    document.getElementById('payNote').innerHTML = paymentsEnabled
+      ? '<i class="fas fa-lock"></i> Secure payment by Razorpay — UPI, cards, netbanking and wallets. Time left on a current plan is never lost: a new plan starts when the old one ends.'
+      : '<i class="fas fa-clock"></i> Online payment is being switched on — every patient has the full 25-day free trial in the meantime.';
+    return true;
+  }).catch(() => { plansReady = null; return false; });
+  return plansReady;
+}
+// Razorpay's checkout script, loaded again on demand if the first load was blocked or slow.
+function razorpayReady() {
+  if (window.Razorpay) return Promise.resolve(true);
+  return new Promise(res => {
+    const sc = document.createElement('script');
+    sc.src = 'https://checkout.razorpay.com/v1/checkout.js';
+    sc.onload = () => res(!!window.Razorpay); sc.onerror = () => res(false);
+    document.head.appendChild(sc);
+    setTimeout(() => res(!!window.Razorpay), 15000);
+  });
+}
+
+function load() {
+  loadPlans();
   if (!token) return;
   fetch(API_URL + '/api/patient/subscription', { headers: { Authorization: 'Bearer ' + token } })
     .then(r => { if (r.status === 401) { localStorage.removeItem('token'); throw new Error('expired'); } return r.json(); })
@@ -361,21 +383,24 @@ function loadJourney() {
 
 async function buy(plan) {
   if (!token) { location.href = 'login.html?next=' + encodeURIComponent('subscribe.html?plan=' + plan); return; }
-  if (!paymentsEnabled) { toast('Online payment is being switched on — you still have full access during your free trial.', ''); return; }
   const btn = document.querySelector(`.plan[data-plan="${plan}"] button`);
+  if (!btn || btn.disabled) return;
   const label = btn.innerHTML;
   btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Opening payment…';
   try {
+    if (!(await (plansReady || loadPlans()))) await loadPlans();
+    if (!paymentsEnabled) { toast('Online payment is being switched on — you still have full access during your free trial.', ''); return; }
     const r = await fetch(API_URL + '/api/patient/subscription/order', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token }, body: JSON.stringify({ plan }) });
     const o = await r.json();
     if (r.status === 401) { localStorage.removeItem('token'); location.href = 'login.html?next=' + encodeURIComponent('subscribe.html?plan=' + plan); return; }
     if (!r.ok) throw new Error(o.message || 'Could not start payment');
-    if (!window.Razorpay) throw new Error('Payment window could not load — check your internet and try again.');
+    if (!(await razorpayReady())) throw new Error('The payment window could not load — check your internet (or turn off an ad-blocker) and try again.');
     const rzp = new Razorpay({
       key: o.keyId, order_id: o.orderId, amount: o.amount, currency: o.currency,
-      name: 'Biomexa Pharmaceuticals', description: `Biomexa Care — ${o.plan.name}`, image: location.origin + '/logo.svg',
+      name: 'Biomexa Pharmaceuticals', description: `Biomexa Care — ${o.plan.name}`, image: 'https://biomexapharmaceuticals.com/images/logo-square.png',
       prefill: o.prefill, notes: { plan }, theme: { color: '#1c9a55' },
       handler: resp => verify(resp),
+      retry: { enabled: true, max_count: 3 },
       modal: { ondismiss: () => toast('Payment cancelled — you can try again any time.') }
     });
     rzp.on('payment.failed', e => toast((e.error && e.error.description) || 'Payment failed — no money was taken. Please try again.', 'err'));
@@ -399,7 +424,23 @@ async function verify(resp) {
     box.scrollIntoView({ behavior: 'smooth', block: 'center' });
     toast('Payment successful 🎉', 'ok');
   } catch (e) {
-    toast(e.message + ' Your payment ID: ' + resp.razorpay_payment_id, 'err');
+    // The money may well have gone through — Razorpay's webhook also activates the plan. Check a
+    // few times before telling the patient anything is wrong.
+    for (let i = 0; i < 6; i++) {
+      await new Promise(r => setTimeout(r, 5000));
+      try {
+        const a = await fetch(API_URL + '/api/patient/subscription', { headers: { Authorization: 'Bearer ' + token } }).then(r => r.json());
+        if (a && a.tier === 'subscribed' && (a.payments || []).some(p => p.paymentId === resp.razorpay_payment_id || p.orderId === resp.razorpay_order_id)) {
+          access = a; renderStatus();
+          document.getElementById('successText').textContent = `Payment successful — Biomexa Care is active until ${fmt(a.expiresAt)}. A receipt has been sent to your WhatsApp.`;
+          const box = document.getElementById('successBox'); box.style.display = 'block';
+          box.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          toast('Payment successful 🎉', 'ok');
+          return;
+        }
+      } catch {}
+    }
+    toast('We received your payment but could not confirm it yet (' + e.message + '). It will activate automatically within a few minutes — if not, contact Biomexa with payment ID ' + resp.razorpay_payment_id + '.', 'err');
   }
 }
 

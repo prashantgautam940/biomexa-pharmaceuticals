@@ -218,7 +218,10 @@
 
         const continueLink = document.createElement('p');
         continueLink.style.cssText = 'text-align:center;margin-top:16px;';
-        continueLink.innerHTML = '<a href="patient.html" style="color: #13804a;font-size:14px;">Continue to dashboard →</a>';
+        // Came from the plans page? Continue there (same safe-list as login's ?next=), else the dashboard.
+        const nextRaw = new URLSearchParams(location.search).get('next') || '';
+        const next = /^(patient|subscribe)\.html(#[A-Za-z0-9_-]+)?(\?plan=[a-z]+)?$/.test(nextRaw) ? nextRaw : 'patient.html';
+        continueLink.innerHTML = '<a href="' + next + '" style="color: #13804a;font-size:14px;">' + (next.startsWith('subscribe') ? 'Continue to choose your plan →' : 'Continue to dashboard →') + '</a>';
         document.getElementById('waActivateBox').after(continueLink);
       } catch (err) {
         errorText.textContent = err.message;
