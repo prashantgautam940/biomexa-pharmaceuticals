@@ -155,7 +155,7 @@ const STATUS = {
 };
 const SOURCE = { website: 'Website', quick: 'Website (phone only)', whatsapp: 'WhatsApp reply', reminder: 'Renewal reminder', admin: 'Sent by admin' };
 const METHOD = { upi: 'UPI', card: 'Card', netbanking: 'Net banking', wallet: 'Wallet', emi: 'EMI', paylater: 'Pay later', cardless_emi: 'Cardless EMI' };
-const EVENT = { link_created: 'Payment link created', checkout_opened: 'Opened checkout', paid: 'Paid', failed: 'Payment failed', signature_mismatch: 'Website couldn\'t verify payment', webhook_payment_captured: 'Razorpay confirmed (captured)', webhook_order_paid: 'Razorpay confirmed (order paid)', refund_created: 'Refund started', refund_processed: 'Refund completed', synced: 'Checked with Razorpay' };
+const EVENT = { invoice_sent: 'Invoice sent on WhatsApp', invoice_not_sent: 'Invoice could not be sent on WhatsApp', link_created: 'Payment link created', checkout_opened: 'Opened checkout', paid: 'Paid', failed: 'Payment failed', signature_mismatch: 'Website couldn\'t verify payment', webhook_payment_captured: 'Razorpay confirmed (captured)', webhook_order_paid: 'Razorpay confirmed (order paid)', refund_created: 'Refund started', refund_processed: 'Refund completed', synced: 'Checked with Razorpay' };
 
 function fetchRetry(url, opts, tries) {
   tries = tries === undefined ? 2 : tries;
@@ -187,6 +187,9 @@ function load() {
     document.getElementById('statusLine').innerHTML = d.paymentsEnabled
       ? '<span class="badge ' + (d.mode === 'live' ? 'b-live' : 'b-test') + '"><i class="fas fa-circle" style="font-size:.5rem"></i> Razorpay ' + (d.mode === 'live' ? 'LIVE' : 'TEST mode') + '</span><span style="color:var(--muted)">' + t.payingPatients + ' paying patient' + (t.payingPatients === 1 ? '' : 's') + (t.pending ? ' · ' + t.pending + ' in checkout right now' : '') + '</span>'
       : '<span class="badge b-off">Razorpay not connected</span><span style="color:var(--muted)">Add RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET on Render.</span>';
+    if (d.invoice) document.getElementById('statusLine').innerHTML += d.invoice.gstin
+      ? '<span class="badge b-paid"><i class="fas fa-file-invoice"></i> GST invoices · GSTIN ' + esc(d.invoice.gstin) + ' · ' + d.invoice.rate + '% incl.</span>'
+      : '<span class="badge b-pending" title="Add BIOMEXA_GSTIN on Render to issue tax invoices with the GST split"><i class="fas fa-file-invoice"></i> Payment receipts (no GSTIN set)</span>';
     document.getElementById('sNet').textContent = rupees(t.net);
     document.getElementById('sNetHint').textContent = t.refunded ? rupees(t.collected) + ' collected − ' + rupees(t.refunded) + ' refunded' : 'after refunds';
     document.getElementById('sPaid').textContent = t.paid;
@@ -230,7 +233,7 @@ function render() {
   if (view === 'payments') {
     const rows = shownPayments();
     if (!rows.length) { el.innerHTML = '<div class="empty">' + (data.payments.length ? 'No payments match.' : 'No payments yet. They appear here as soon as a patient opens checkout on the renew page.') + '</div>'; return; }
-    el.innerHTML = '<table><thead><tr><th class="hide-sm">Date</th><th>Patient</th><th class="hide-sm">Plan</th><th>Amount</th><th>Status</th><th class="hide-sm">Paid with</th><th class="hide-sm">Razorpay fee</th><th class="hide-sm">Payment ID</th></tr></thead><tbody>' +
+    el.innerHTML = '<table><thead><tr><th class="hide-sm">Date</th><th>Patient</th><th class="hide-sm">Plan</th><th>Amount</th><th>Status</th><th class="hide-sm">Paid with</th><th class="hide-sm">Razorpay fee</th><th>Invoice</th></tr></thead><tbody>' +
       rows.map(p => '<tr class="click" onclick="openPatient(\'' + p.key + '\', \'' + esc(p.orderId) + '\')">' +
         '<td class="num hide-sm">' + stamp(p.paidAt || p.failedAt || p.createdAt) + '</td>' +
         '<td><b>' + esc(p.patientName || '—') + '</b><div class="s">' + esc(p.patientPhone) + '</div><div class="s show-sm">' + stamp(p.paidAt || p.failedAt || p.createdAt) + ' · ' + esc(p.planName) + '</div></td>' +
@@ -239,7 +242,7 @@ function render() {
         '<td>' + badge(p.status) + '<div class="s">via ' + esc(SOURCE[p.source] || p.source || 'website') + '</div>' + (p.status === 'failed' && p.failureReason ? '<div class="s" style="max-width:220px">' + esc(p.failureReason) + '</div>' : '') + '</td>' +
         '<td class="hide-sm">' + how(p) + '</td>' +
         '<td class="hide-sm num">' + (p.fee != null ? rupees(p.fee) : '<span class="s">—</span>') + '</td>' +
-        '<td class="hide-sm">' + (p.paymentId ? '<code>' + esc(p.paymentId) + '</code>' : '<span class="s">—</span>') + '</td></tr>').join('') + '</tbody></table>';
+        '<td>' + (isPaid(p.status) ? '<button class="btn ghost sm" onclick="event.stopPropagation();openInvoice(\'' + esc(p.orderId) + '\', this)" title="Open the invoice PDF"><i class="fas fa-file-pdf" style="color:#c0262d"></i> ' + esc(p.invoiceNo || 'PDF') + '</button>' : '<span class="s">—</span>') + '</td></tr>').join('') + '</tbody></table>';
   } else {
     const people = data.people.filter(g => inRange(g.lastAt) && matches(g));
     if (!people.length) { el.innerHTML = '<div class="empty">' + (data.people.length ? 'No patients match.' : 'No patient has opened checkout yet.') + '</div>'; return; }
@@ -274,6 +277,8 @@ function openPatient(key, highlight) {
       (p.paidAt ? '<div class="k">Paid</div><div>' + stamp(p.paidAt) + '</div>' : '') +
       (p.periodEnd && isPaid(p.status) ? '<div class="k">Plan period</div><div>' + day(p.periodStart) + ' → ' + day(p.periodEnd) + '</div>' : '') +
       (p.method ? '<div class="k">Paid with</div><div>' + esc(METHOD[p.method] || p.method) + (p.methodDetail ? ' · ' + esc(p.methodDetail) : '') + '</div>' : '') +
+      (p.invoiceNo ? '<div class="k">Invoice</div><div><b>' + esc(p.invoiceNo) + '</b></div>' : '') +
+      (p.gst ? '<div class="k">GST included</div><div>' + rupees(p.gst.tax) + ' (CGST ' + rupees(p.gst.cgst) + ' + SGST ' + rupees(p.gst.sgst) + ') on taxable ' + rupees(p.gst.taxable) + '</div>' : '') +
       (p.fee != null ? '<div class="k">Razorpay fee</div><div>' + rupees(p.fee) + (p.tax != null ? ' (incl. ' + rupees(p.tax) + ' GST)' : '') + ' · you receive ' + rupees(p.amount - p.fee) + '</div>' : '') +
       (p.refunded ? '<div class="k">Refunded</div><div>' + rupees(p.refunded) + ' on ' + day(p.refundedAt) + '</div>' : '') +
       (p.failureReason ? '<div class="k">Why it failed</div><div style="color:var(--danger)">' + esc(p.failureReason) + '</div>' : '') +
@@ -283,6 +288,7 @@ function openPatient(key, highlight) {
     '</div>' +
     (p.events.length ? '<div class="timeline">' + p.events.slice().reverse().map(e => '<div>' + stamp(e.at) + ' — ' + esc(EVENT[e.type] || e.type) + (e.note && e.type !== 'paid' ? ': ' + esc(e.note) : '') + '</div>').join('') + '</div>' : '') +
     '<div style="margin-top:.6rem;display:flex;gap:.5rem;flex-wrap:wrap"><button class="btn ghost sm" onclick="syncOne(\'' + esc(p.orderId) + '\', \'' + key + '\', this)"><i class="fas fa-arrows-rotate"></i> Check with Razorpay</button>' +
+    (isPaid(p.status) ? '<button class="btn sm" onclick="openInvoice(\'' + esc(p.orderId) + '\', this)"><i class="fas fa-file-pdf"></i> Invoice PDF</button><button class="btn ghost sm" onclick="openInvoice(\'' + esc(p.orderId) + '\', this, true)"><i class="fas fa-download"></i> Download</button><button class="btn ghost sm" onclick="resendInvoice(\'' + esc(p.orderId) + '\', this)"><i class="fab fa-whatsapp"></i> Send on WhatsApp</button>' : '') +
     (p.paymentId ? '<a class="btn ghost sm" style="text-decoration:none" target="_blank" rel="noopener" href="https://dashboard.razorpay.com/app/payments/' + encodeURIComponent(p.paymentId) + '"><i class="fas fa-arrow-up-right-from-square"></i> Open in Razorpay</a>' : '') + '</div></div>';
   document.getElementById('dBody').innerHTML =
     '<h2 id="dTitle">' + esc(g.name || 'Patient') + '</h2><div style="color:var(--muted);font-size:.86rem;margin-top:2px">' + esc(g.phone) + '</div>' +
@@ -295,6 +301,34 @@ function openPatient(key, highlight) {
 }
 function closeDrawer() { document.getElementById('drawer').classList.remove('open'); }
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDrawer(); });
+
+// Invoice PDF needs the admin login header, so fetch it and open/save the file from memory.
+function openInvoice(orderId, btn, download) {
+  const label = btn.innerHTML;
+  btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+  const win = download ? null : window.open('', '_blank');
+  authFetch('/api/admin/payments/' + encodeURIComponent(orderId) + '/invoice')
+    .then(async r => { if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.message || 'Could not create the invoice'); } return { blob: await r.blob(), name: (r.headers.get('Content-Disposition') || '').match(/filename="([^"]+)"/)?.[1] || 'Biomexa-invoice.pdf' }; })
+    .then(({ blob, name }) => {
+      const url = URL.createObjectURL(blob);
+      if (download || !win) { const a = document.createElement('a'); a.href = url; a.download = name; a.click(); if (win) win.close(); }
+      else win.location.href = url;
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+      const i = data.payments.findIndex(p => p.orderId === orderId);
+      if (i >= 0 && !data.payments[i].invoiceNo) setTimeout(load, 500);
+    })
+    .catch(e => { if (win) win.close(); alert(e.message); })
+    .finally(() => { btn.disabled = false; btn.innerHTML = label; });
+}
+function resendInvoice(orderId, btn) {
+  const label = btn.innerHTML;
+  btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending…';
+  authFetch('/api/admin/payments/' + encodeURIComponent(orderId) + '/send-invoice', { method: 'POST' })
+    .then(r => r.json().then(d => ({ ok: r.ok, d })))
+    .then(({ ok, d }) => { btn.innerHTML = (ok && d.ok ? '<i class="fas fa-check"></i> ' : '<i class="fas fa-triangle-exclamation"></i> ') + esc(d.message || 'Done'); })
+    .catch(e => { btn.innerHTML = esc(e.message); })
+    .finally(() => { btn.disabled = false; setTimeout(() => { btn.innerHTML = label; }, 6000); });
+}
 
 function syncOne(orderId, key, btn) {
   btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Checking…';
@@ -323,8 +357,8 @@ function exportCsv() {
   const cell = v => '"' + String(v ?? '').replace(/"/g, '""') + '"';
   let lines;
   if (view === 'payments') {
-    lines = [['Date', 'Patient', 'Phone', 'Plan', 'Amount (₹)', 'Refunded (₹)', 'Status', 'Method', 'UPI / card', 'Razorpay fee (₹)', 'Payment ID', 'Order ID', 'Plan until', 'Failure reason', 'Paid from']]
-      .concat(shownPayments().map(p => [stamp(p.paidAt || p.failedAt || p.createdAt), p.patientName, p.patientPhone, p.planName, p.amount, p.refunded, (STATUS[p.status] || [p.status])[0], METHOD[p.method] || p.method || '', p.methodDetail || '', p.fee ?? '', p.paymentId || '', p.orderId, isPaid(p.status) ? day(p.periodEnd) : '', p.failureReason || '', SOURCE[p.source] || p.source || '']));
+    lines = [['Date', 'Patient', 'Phone', 'Plan', 'Amount (₹)', 'Refunded (₹)', 'Status', 'Method', 'UPI / card', 'Razorpay fee (₹)', 'Payment ID', 'Order ID', 'Plan until', 'Failure reason', 'Paid from', 'Invoice no.', 'Taxable value (₹)', 'CGST (₹)', 'SGST (₹)', 'IGST (₹)', 'Total GST (₹)']]
+      .concat(shownPayments().map(p => [stamp(p.paidAt || p.failedAt || p.createdAt), p.patientName, p.patientPhone, p.planName, p.amount, p.refunded, (STATUS[p.status] || [p.status])[0], METHOD[p.method] || p.method || '', p.methodDetail || '', p.fee ?? '', p.paymentId || '', p.orderId, isPaid(p.status) ? day(p.periodEnd) : '', p.failureReason || '', SOURCE[p.source] || p.source || '', p.invoiceNo || '', p.gst ? p.gst.taxable : '', p.gst ? p.gst.cgst : '', p.gst ? p.gst.sgst : '', p.gst ? p.gst.igst : '', p.gst ? p.gst.tax : '']));
   } else {
     lines = [['Patient', 'Phone', 'Total paid (₹)', 'Refunded (₹)', 'Paid', 'Checkouts', 'Failed', 'Abandoned', 'Plan now', 'Plan until', 'Last payment']]
       .concat(data.people.filter(g => inRange(g.lastAt) && matches(g)).map(g => [g.name, g.phone, g.net, g.refunded, g.paidCount, g.attempts, g.failedCount, g.abandonedCount, g.access?.tier === 'subscribed' ? g.access.planName : (g.access?.tier || ''), g.access?.tier === 'subscribed' ? day(g.access.expiresAt) : '', g.lastPaidAt ? day(g.lastPaidAt) : '']));

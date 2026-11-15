@@ -26,7 +26,8 @@ const TYPES = {
   order:           { label: 'Medicine order update',       env: 'MSG91_ORDER_TEMPLATE_NAME',           vars: 3, re: /order/i },
   course:          { label: 'Course complete / refill',    env: 'MSG91_COURSE_TEMPLATE_NAME',          vars: 3, re: /course|refill/i },
   ad:              { label: '10-day product message',      env: 'MSG91_AD_TEMPLATE_NAME',              vars: null, re: /product|promo|offer|ad_|marketing/i },
-  lead:            { label: 'Lead invite',                 env: 'MSG91_LEAD_TEMPLATE_NAME',            vars: null, re: /lead|invite/i }
+  lead:            { label: 'Lead invite',                 env: 'MSG91_LEAD_TEMPLATE_NAME',            vars: null, re: /lead|invite/i },
+  receipt:         { label: 'Payment receipt + invoice',   env: 'MSG91_RECEIPT_TEMPLATE_NAME',         vars: 3, re: /receipt|invoice|payment_(success|confirm|received)/i }
 };
 
 let state = { syncedAt: null, error: null, templates: [], byName: new Map(), resolved: {} };

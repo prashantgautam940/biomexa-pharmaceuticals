@@ -196,6 +196,7 @@ footer a { color: var(--navy); }
     <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:18px;">
       <a href="patient.html#doctor" class="btn green"><i class="fas fa-user-doctor"></i> Talk to a doctor</a>
       <a href="patient.html" class="btn navy">Go to my portal</a>
+      <a href="#" id="invoiceBtn" class="btn white" style="display:none;border:1px solid var(--line)" target="_blank" rel="noopener"><i class="fas fa-file-pdf" style="color:#c0262d"></i> Download invoice</a>
     </div>
   </div>
 
@@ -508,7 +509,7 @@ async function quickVerify(resp) {
     const r = await fetch(API_URL + '/api/subscription/quick-verify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(resp) });
     const d = await r.json();
     if (!r.ok) throw new Error(d.message);
-    showPaid(d.message + ' A receipt has been sent to your WhatsApp.');
+    showPaid(d.message + ' Your invoice has been sent to your WhatsApp too.', d.invoiceUrl);
   } catch (e) {
     showPaid('Payment received (ID ' + resp.razorpay_payment_id + '). Your plan will be active within a few minutes and a receipt will come on WhatsApp.');
   }
@@ -536,8 +537,10 @@ async function altPay() {
     location.href = d.url;
   } catch (e) { toast(e.message, 'err'); }
 }
-function showPaid(text) {
+function showPaid(text, invoiceUrl) {
   closeQuick();
+  const ib = document.getElementById('invoiceBtn');
+  if (invoiceUrl) { ib.href = invoiceUrl; ib.style.display = ''; }
   document.getElementById('successText').textContent = text;
   const box = document.getElementById('successBox'); box.style.display = 'block';
   box.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -552,10 +555,7 @@ async function verify(resp) {
     const d = await r.json();
     if (!r.ok) throw new Error(d.message);
     access = d.access; renderStatus();
-    document.getElementById('successText').textContent = d.message + ' A receipt has been sent to your WhatsApp.';
-    const box = document.getElementById('successBox'); box.style.display = 'block';
-    box.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    toast('Payment successful 🎉', 'ok');
+    showPaid(d.message + ' Your invoice has been sent to your WhatsApp too.', d.invoiceUrl);
   } catch (e) {
     // The money may well have gone through — Razorpay's webhook also activates the plan. Check a
     // few times before telling the patient anything is wrong.
@@ -563,7 +563,9 @@ async function verify(resp) {
       await new Promise(r => setTimeout(r, 5000));
       try {
         const a = await fetch(API_URL + '/api/patient/subscription', { headers: { Authorization: 'Bearer ' + token } }).then(r => r.json());
-        if (a && a.tier === 'subscribed' && (a.payments || []).some(p => p.paymentId === resp.razorpay_payment_id || p.orderId === resp.razorpay_order_id)) {
+        const hit = a && a.tier === 'subscribed' && (a.payments || []).find(p => p.paymentId === resp.razorpay_payment_id || p.orderId === resp.razorpay_order_id);
+        if (hit) { access = a; renderStatus(); showPaid(`Payment successful — Biomexa Care is active until ${fmt(a.expiresAt)}. Your invoice has been sent to your WhatsApp.`, hit.invoiceUrl); return; }
+        if (false) {
           access = a; renderStatus();
           document.getElementById('successText').textContent = `Payment successful — Biomexa Care is active until ${fmt(a.expiresAt)}. A receipt has been sent to your WhatsApp.`;
           const box = document.getElementById('successBox'); box.style.display = 'block';

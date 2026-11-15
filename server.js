@@ -12,6 +12,7 @@ const { cleanVitals, toFahrenheit, normaliseEntry, checkVitalsDanger } = require
 const { summarizeAdherence } = require('./vitals/adherence');
 const { buildVitalsProgress } = require('./vitals/progress');
 const waTpl = require('./msg91/templates');
+const { buildInvoicePdf, gstSplit, seller: invoiceSeller } = require('./invoice/invoice');
 const ivfCare = require('./ivf/routes'); // Biomexa IVF Care — separate module, mounted near the end of this file
 
 const app = express();
@@ -1665,7 +1666,8 @@ const WA_TPL_ENV = {
   treatment_report: process.env.MSG91_TREATMENT_REPORT_TEMPLATE_NAME, report_analysis: process.env.MSG91_REPORT_ANALYSIS_TEMPLATE_NAME,
   otp: process.env.MSG91_OTP_TEMPLATE_NAME, login: process.env.MSG91_LOGIN_TEMPLATE_NAME, signup: process.env.MSG91_SIGNUP_TEMPLATE_NAME,
   ivf_update: process.env.MSG91_IVF_UPDATE_TEMPLATE_NAME, renewal: process.env.MSG91_RENEWAL_TEMPLATE_NAME, order: process.env.MSG91_ORDER_TEMPLATE_NAME,
-  course: process.env.MSG91_COURSE_TEMPLATE_NAME, ad: process.env.MSG91_AD_TEMPLATE_NAME, lead: process.env.MSG91_LEAD_TEMPLATE_NAME
+  course: process.env.MSG91_COURSE_TEMPLATE_NAME, ad: process.env.MSG91_AD_TEMPLATE_NAME, lead: process.env.MSG91_LEAD_TEMPLATE_NAME,
+  receipt: process.env.MSG91_RECEIPT_TEMPLATE_NAME
 };
 const WA_TPL_SET = {
   dose: n => { MSG91_DOSE_TEMPLATE_NAME = n; }, risk: n => { MSG91_RISK_TEMPLATE_NAME = n; },
@@ -1673,7 +1675,8 @@ const WA_TPL_SET = {
   treatment_report: n => { MSG91_TREATMENT_REPORT_TEMPLATE_NAME = n; }, report_analysis: n => { MSG91_REPORT_ANALYSIS_TEMPLATE_NAME = n; },
   otp: n => { MSG91_OTP_TEMPLATE_NAME = n; }, login: n => { MSG91_LOGIN_TEMPLATE_NAME = n; }, signup: n => { MSG91_SIGNUP_TEMPLATE_NAME = n; },
   ivf_update: n => { MSG91_IVF_UPDATE_TEMPLATE_NAME = n; }, renewal: n => { MSG91_RENEWAL_TEMPLATE_NAME = n; }, order: n => { MSG91_ORDER_TEMPLATE_NAME = n; },
-  course: n => { MSG91_COURSE_TEMPLATE_NAME = n; }, ad: n => { MSG91_AD_TEMPLATE_NAME = n; }, lead: n => { MSG91_LEAD_TEMPLATE_NAME = n; }
+  course: n => { MSG91_COURSE_TEMPLATE_NAME = n; }, ad: n => { MSG91_AD_TEMPLATE_NAME = n; }, lead: n => { MSG91_LEAD_TEMPLATE_NAME = n; },
+  receipt: n => { MSG91_RECEIPT_TEMPLATE_NAME = n; }
 };
 let waTplSyncing = null;
 async function syncWhatsAppTemplates() {
@@ -2044,6 +2047,9 @@ const paymentSchema = new mongoose.Schema({
   linkUrl: String,
   linkExpiresAt: Date,
   source: String,          // website | quick (website, phone only) | whatsapp | admin | reminder
+  invoiceNo: { type: String, index: true },   // BX/26-27/0001 — sequential per financial year
+  invoiceDate: Date,
+  invoiceToken: { type: String, index: true }, // secret part of the public invoice link
   createdAt: { type: Date, default: Date.now }
 });
 const Payment = mongoose.model('Payment', paymentSchema);
@@ -5750,8 +5756,12 @@ app.get('/api/patient/subscription', auth, async (req, res) => {
   try {
     const records = await Patient.find({ phone: { $in: phoneVariants(req.user.phone) } });
     if (!records.length) return res.status(404).json({ message: 'Patient not found.' });
-    const payments = await Payment.find({ patientPhone: { $in: phoneVariants(req.user.phone) }, status: 'paid' })
-      .sort({ paidAt: -1 }).limit(10).select('plan amount paidAt periodStart periodEnd paymentId');
+    const rows = await Payment.find({ patientPhone: { $in: phoneVariants(req.user.phone) }, status: { $in: ['paid', 'refunded'] } }).sort({ paidAt: -1 }).limit(10);
+    const payments = [];
+    for (const p of rows) {
+      const q = await ensureInvoice(p).catch(() => p);
+      payments.push({ plan: q.plan, amount: q.amount, paidAt: q.paidAt, periodStart: q.periodStart, periodEnd: q.periodEnd, paymentId: q.paymentId, orderId: q.orderId, status: q.status, invoiceNo: q.invoiceNo || null, invoiceUrl: invoiceUrlFor(q) });
+    }
     res.json({ ...accessFor(records), paymentsEnabled: PAYMENTS_CONFIGURED, payments });
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -5798,6 +5808,110 @@ async function enrichPayment(orderId, paymentId) {
 }
 async function logPaymentEvent(orderId, type, note) {
   await Payment.updateOne({ orderId }, { $push: { events: { $each: [{ at: new Date(), type, note: note || '' }], $slice: -30 } } }).catch(() => {});
+}
+
+// ========== INVOICES (GST invoice / receipt PDF for every payment) ==========
+// Numbered BX/<FY>/0001 in order of payment, per Indian financial year (Apr–Mar), using an atomic
+// counter so two payments at the same moment never share a number. The PDF is built on demand
+// from the stored payment (invoice/invoice.js), so it always shows refunds etc. A secret token
+// makes the public link (sent on WhatsApp) unguessable.
+const counterSchema = new mongoose.Schema({ _id: String, seq: { type: Number, default: 0 } });
+const Counter = mongoose.models.Counter || mongoose.model('Counter', counterSchema);
+const INVOICE_PREFIX = (process.env.INVOICE_PREFIX || 'BX').replace(/[^A-Z0-9-]/gi, '') || 'BX';
+const API_PUBLIC_URL = (process.env.API_PUBLIC_URL || process.env.RENDER_EXTERNAL_URL || 'https://biomexa-api-f9f6.onrender.com').replace(/\/$/, '');
+function financialYear(d) {
+  const ist = new Date(new Date(d).toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
+  const y = ist.getMonth() >= 3 ? ist.getFullYear() : ist.getFullYear() - 1;
+  return `${String(y).slice(2)}-${String(y + 1).slice(2)}`;
+}
+async function ensureInvoice(pay) {
+  if (pay.invoiceNo && pay.invoiceToken) return pay;
+  if (!['paid', 'refunded'].includes(pay.status)) return pay;
+  const when = pay.paidAt || new Date();
+  const fy = financialYear(when);
+  const c = await Counter.findOneAndUpdate({ _id: `invoice-${fy}` }, { $inc: { seq: 1 } }, { upsert: true, new: true });
+  const no = `${INVOICE_PREFIX}/${fy}/${String(c.seq).padStart(4, '0')}`;
+  // Only set if still missing — a parallel request can't give one payment two numbers.
+  await Payment.updateOne({ _id: pay._id, invoiceNo: { $in: [null, ''] } }, { $set: { invoiceNo: no, invoiceDate: when, invoiceToken: crypto.randomBytes(18).toString('hex') } });
+  return Payment.findById(pay._id);
+}
+function invoiceUrlFor(pay) {
+  if (!pay?.invoiceToken) return null;
+  return `${API_PUBLIC_URL}/api/invoice/${pay.invoiceToken}/${invoiceFileName(pay)}`;
+}
+function invoiceFileName(pay) { return `Biomexa-invoice-${String(pay.invoiceNo || 'receipt').replace(/\//g, '-')}.pdf`; }
+async function invoicePdfFor(pay) {
+  const plan = SUBSCRIPTION_PLANS[pay.plan] || {};
+  return buildInvoicePdf({
+    invoiceNo: pay.invoiceNo, invoiceDate: pay.invoiceDate || pay.paidAt, patientName: pay.patientName, patientPhone: pay.patientPhone,
+    payerEmail: pay.payerEmail, planName: plan.name || pay.plan, planLabel: plan.label, periodStart: pay.periodStart, periodEnd: pay.periodEnd,
+    amount: (pay.amount || 0) / 100, refunded: (pay.refundedAmount || 0) / 100, paymentId: pay.paymentId,
+    orderId: pay.linkId ? pay.linkId : pay.orderId, method: pay.method, methodDetail: pay.methodDetail, paidAt: pay.paidAt
+  });
+}
+function sendPdf(res, buf, name, inline = true) {
+  res.set({ 'Content-Type': 'application/pdf', 'Content-Length': buf.length, 'Content-Disposition': `${inline ? 'inline' : 'attachment'}; filename="${name}"`, 'Cache-Control': 'private, no-store' });
+  res.send(buf);
+}
+// Public link (WhatsApp, patient's success screen): the token is the key.
+app.get('/api/invoice/:token/:file?', async (req, res) => {
+  try {
+    if (!/^[a-f0-9]{36}$/.test(req.params.token)) return res.status(404).send('Invoice not found');
+    const pay = await Payment.findOne({ invoiceToken: req.params.token });
+    if (!pay) return res.status(404).send('Invoice not found');
+    sendPdf(res, await invoicePdfFor(pay), invoiceFileName(pay));
+  } catch (err) { console.log('❌ Invoice PDF error:', err.message); res.status(500).send('Could not create the invoice right now — please try again.'); }
+});
+
+// WhatsApp receipt after payment: confirmation text + the invoice PDF. Inside the 24-hour window
+// it's a normal message plus the PDF as a document; outside it, the approved receipt template
+// (MSG91_RECEIPT_TEMPLATE_NAME, header DOCUMENT) if set, else the renewal template with the link.
+let MSG91_RECEIPT_TEMPLATE_NAME = process.env.MSG91_RECEIPT_TEMPLATE_NAME || null;
+async function sendReceiptTemplate(phone, first, planText, endTxt, url, filename) {
+  if (!MSG91_CONFIGURED || !MSG91_RECEIPT_TEMPLATE_NAME) return { success: false, provider: 'not_configured' };
+  try {
+    const res = await fetch('https://api.msg91.com/api/v5/whatsapp/whatsapp-outbound-message/bulk/', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', authkey: MSG91_AUTH_KEY },
+      body: JSON.stringify({ integrated_number: MSG91_INTEGRATED_NUMBER, content_type: 'template', payload: { messaging_product: 'whatsapp', type: 'template', template: {
+        name: MSG91_RECEIPT_TEMPLATE_NAME,
+        language: { code: waTpl.langFor(MSG91_RECEIPT_TEMPLATE_NAME, MSG91_TEMPLATE_LANG), policy: 'deterministic' },
+        namespace: waTpl.namespaceFor(MSG91_RECEIPT_TEMPLATE_NAME, MSG91_TEMPLATE_NAMESPACE),
+        to_and_components: [{ to: [waNumber(phone)], components: waTpl.fitComponents(MSG91_RECEIPT_TEMPLATE_NAME, {
+          header_1: { type: 'document', value: url, filename },
+          body_1: { type: 'text', value: sanitizeTemplateParam(first, 40) || 'there' },
+          body_2: { type: 'text', value: sanitizeTemplateParam(planText, 120) },
+          body_3: { type: 'text', value: sanitizeTemplateParam(endTxt, 60) }
+        }) }]
+      } } }),
+      signal: AbortSignal.timeout(15000)
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.hasError) { console.log('⚠️ Receipt template failed:', JSON.stringify(data).slice(0, 300)); return { success: false }; }
+    return { success: true, provider: 'msg91_template' };
+  } catch (err) { return { success: false, detail: err.message }; }
+}
+async function sendPaymentReceipt(payIn) {
+  try {
+    const pay = await ensureInvoice(payIn);
+    const plan = SUBSCRIPTION_PLANS[pay.plan] || { name: pay.plan, price: (pay.amount || 0) / 100 };
+    const first = String(pay.patientName || '').trim().split(/\s+/)[0] || 'there';
+    const endTxt = pay.periodEnd ? new Date(pay.periodEnd).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Kolkata' }) : '';
+    const url = invoiceUrlFor(pay), file = invoiceFileName(pay);
+    const s = invoiceSeller();
+    const g = gstSplit(plan.price, s.rate, false);
+    const gstLine = s.gstin ? `\n₹${plan.price} = ₹${g.taxable.toFixed(2)} + GST ₹${g.tax.toFixed(2)} (CGST ₹${g.cgst.toFixed(2)} + SGST ₹${g.sgst.toFixed(2)})` : '';
+    const text = `✅ *Payment received — welcome to Biomexa Care!*\n\nHi ${first}, your ${plan.name} plan (₹${plan.price}) is active until *${endTxt}*.\n\nUnlocked for you:\n• Talk to a Doctor\n• Treatment reports on WhatsApp\n• AI prescription & lab report analysis\n• Reminders for all your medicines\n\n🧾 ${s.gstin ? 'Tax invoice' : 'Receipt'} ${pay.invoiceNo}${gstLine}\nDownload: ${url}\nPayment ID: ${pay.paymentId}\n\n- Biomexa Team`;
+    if (await whatsappWindowOpen(pay.patientPhone)) {
+      await sendWhatsAppFree(pay.patientPhone, text);
+      if (url) await sendMsg91Document(pay.patientPhone, url, file, `🧾 ${s.gstin ? 'Tax invoice' : 'Payment receipt'} ${pay.invoiceNo} — Biomexa Care ${plan.name}, ₹${plan.price}`);
+      await logPaymentEvent(pay.orderId, 'invoice_sent', `${pay.invoiceNo} · WhatsApp`);
+      return;
+    }
+    let r = await sendReceiptTemplate(pay.patientPhone, first, `Biomexa Care ${plan.name} plan (₹${plan.price})`, endTxt, url, file);
+    if (!r.success && MSG91_RENEWAL_TEMPLATE_NAME) r = await sendRenewalTemplate(pay.patientPhone, first, `thank you — your payment of ₹${plan.price} is received and Biomexa Care ${plan.name} is active until ${endTxt}. Invoice ${pay.invoiceNo}: ${url}`, 'Talk to a Doctor, treatment reports, report analysis and reminders for all your medicines are now unlocked');
+    if (!r.success) r = await sendWhatsAppFree(pay.patientPhone, text);
+    await logPaymentEvent(pay.orderId, r?.success ? 'invoice_sent' : 'invoice_not_sent', `${pay.invoiceNo} · ${r?.provider || 'WhatsApp'}`);
+  } catch (err) { console.log('⚠️ Payment receipt error:', err.message); }
 }
 
 // ========== ONE-TAP PAYMENT LINKS (WhatsApp, no login) ==========
@@ -5929,7 +6043,8 @@ app.post('/api/subscription/quick-verify', quickPayLimiter, async (req, res) => 
     if (!known) return res.status(404).json({ message: 'Order not found.' });
     const r = await activateSubscription(orderId, paymentId);
     const access = await accessForPhone(known.patientPhone);
-    res.json({ message: `Payment successful — Biomexa Care is active until ${new Date(access.expiresAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}.`, access, already: !!r.already });
+    const paid = await Payment.findOne({ orderId }).then(p => p && ensureInvoice(p)).catch(() => null);
+    res.json({ message: `Payment successful — Biomexa Care is active until ${new Date(access.expiresAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}.`, access, already: !!r.already, invoiceUrl: invoiceUrlFor(paid), invoiceNo: paid?.invoiceNo || null });
   } catch (err) { res.status(500).json({ message: err.message }); }
 });
 // "Send me a payment link on WhatsApp" — for patients who'd rather pay from their UPI app later.
@@ -5999,12 +6114,12 @@ async function activateSubscription(orderId, paymentId, via) {
     $set: { 'subscription.plan': plan.id, 'subscription.expiresAt': end, 'subscription.startedAt': access.tier === 'subscribed' ? (records[0].subscription?.startedAt || now) : now }
   });
   pay.periodStart = start; pay.periodEnd = end; await pay.save();
-  const first = String(pay.patientName || '').trim().split(/\s+/)[0] || 'there';
-  const endTxt = end.toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' });
-  sendWhatsAppFree(pay.patientPhone,
-    `✅ *Payment received — welcome to Biomexa Care!*\n\nHi ${first}, your ${plan.name} plan (₹${plan.price}) is active until *${endTxt}*.\n\nUnlocked for you:\n• Talk to a Doctor\n• Treatment reports on WhatsApp\n• AI prescription & lab report analysis\n• Reminders for all your medicines\n\nPayment ID: ${paymentId}\n\n- Biomexa Team`).catch(() => {});
+  // Invoice number now (so the verify response can link it), then the WhatsApp receipt + PDF.
+  const withInvoice = await ensureInvoice(pay).catch(() => pay);
+  // Give Razorpay a moment to report the method (UPI id) so it's on the invoice.
+  setTimeout(() => sendPaymentReceipt(withInvoice), 4000);
   console.log(`💳 Subscription paid: ${pay.patientPhone} — ${plan.id} ₹${plan.price}, until ${end.toISOString().slice(0, 10)} (${paymentId})`);
-  return { payment: pay, expiresAt: end, plan };
+  return { payment: withInvoice, expiresAt: end, plan, invoiceUrl: invoiceUrlFor(withInvoice) };
 }
 
 // Step 2 — the page sends Razorpay's response; the signature proves it really came from Razorpay.
@@ -6024,7 +6139,8 @@ app.post('/api/patient/subscription/verify', auth, async (req, res) => {
     if (!own) return res.status(404).json({ message: 'Order not found for this account.' });
     const result = await activateSubscription(orderId, paymentId);
     const access = await accessForPhone(req.user.phone);
-    res.json({ message: `Payment successful — Biomexa Care is active until ${new Date(access.expiresAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}.`, access, already: !!result.already });
+    const paid = await Payment.findOne({ orderId }).then(p => p && ensureInvoice(p)).catch(() => null);
+    res.json({ message: `Payment successful — Biomexa Care is active until ${new Date(access.expiresAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}.`, access, already: !!result.already, invoiceUrl: invoiceUrlFor(paid), invoiceNo: paid?.invoiceNo || null });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -6099,7 +6215,9 @@ function paymentView(p, now = Date.now()) {
     failureReason: p.failureReason || null, periodStart: p.periodStart || null, periodEnd: p.periodEnd || null,
     createdAt: p.createdAt, paidAt: p.paidAt || null, failedAt: p.failedAt || null, refundedAt: p.refundedAt || null,
     events: (p.events || []).map(e => ({ at: e.at, type: e.type, note: e.note })),
-    source: p.source || (p.linkId ? 'whatsapp' : 'website'), linkUrl: p.linkUrl || null
+    source: p.source || (p.linkId ? 'whatsapp' : 'website'), linkUrl: p.linkUrl || null,
+    invoiceNo: p.invoiceNo || null,
+    gst: (() => { const sl = invoiceSeller(); if (!sl.gstin || !['paid', 'refunded', 'part_refunded'].includes(status)) return null; const g = gstSplit((p.amount || 0) / 100, sl.rate, false); return { taxable: g.taxable, cgst: g.cgst, sgst: g.sgst, igst: g.igst, tax: g.tax }; })()
   };
 }
 app.get('/api/admin/payments', adminAuth, async (req, res) => {
@@ -6129,6 +6247,7 @@ app.get('/api/admin/payments', adminAuth, async (req, res) => {
     res.json({
       paymentsEnabled: PAYMENTS_CONFIGURED,
       mode: /^rzp_live_/.test(RAZORPAY_KEY_ID) ? 'live' : /^rzp_test_/.test(RAZORPAY_KEY_ID) ? 'test' : null,
+      invoice: (() => { const sl = invoiceSeller(); return { gstin: sl.gstin || null, rate: sl.rate, sac: sl.sac, name: sl.name }; })(),
       totals: {
         collected: sum(r => isPaid(r) ? r.amount : 0), refunded: sum(r => r.refunded), fees: sum(r => isPaid(r) ? r.fee : 0),
         net: Math.round((sum(r => isPaid(r) ? r.amount : 0) - sum(r => r.refunded)) * 100) / 100,
@@ -6181,6 +6300,28 @@ async function syncOrderWithRazorpay(orderId) {
   await logPaymentEvent(orderId, 'synced', changed);
   return { changed, payment: paymentView((await Payment.findOne({ orderId }).lean())) };
 }
+// Invoice PDF for the admin (numbers it first if it's an older payment without one).
+app.get('/api/admin/payments/:orderId/invoice', adminAuth, async (req, res) => {
+  try {
+    const p = await Payment.findOne({ orderId: req.params.orderId });
+    if (!p) return res.status(404).json({ message: 'Payment not found' });
+    if (!['paid', 'refunded'].includes(p.status)) return res.status(400).json({ message: 'Invoices are only issued for completed payments.' });
+    const q = await ensureInvoice(p);
+    sendPdf(res, await invoicePdfFor(q), invoiceFileName(q), req.query.download !== '1');
+  } catch (err) { res.status(500).json({ message: err.message }); }
+});
+// Send the invoice to the patient on WhatsApp again.
+app.post('/api/admin/payments/:orderId/send-invoice', adminAuth, async (req, res) => {
+  try {
+    const p = await Payment.findOne({ orderId: req.params.orderId });
+    if (!p || !['paid', 'refunded'].includes(p.status)) return res.status(400).json({ message: 'Only completed payments have an invoice.' });
+    await sendPaymentReceipt(p);
+    const q = await Payment.findById(p._id).lean();
+    const last = (q.events || []).slice(-1)[0];
+    res.json({ message: last?.type === 'invoice_sent' ? `Invoice ${q.invoiceNo} sent on WhatsApp ✅` : `Invoice ${q.invoiceNo} could not be delivered on WhatsApp — download it here and share it yourself.`, ok: last?.type === 'invoice_sent' });
+  } catch (err) { res.status(500).json({ message: err.message }); }
+});
+
 app.post('/api/admin/payments/:orderId/sync', adminAuth, async (req, res) => {
   try {
     if (!PAYMENTS_CONFIGURED) return res.status(503).json({ message: 'Razorpay is not configured.' });
