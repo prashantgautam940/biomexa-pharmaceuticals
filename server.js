@@ -1710,6 +1710,7 @@ mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/biomexa')
     // Queue order: older contacts have no queueRank, and a missing value sorts before "send first".
     Lead.updateMany({ queueRank: { $exists: false } }, { queueRank: 0 }).then(r => { if (r.modifiedCount) console.log(`🔢 Queue order set on ${r.modifiedCount} contacts`); }).catch(() => {});
     Lead.collection.createIndex({ status: 1, queueRank: 1, createdAt: 1, _id: 1 }).catch(() => {});
+    Lead.collection.createIndex({ sentAt: -1 }).catch(() => {});
     // Invites already sent count as one attempt.
     Lead.updateMany({ inviteAttempts: { $in: [null, 0] }, sentAt: { $ne: null } }, { inviteAttempts: 1 }).catch(() => {});
     cleanPlaceNames().catch(e => console.log('⚠️ name cleanup error:', e.message));
@@ -7712,6 +7713,31 @@ async function sentLast24hTotal() {
   return a + b;
 }
 
+function istMidnight() {
+  const ist = new Date(Date.now() + 330 * 60000);
+  return new Date(Date.UTC(ist.getUTCFullYear(), ist.getUTCMonth(), ist.getUTCDate()) - 330 * 60000);
+}
+// What happened to today's invites, from MSG91 delivery data.
+async function todayInviteStats() {
+  const since = istMidnight();
+  const rows = await Lead.aggregate([{ $match: { sentAt: { $gte: since } } }, { $group: { _id: '$delivery', n: { $sum: 1 } } }]);
+  const by = Object.fromEntries(rows.map(r => [r._id || 'pending', r.n]));
+  const offers = await Patient.countDocuments({ lastAdSentAt: { $gte: since } });
+  const invites = rows.reduce((a, r) => a + r.n, 0);
+  return { attempted: invites + offers, invites, offers, read: by.read || 0, delivered: by.delivered || 0, failed: by.failed || 0, pending: (by.sent || 0) + (by.pending || 0) + (by[''] || 0) };
+}
+// The day's sending budget. "Contacts per day" = messages that should REACH people. When
+// "replace undelivered" is on, each invite WhatsApp didn't deliver frees its slot for the next
+// contact in the queue — up to the same number again as extra (so at most 2× the daily number
+// are tried in one day, which keeps the number safe with Meta).
+async function campaignBudget() {
+  const [limit, replace, t] = await Promise.all([getDailyLimit(), getReplaceFailed(), todayInviteStats()]);
+  const maxTries = limit * 2;
+  const counted = t.attempted - (replace ? t.failed : 0);
+  const room = Math.max(0, Math.min(limit - counted, (replace ? maxTries : limit) - t.attempted));
+  return { limit, replace, maxTries, counted, room, today: t, replaced: replace ? Math.min(t.failed, Math.max(0, t.attempted - limit)) : 0 };
+}
+
 // Reads any contact table (CSV text from the browser — Excel, Word, PDF, VCF, photos etc. are
 // turned into CSV on the admin page first). Finds the number column from the values, and the
 // name / condition / medicine / city / doctor / age / gender / language columns from the header.
@@ -7896,13 +7922,14 @@ function summarizeAnalysis(rows) {
 }
 
 async function campaignContext() {
-  const sent = await sentLast24hTotal();
+  const b = await campaignBudget();
   const hour = istHour();
-  const dailyLimit = await getDailyLimit();
+  const dailyLimit = b.limit;
   return {
     dailyLimit,
-    sentLast24h: sent,
-    remainingToday: Math.max(0, dailyLimit - sent),
+    sentLast24h: b.today.attempted,
+    remainingToday: b.room,
+    budget: b,
     withinSendHours: hour >= LEAD_SEND_START_HOUR && hour < LEAD_SEND_END_HOUR,
     inviteTemplateReady: !!(MSG91_CONFIGURED && MSG91_LEAD_TEMPLATE_NAME),
     offerTemplateReady: !!(MSG91_CONFIGURED && MSG91_AD_TEMPLATE_NAME),
@@ -7984,7 +8011,19 @@ async function setAutoQueue(on) {
   autoQueueCache = !!on;
   await AppSetting.updateOne({ key: 'leadAutoQueue' }, { value: !!on }, { upsert: true });
 }
-// How many campaign messages (invites + offers) may go out per rolling 24 hours — set by the admin.
+let replaceFailedCache = null;
+async function getReplaceFailed() {
+  if (replaceFailedCache === null) {
+    const row = await AppSetting.findOne({ key: 'leadReplaceFailed' }).lean();
+    replaceFailedCache = row ? !!row.value : true;
+  }
+  return replaceFailedCache;
+}
+async function setReplaceFailed(on) {
+  replaceFailedCache = !!on;
+  await AppSetting.updateOne({ key: 'leadReplaceFailed' }, { value: !!on }, { upsert: true });
+}
+// How many campaign messages (invites + offers) should reach people per day — set by the admin.
 let dailyLimitCache = null;
 async function getDailyLimit() {
   if (dailyLimitCache === null) {
@@ -8007,6 +8046,8 @@ function startLeadJob(items, by) {
     .finally(() => {
       leadJob.running = false; leadJob.finishedAt = new Date();
       console.log(`📨 WhatsApp campaign (${leadJob.by}): ${leadJob.offers} offers + ${leadJob.invites} invites sent, ${leadJob.failed} failed of ${leadJob.total}`);
+      // Read delivery results soon, so contacts WhatsApp didn't deliver to get replaced in the next round.
+      if (leadJob.invites) setTimeout(() => syncDeliveryFromMsg91('after batch').catch(() => {}), 6 * 60000);
     });
 }
 
@@ -8026,7 +8067,7 @@ async function processLeadQueue(by) {
   if (hour < LEAD_SEND_START_HOUR || hour >= LEAD_SEND_END_HOUR) return { started: false, reason: 'Outside sending hours.' };
   // A send interrupted by a restart: don't risk a duplicate — mark it failed (retry from the page).
   await Lead.updateMany({ status: 'sending', updatedAt: { $lt: new Date(Date.now() - 30 * 60000) } }, { status: 'failed', lastError: 'Interrupted by a server restart — use "Retry failed" to send again' });
-  const room = (await getDailyLimit()) - await sentLast24hTotal();
+  const { room } = await campaignBudget();
   if (room <= 0) return { started: false, reason: 'Daily limit reached.' };
   const items = await nextQueueBatch(room);
   if (!items.length) return { started: false, reason: 'Queue is empty.' };
@@ -8045,7 +8086,8 @@ setInterval(async () => {
 async function queueStatus() {
   const [waiting, failed] = await Promise.all([Lead.countDocuments({ status: 'new' }), Lead.countDocuments({ status: 'failed' })]);
   const perDay = await getDailyLimit();
-  return { autoQueue: await getAutoQueue(), perDay, waiting, failed, daysToFinish: waiting ? Math.ceil(waiting / perDay) : 0 };
+  const b = await campaignBudget();
+  return { autoQueue: await getAutoQueue(), replaceFailed: b.replace, budget: b, perDay, waiting, failed, daysToFinish: waiting ? Math.ceil(waiting / perDay) : 0 };
 }
 
 // Admin sets how many campaign messages go out per day. Raising it starts sending the extra
@@ -8127,6 +8169,17 @@ app.post('/api/admin/leads/stop-sending', adminAuth, async (req, res) => {
   for (let i = 0; i < 20 && leadJob.running; i++) await new Promise(r => setTimeout(r, 250));
   const left = await Lead.countDocuments({ status: 'new' });
   res.json({ message: `Stopped after ${leadJob.sent} message${leadJob.sent === 1 ? '' : 's'}. ${left.toLocaleString('en-IN')} contacts stay waiting in the queue.`, job: leadJob });
+});
+
+// Turn "replace undelivered messages" on/off. Turning it on can send replacements right away.
+app.post('/api/admin/leads/replace-failed', adminAuth, async (req, res) => {
+  try {
+    await setReplaceFailed(req.body?.enabled === true);
+    console.log(`🤖 Replace undelivered ${req.body?.enabled === true ? 'ON' : 'OFF'} by ${req.admin?.username || 'admin'}`);
+    let kicked = null;
+    if (req.body?.enabled === true && await getAutoQueue()) kicked = await processLeadQueue('auto queue');
+    res.json({ ...(await queueStatus()), kicked, job: leadJob });
+  } catch (err) { res.status(500).json({ message: err.message }); }
 });
 
 app.post('/api/admin/leads/auto', adminAuth, async (req, res) => {

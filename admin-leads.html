@@ -105,6 +105,28 @@ td .sub { font-size: .78rem; color: var(--muted); }
 .n-undeliverable .num { color: #9b1c1c; }
 .p-notdel { background: #fff4e0; color: #8a5300; }
 td.ck, th.ck { width: 28px; } td.ck input, th.ck input { width: 16px; height: 16px; cursor: pointer; }
+.as-head { display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; }
+.switch.big .slider { width: 56px; height: 30px; } .switch.big .slider::after { width: 24px; height: 24px; }
+.switch.big input:checked + .slider::after { transform: translateX(26px); }
+.switch.big .switch-lbl { font-size: 1.1rem; }
+.as-state { font-size: .88rem; color: var(--muted); flex: 1; min-width: 220px; }
+.as-today { margin-top: 1rem; padding: .9rem 1rem; background: #fff; border: 1px solid var(--line); border-radius: 12px; }
+.as-bar-top { display: flex; justify-content: space-between; gap: .5rem; font-size: .88rem; margin-bottom: .45rem; flex-wrap: wrap; }
+.as-bar { display: flex; height: 12px; border-radius: 999px; background: #edf1f7; overflow: hidden; }
+.as-bar span { display: block; height: 100%; transition: width .4s; }
+.as-bar .ok { background: #1fa855; } .as-bar .wait { background: #f2b33d; } .as-bar .bad { background: #e0565c; }
+.as-tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: .6rem; margin-top: .8rem; }
+.as-tiles div { background: var(--inner); border-radius: 10px; padding: .55rem .7rem; }
+.as-tiles span { display: block; font-size: .74rem; color: var(--muted); }
+.as-tiles b { font-size: 1.35rem; color: var(--navy); }
+.as-tiles .ok b { color: #11663a; } .as-tiles .wait b { color: var(--amber); } .as-tiles .bad b { color: var(--danger); }
+.as-tiles small { display: block; font-size: .72rem; color: var(--muted); }
+@media (max-width: 640px) { .as-tiles { grid-template-columns: repeat(2, 1fr); } }
+.chip { border: 1px solid #cfd6e2; background: #fff; border-radius: 999px; padding: .38rem .9rem; font: inherit; font-weight: 700; cursor: pointer; color: var(--navy); }
+.chip.on { background: var(--navy); color: #fff; border-color: var(--navy); }
+.perday label.switch { display: inline-flex; margin-bottom: 0; }
+.switch.small .switch-lbl { font-weight: 600; }
+.as-queue { margin-top: .9rem; font-size: .9rem; }
 .perday { margin-top: 1rem; padding: .8rem 1rem; background: rgba(255,255,255,.65); border: 1px solid #cfe9d9; border-radius: 12px; }
 .perday label { display: block; font-size: .9rem; margin-bottom: .45rem; }
 .perday-row { display: flex; gap: .45rem; align-items: center; flex-wrap: wrap; }
@@ -193,28 +215,48 @@ details summary { cursor: pointer; font-weight: 700; color: var(--navy); font-si
   <div class="warn" id="tplWarn"></div>
 
   <div class="card wa" id="waitCard" style="display:none">
-    <div class="sendbar" style="border:0;padding:0;background:none;align-items:flex-start">
-      <div>
-        <b style="font-size:1.05rem"><i class="fas fa-list-ol"></i> Invite queue: <span id="waitN">0</span> waiting</b>
-        <small id="queueTxt" style="font-size:.85rem;margin-top:.35rem"></small>
-      </div>
-      <label class="switch" title="Send the queue automatically every day">
+    <div class="as-head">
+      <label class="switch big" title="Send the queue automatically every day">
         <input type="checkbox" id="autoToggle" onchange="toggleAuto(this.checked)">
         <span class="slider"></span><span class="switch-lbl" id="autoLbl">Auto-send</span>
       </label>
+      <div class="as-state" id="autoState"></div>
     </div>
+
+    <div class="as-today">
+      <div class="as-bar-top"><b>Today</b><span id="todayGoal"></span></div>
+      <div class="as-bar"><span class="ok" id="barOk"></span><span class="wait" id="barWait"></span><span class="bad" id="barBad"></span></div>
+      <div class="as-tiles">
+        <div><span>Sent today</span><b id="tSent">0</b></div>
+        <div class="ok"><span>Reached (delivered + read)</span><b id="tOk">0</b></div>
+        <div class="wait"><span>Waiting for WhatsApp</span><b id="tWait">0</b></div>
+        <div class="bad"><span>Not delivered</span><b id="tBad">0</b><small id="tRepl"></small></div>
+      </div>
+    </div>
+
     <div class="perday">
-      <label for="perDay"><b>Contacts per day</b></label>
-      <div class="perday-row">
-        <button type="button" class="btn ghost sm" onclick="stepPerDay(-50)" aria-label="50 fewer">−</button>
-        <input type="number" id="perDay" min="1" max="100000" step="1" inputmode="numeric">
-        <button type="button" class="btn ghost sm" onclick="stepPerDay(50)" aria-label="50 more">+</button>
+      <label><b>Contacts per day</b> <span class="muted" style="font-weight:400">— tap to change, it saves straight away</span></label>
+      <div class="perday-row" id="perDayChips">
+        <button type="button" class="chip" data-n="50" onclick="pickPerDay(50)">50</button>
+        <button type="button" class="chip" data-n="100" onclick="pickPerDay(100)">100</button>
+        <button type="button" class="chip" data-n="200" onclick="pickPerDay(200)">200</button>
+        <button type="button" class="chip" data-n="250" onclick="pickPerDay(250)">250</button>
+        <button type="button" class="chip" data-n="500" onclick="pickPerDay(500)">500</button>
+        <span class="muted">or</span>
+        <input type="number" id="perDay" min="1" max="100000" step="1" inputmode="numeric" aria-label="Contacts per day">
         <button type="button" class="btn sm" id="perDayBtn" onclick="savePerDay()"><i class="fas fa-check"></i> Save</button>
       </div>
-      <small id="perDayHint">How many invites + offers go out automatically each day (9 AM – 9 PM). Keep it at or below your WhatsApp limit in Meta → Messaging limits (now 250; 2,000 after the upgrade) and leave room for dose reminders.</small>
+      <label class="switch small" style="margin-top:.8rem">
+        <input type="checkbox" id="replToggle" onchange="toggleReplace(this.checked)">
+        <span class="slider"></span><span class="switch-lbl">Replace undelivered messages</span>
+      </label>
+      <small id="perDayHint"></small>
       <div id="perDayResult" class="result"></div>
     </div>
-    <div style="display:flex;gap:.6rem;flex-wrap:wrap;margin-top:.9rem">
+
+    <div class="as-queue"><i class="fas fa-list-ol"></i> <b><span id="waitN">0</span> waiting in the queue</b> <span id="queueTxt" class="muted"></span></div>
+
+    <div style="display:flex;gap:.6rem;flex-wrap:wrap;margin-top:.8rem">
       <button class="btn wa sm" id="waitBtn" onclick="sendWaiting(false)"><i class="fab fa-whatsapp"></i> Send now</button>
       <button class="btn ghost sm" id="retryBtn" onclick="sendWaiting(true)" style="display:none"><i class="fas fa-rotate-right"></i> <span id="failN">Retry failed</span></button>
       <button class="btn del sm" id="stopBtn" onclick="stopSending()" hidden><i class="fas fa-stop"></i> Stop sending now</button>
@@ -764,18 +806,45 @@ function toggleAuto(on) {
 
 function renderQueue() {
   const d = data, qd = d.queue || { waiting: d.counts.new || 0, failed: d.counts.failed || 0, autoQueue: true, daysToFinish: 0 };
+  const n = x => Number(x || 0).toLocaleString('en-IN');
   const wc = document.getElementById('waitCard');
-  wc.style.display = (qd.waiting || qd.failed || leadJobRunning) && d.inviteTemplateReady ? 'block' : 'none';
-  document.getElementById('waitN').textContent = Number(qd.waiting).toLocaleString('en-IN');
+  wc.style.display = d.inviteTemplateReady ? 'block' : 'none';
+  document.getElementById('waitN').textContent = n(qd.waiting);
   document.getElementById('autoToggle').checked = !!qd.autoQueue;
-  document.getElementById('autoLbl').textContent = qd.autoQueue ? 'Auto-send ON' : 'Auto-send OFF';
+  document.getElementById('autoLbl').textContent = qd.autoQueue ? 'Auto-send is ON' : 'Auto-send is OFF';
   document.getElementById('failN').textContent = `Retry failed (${qd.failed})`;
   document.getElementById('retryBtn').style.display = qd.failed ? '' : 'none';
-  const today = Math.max(0, d.remainingToday);
-  document.getElementById('queueTxt').innerHTML = !qd.waiting ? 'The queue is empty. Upload a list and new contacts join it automatically.'
-    : qd.autoQueue
-      ? `Oldest uploads go first. Up to <b>${d.dailyLimit}</b> are invited automatically every day between 9 AM and 9 PM — about <b>${qd.daysToFinish} day${qd.daysToFinish === 1 ? '' : 's'}</b> to finish. ` + (d.withinSendHours ? (today ? `${today} more can go today.` : 'Today\'s limit is used — it continues as the 24-hour limit frees up.') : 'Next sending starts at 9 AM.')
-      : 'Auto-send is OFF. Press <b>Send now</b> each day, or turn auto-send on.';
+  const b = qd.budget || d.budget || { limit: d.dailyLimit, room: d.remainingToday, replace: true, maxTries: d.dailyLimit * 2, today: { attempted: d.sentLast24h || 0, read: 0, delivered: 0, failed: 0, pending: 0 }, replaced: 0 };
+  const t = b.today, reached = (t.read || 0) + (t.delivered || 0);
+  const today = Math.max(0, b.room);
+  // Plain-words status line next to the switch.
+  document.getElementById('autoState').innerHTML = !qd.autoQueue
+    ? 'Nothing goes out by itself. Turn it on, or press <b>Send now</b>.'
+    : !qd.waiting ? 'Ready — upload a list and it starts sending by itself.'
+    : !d.withinSendHours ? `Sleeping — next contacts go out at <b>9 AM</b> (sends 9 AM–9 PM).`
+    : today ? `Sending by itself — <b>${n(today)}</b> more go out today, checked every 10 minutes.`
+    : t.pending && b.replace ? 'Today\'s number is sent. Waiting for WhatsApp to report delivery — any that fail are replaced automatically.'
+    : 'Today\'s number is done. It continues tomorrow at 9 AM.';
+  // Today's progress bar: green = reached, amber = waiting for WhatsApp, red = not delivered.
+  const scale = Math.max(b.limit, t.attempted, 1);
+  document.getElementById('barOk').style.width = (reached / scale * 100) + '%';
+  document.getElementById('barWait').style.width = (t.pending / scale * 100) + '%';
+  document.getElementById('barBad').style.width = (t.failed / scale * 100) + '%';
+  document.getElementById('todayGoal').innerHTML = `<b>${n(reached)}</b> of <b>${n(b.limit)}</b> reached` + (b.replace ? ` · up to ${n(b.maxTries)} tries today` : '');
+  document.getElementById('tSent').textContent = n(t.attempted);
+  document.getElementById('tOk').textContent = n(reached);
+  document.getElementById('tWait').textContent = n(t.pending);
+  document.getElementById('tBad').textContent = n(t.failed);
+  const coming = b.replace ? Math.max(0, Math.min(t.failed - (b.replaced || 0), today)) : 0;
+  document.getElementById('tRepl').textContent = !t.failed ? '' : !b.replace ? 'not replaced (switch is off)'
+    : [b.replaced ? `${n(b.replaced)} replaced with new contacts` : '', coming ? `${n(coming)} replacements on the way` : ''].filter(Boolean).join(' · ') || 'replacement limit for today reached';
+  document.getElementById('replToggle').checked = !!b.replace;
+  document.getElementById('perDayHint').innerHTML = (b.replace
+    ? `<b>On:</b> when WhatsApp doesn't deliver an invite, the next contact in the queue is sent instead, so about ${n(b.limit)} people are reached. At most ${n(b.maxTries)} are tried in a day.`
+    : `<b>Off:</b> exactly ${n(b.limit)} invites go out a day, whether they are delivered or not.`)
+    + ` Keep the number within your Meta limit (Meta → Messaging limits) and leave room for dose reminders.`;
+  document.querySelectorAll('#perDayChips .chip').forEach(c => c.classList.toggle('on', +c.dataset.n === b.limit));
+  document.getElementById('queueTxt').textContent = qd.waiting ? `· oldest first · about ${qd.daysToFinish} day${qd.daysToFinish === 1 ? '' : 's'} to finish` : '· upload a list to add contacts';
   if (!leadJobRunning) document.getElementById('waitBtn').disabled = !today || !d.withinSendHours || !qd.waiting;
   const pd = document.getElementById('perDay');
   if (document.activeElement !== pd && !pd.dataset.dirty) pd.value = d.dailyLimit;
@@ -838,6 +907,16 @@ function stepPerDay(delta) {
   pd.dataset.dirty = '1';
 }
 document.addEventListener('input', e => { if (e.target && e.target.id === 'perDay') e.target.dataset.dirty = '1'; });
+function pickPerDay(n) { const pd = document.getElementById('perDay'); pd.value = n; pd.dataset.dirty = '1'; savePerDay(); }
+function toggleReplace(on) {
+  post('/api/admin/leads/replace-failed', { enabled: on }).then(({ ok, d }) => {
+    if (!ok) { document.getElementById('replToggle').checked = !on; return showResult('perDayResult', 'err', d.message); }
+    data.queue = { ...data.queue, ...d };
+    renderQueue();
+    showResult('perDayResult', 'ok', on ? (d.kicked && d.kicked.started ? `On — sending ${d.kicked.count} replacement${d.kicked.count === 1 ? '' : 's'} now.` : 'On — undelivered invites will be replaced with the next contacts.') : 'Off — undelivered invites are not replaced.');
+    if (d.job && d.job.running) renderJob(d.job);
+  }).catch(e => showResult('perDayResult', 'err', e.message));
+}
 function savePerDay() {
   const pd = document.getElementById('perDay');
   const n = parseInt(pd.value, 10);
