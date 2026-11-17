@@ -2164,8 +2164,12 @@ async function razorpaySettlementSummary() {
   const settlements = (sets.items || []).map(x => ({ id: x.id, amount: x.amount / 100, fees: (x.fees || 0) / 100, tax: (x.tax || 0) / 100, status: x.status, utr: x.utr || '', created: when(x.created_at) }));
   const capturedTotal = payments.filter(p => p.status === 'captured').reduce((a, p) => a + p.amount, 0);
   const capturedFees = payments.filter(p => p.status === 'captured').reduce((a, p) => a + p.fee, 0);
-  const settledTotal = settlements.filter(x => x.status === 'processed').reduce((a, x) => a + x.amount, 0);
-  return { payments, settlements, capturedTotal, capturedFees, settledTotal, at: new Date() };
+  const sum = st => Math.round(settlements.filter(x => x.status === st).reduce((a, x) => a + x.amount, 0) * 100) / 100;
+  const settledTotal = sum('processed'), failedTotal = sum('failed'), inProgress = sum('created');
+  const netCaptured = Math.round((capturedTotal - capturedFees) * 100) / 100;
+  // Money Razorpay has collected but not yet put into a settlement (next T+2 working-day cycle).
+  const waiting = Math.max(0, Math.round((netCaptured - settledTotal - failedTotal - inProgress) * 100) / 100);
+  return { payments, settlements, capturedTotal, capturedFees, netCaptured, settledTotal, failedTotal, inProgress, waiting, at: new Date() };
 }
 app.get('/api/admin/razorpay-settlements', adminAuth, async (req, res) => {
   try { res.json(await razorpaySettlementSummary()); }

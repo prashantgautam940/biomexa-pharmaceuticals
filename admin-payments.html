@@ -115,6 +115,14 @@ code { font-size: .76rem; background: var(--inner); padding: 1px 5px; border-rad
     <div class="stat"><div class="lbl"><i class="fas fa-receipt" style="color:var(--amber)"></i> Razorpay fees</div><div class="num" id="sFees">–</div><div class="hint">incl. GST</div></div>
   </div>
 
+  <div class="card" id="rzpCard">
+    <div class="toolbar" style="margin-bottom:.6rem">
+      <h2 style="font-size:1.1rem;display:flex;align-items:center;gap:.5rem"><i class="fas fa-building-columns" style="color:var(--navy)"></i> Razorpay money — collected vs sent to your bank</h2>
+      <button class="btn ghost sm" id="rzpBtn" onclick="loadRzp()"><i class="fas fa-rotate"></i> Check Razorpay</button>
+    </div>
+    <div id="rzpBody"><div class="loading"><i class="fas fa-spinner fa-spin"></i> Asking Razorpay…</div></div>
+  </div>
+
   <div class="card">
     <div class="toolbar">
       <div style="display:flex;gap:.6rem;flex-wrap:wrap;align-items:center">
@@ -370,6 +378,30 @@ function exportCsv() {
   a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 
+const RZ_ST = { processed: ['Sent to bank', 'b-paid'], failed: ['Failed — not received', 'b-failed'], created: ['On its way', 'b-pending'] };
+function loadRzp() {
+  const box = document.getElementById('rzpBody'), btn = document.getElementById('rzpBtn');
+  btn.disabled = true;
+  const rs = n => '₹' + Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  authFetch('/api/admin/razorpay-settlements').then(r => r.json().then(d => ({ ok: r.ok, d }))).then(({ ok, d }) => {
+    if (!ok) throw new Error(d.message || 'Could not read Razorpay');
+    const S = d.settlements || [];
+    let html = `<div class="mini" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr))">
+      <div><div class="k">Collected by Razorpay</div><div class="v">${rs(d.netCaptured)}</div><div class="k">${rs(d.capturedTotal)} paid − ${rs(d.capturedFees)} fees</div></div>
+      <div><div class="k">Received in your bank</div><div class="v" style="color:var(--green)">${rs(d.settledTotal)}</div><div class="k">settlements with a UTR</div></div>
+      <div><div class="k">On its way</div><div class="v" style="color:var(--amber)">${rs(d.inProgress + d.waiting)}</div><div class="k">usually 2 working days after payment</div></div>
+      <div><div class="k">Stuck — transfer failed</div><div class="v" style="color:${d.failedTotal ? 'var(--danger)' : 'var(--muted)'}">${rs(d.failedTotal)}</div><div class="k">${d.failedTotal ? 'needs fixing in Razorpay' : 'nothing stuck'}</div></div>
+    </div>`;
+    if (d.failedTotal) html += `<div class="result err" style="display:block;margin:0 0 .8rem"><b>${rs(d.failedTotal)} could not be sent to your bank.</b> In the Razorpay Dashboard open <b>Settlements</b> → the failed one to see why, then check <b>Account &amp; Settings → Bank account</b> (account number, IFSC, and the name exactly as the bank has it). Once fixed, ask Razorpay Support to re-send it, quoting the settlement ID below.</div>`;
+    html += S.length ? `<div class="tbl-wrap"><table><thead><tr><th>Settlement</th><th>Date</th><th>Amount</th><th>Fees</th><th>Status</th><th>Bank reference (UTR)</th></tr></thead><tbody>` +
+      S.map(x => { const [l, c] = RZ_ST[x.status] || [x.status, 'b-pending']; return `<tr><td><code>${esc(x.id)}</code></td><td>${esc(x.created)}</td><td class="num"><b>${rs(x.amount)}</b></td><td class="num">${rs(x.fees + x.tax)}</td><td><span class="badge ${c}">${l}</span></td><td>${x.utr ? `<code>${esc(x.utr)}</code><div class="s">search this in your bank statement</div>` : '—'}</td></tr>`; }).join('') + '</tbody></table></div>'
+      : '<div class="empty" style="padding:1rem">No settlements yet — Razorpay sends collected money about 2 working days after each payment.</div>';
+    html += `<div class="s" style="font-size:.76rem;color:var(--muted);margin-top:.6rem">Live from Razorpay · last ${(d.payments || []).length} payments · checked ${new Date(d.at).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })}. In your bank, Razorpay deposits show as NEFT/IMPS from RAZORPAY with the UTR above.</div>`;
+    box.innerHTML = html;
+  }).catch(e => { box.innerHTML = `<div class="result err" style="display:block">${esc(e.message)}</div>`; })
+    .finally(() => { btn.disabled = false; });
+}
+loadRzp();
 load();
 </script>
 </body>
