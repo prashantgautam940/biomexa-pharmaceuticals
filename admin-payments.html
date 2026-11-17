@@ -378,7 +378,7 @@ function exportCsv() {
   a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 
-const RZ_ST = { processed: ['Sent to bank', 'b-paid'], failed: ['Failed — not received', 'b-failed'], created: ['On its way', 'b-pending'] };
+const RZ_ST = { processed: ['Sent to bank', 'b-paid'], failed: ['Delayed — Razorpay will re-send', 'b-failed'], created: ['On its way', 'b-pending'] };
 function loadRzp() {
   const box = document.getElementById('rzpBody'), btn = document.getElementById('rzpBtn');
   btn.disabled = true;
@@ -390,9 +390,9 @@ function loadRzp() {
       <div><div class="k">Collected by Razorpay</div><div class="v">${rs(d.netCaptured)}</div><div class="k">${rs(d.capturedTotal)} paid − ${rs(d.capturedFees)} fees</div></div>
       <div><div class="k">Received in your bank</div><div class="v" style="color:var(--green)">${rs(d.settledTotal)}</div><div class="k">settlements with a UTR</div></div>
       <div><div class="k">On its way</div><div class="v" style="color:var(--amber)">${rs(d.inProgress + d.waiting)}</div><div class="k">usually 2 working days after payment</div></div>
-      <div><div class="k">Stuck — transfer failed</div><div class="v" style="color:${d.failedTotal ? 'var(--danger)' : 'var(--muted)'}">${rs(d.failedTotal)}</div><div class="k">${d.failedTotal ? 'needs fixing in Razorpay' : 'nothing stuck'}</div></div>
+      <div><div class="k">Delayed transfer</div><div class="v" style="color:${d.failedTotal ? 'var(--danger)' : 'var(--muted)'}">${rs(d.failedTotal)}</div><div class="k">${d.failedTotal ? 'Razorpay is re-sending it' : 'nothing delayed'}</div></div>
     </div>`;
-    if (d.failedTotal) html += `<div class="result err" style="display:block;margin:0 0 .8rem"><b>${rs(d.failedTotal)} could not be sent to your bank.</b> In the Razorpay Dashboard open <b>Settlements</b> → the failed one to see why, then check <b>Account &amp; Settings → Bank account</b> (account number, IFSC, and the name exactly as the bank has it). Once fixed, ask Razorpay Support to re-send it, quoting the settlement ID below.</div>`;
+    if (d.failedTotal) html += `<div class="result err" style="display:block;margin:0 0 .8rem"><b>${rs(d.failedTotal)} hasn't reached your bank yet.</b> Open the settlement in the Razorpay Dashboard → <b>Settlements</b>: if its timeline says <i>"Settlement delayed … technical issue"</i>, Razorpay re-sends it by itself — nothing to do. If it still shows here after 2 working days, or the timeline mentions your bank account, raise a ticket in Razorpay <b>Help &amp; Support</b> with the settlement ID below.</div>`;
     html += S.length ? `<div class="tbl-wrap"><table><thead><tr><th>Settlement</th><th>Date</th><th>Amount</th><th>Fees</th><th>Status</th><th>Bank reference (UTR)</th></tr></thead><tbody>` +
       S.map(x => { const [l, c] = RZ_ST[x.status] || [x.status, 'b-pending']; return `<tr><td><code>${esc(x.id)}</code></td><td>${esc(x.created)}</td><td class="num"><b>${rs(x.amount)}</b></td><td class="num">${rs(x.fees + x.tax)}</td><td><span class="badge ${c}">${l}</span></td><td>${x.utr ? `<code>${esc(x.utr)}</code><div class="s">search this in your bank statement</div>` : '—'}</td></tr>`; }).join('') + '</tbody></table></div>'
       : '<div class="empty" style="padding:1rem">No settlements yet — Razorpay sends collected money about 2 working days after each payment.</div>';
