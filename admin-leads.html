@@ -103,6 +103,7 @@ td .sub { font-size: .78rem; color: var(--muted); }
 .emsg { font-size: .85rem; color: var(--muted); min-height: 1em; } .emsg.bad { color: #b42318; }
 .p-undeliverable { background: #fdecec; color: #9b1c1c; }
 .n-undeliverable .num { color: #9b1c1c; }
+.p-sending { background: #e8f0ff; color: #1d4ed8; }
 .p-notdel { background: #fff4e0; color: #8a5300; }
 td.ck, th.ck { width: 28px; } td.ck input, th.ck input { width: 16px; height: 16px; cursor: pointer; }
 .as-head { display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; }
@@ -902,6 +903,8 @@ function loadWaReport(refresh) {
       <div class="table-wrap"><table><thead><tr><th>Message (template)</th><th>Total</th><th>Read</th><th>Delivered</th><th>Sent only</th><th>Failed</th></tr></thead><tbody>` +
       (r.byTemplate || []).map(t => `<tr><td><b>${esc(t.name)}</b></td><td>${t.total}</td><td>${t.read || 0}</td><td>${t.delivered || 0}</td><td>${t.sent || 0}</td><td style="color:${t.failed ? 'var(--danger)' : 'inherit'}">${t.failed || 0}</td></tr>`).join('') +
       `</tbody></table></div>` +
+      (r.cost ? (() => { const c = r.cost, paid = (c.read || 0) + (c.delivered || 0) + (c.sent || 0), fc = c.failed || 0;
+        return `<div class="wr-reasons" style="background:#eefaf2"><b><i class="fas fa-indian-rupee-sign"></i> What MSG91 charged</b> — ₹${paid.toFixed(2)} for ${n('read') !== '0' || n('delivered') !== '0' ? 'delivered / read' : 'sent'} messages · <b>₹${fc.toFixed(2)} for the ${n('failed')} that failed</b>${fc ? '' : ' (WhatsApp only charges when a message is delivered)'}.</div>`; })() : '') +
       ((r.reasons || []).length ? `<div class="wr-reasons"><b>Why messages failed</b><ul>${r.reasons.map(x => `<li><b>${x.n}×</b> ${esc(x.reason)}</li>`).join('')}</ul></div>` : '') +
       `<p class="muted" style="font-size:.78rem;margin-top:.6rem">Read from MSG91 at ${new Date(r.at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })} · ${r.applied || 0} contact statuses updated · refreshes every 2 hours.</p>`;
     if (r.applied) load(true);
