@@ -2139,7 +2139,38 @@ setTimeout(async () => {
   const ws = RAZORPAY_WEBHOOK_SECRET ? 'webhook secret set' : 'webhook secret MISSING (RAZORPAY_WEBHOOK_SECRET)';
   const spaces = (RAZORPAY_KEY_ID !== RAZORPAY_KEY_ID.trim() || RAZORPAY_KEY_SECRET !== RAZORPAY_KEY_SECRET.trim()) ? ' · ⚠️ a key has extra spaces — remove them on Render' : '';
   console.log(`💳 Razorpay: ${mode} mode, key …${RAZORPAY_KEY_ID.slice(-4)} · ${check} · ${ws}${spaces}`);
+  const st = await razorpaySettlementSummary().catch(e => ({ error: e.message }));
+  if (st.error) console.log('💳 Razorpay settlements: could not read —', st.error);
+  else {
+    console.log(`💳 Razorpay money: ${st.payments.length} recent payments · captured ₹${st.capturedTotal} · settlements ${st.settlements.length}`);
+    st.settlements.slice(0, 8).forEach(x => console.log(`   🏦 settlement ${x.id}: ₹${x.amount} (fees ₹${x.fees}) · ${x.status} · ${x.created} · UTR ${x.utr || '—'}`));
+    st.payments.slice(0, 10).forEach(x => console.log(`   💳 ${x.id}: ₹${x.amount} · ${x.status}${x.captured ? ' (captured)' : ''} · ${x.method} · ${x.created}`));
+  }
 }, 3000);
+
+// What Razorpay has collected and sent to the bank (for "where is my money?").
+async function razorpaySettlementSummary() {
+  if (!PAYMENTS_CONFIGURED) throw new Error('Razorpay keys are not set');
+  const auth = { Authorization: 'Basic ' + Buffer.from(`${RAZORPAY_KEY_ID.trim()}:${RAZORPAY_KEY_SECRET.trim()}`).toString('base64') };
+  const get = async path => {
+    const r = await fetch('https://api.razorpay.com' + path, { headers: auth, signal: AbortSignal.timeout(15000) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j?.error?.description || `HTTP ${r.status}`);
+    return j;
+  };
+  const when = t => new Date(t * 1000).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Kolkata' });
+  const [pays, sets] = await Promise.all([get('/v1/payments?count=50'), get('/v1/settlements?count=20')]);
+  const payments = (pays.items || []).map(p => ({ id: p.id, amount: p.amount / 100, fee: (p.fee || 0) / 100, status: p.status, captured: !!p.captured, method: p.method, created: when(p.created_at), contact: p.contact ? '…' + String(p.contact).slice(-4) : '' }));
+  const settlements = (sets.items || []).map(x => ({ id: x.id, amount: x.amount / 100, fees: (x.fees || 0) / 100, tax: (x.tax || 0) / 100, status: x.status, utr: x.utr || '', created: when(x.created_at) }));
+  const capturedTotal = payments.filter(p => p.status === 'captured').reduce((a, p) => a + p.amount, 0);
+  const capturedFees = payments.filter(p => p.status === 'captured').reduce((a, p) => a + p.fee, 0);
+  const settledTotal = settlements.filter(x => x.status === 'processed').reduce((a, x) => a + x.amount, 0);
+  return { payments, settlements, capturedTotal, capturedFees, settledTotal, at: new Date() };
+}
+app.get('/api/admin/razorpay-settlements', adminAuth, async (req, res) => {
+  try { res.json(await razorpaySettlementSummary()); }
+  catch (err) { res.status(502).json({ message: 'Could not read from Razorpay: ' + err.message }); }
+});
 // Test-run switch. While false (the default), nothing is locked — every patient keeps every
 // feature even after their trial — but trial tracking and the day-26 "subscribe" WhatsApp
 // reminders still run. Set SUBSCRIPTION_ENFORCED=true on Render to start locking features.
