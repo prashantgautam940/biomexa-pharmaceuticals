@@ -266,6 +266,15 @@ details summary { cursor: pointer; font-weight: 700; color: var(--navy); font-si
     <div id="waitResult" class="result"></div>
   </div>
 
+  <div class="card" id="checkCard">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:.6rem;flex-wrap:wrap">
+      <h2 style="margin:0"><i class="fas fa-shield-halved"></i> Number check — before anything is sent</h2>
+      <button class="btn ghost sm" onclick="loadLists()"><i class="fas fa-rotate"></i> Refresh</button>
+    </div>
+    <p class="desc" style="margin-top:.4rem">Every number is checked before it is sent: fake-looking numbers (9999999999, 1234567890…) and numbers WhatsApp has already refused are skipped. Each new list first sends a <b>test of 25</b>; if most of them turn out not to be on WhatsApp, the rest of that list is <b>paused</b> so your credit isn't spent on it.</p>
+    <div id="lists"><div class="loading"><i class="fas fa-spinner fa-spin"></i> Checking lists…</div></div>
+  </div>
+
   <div class="card" id="balCard">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:.6rem;flex-wrap:wrap">
       <h2 style="margin:0"><i class="fas fa-wallet"></i> MSG91 WhatsApp balance</h2>
@@ -1121,6 +1130,25 @@ async function loadBalance() {
   finally { btn.disabled = false; }
 }
 
+const LSTATE = { new: ['Not started', 'p-new'], testing: ['Testing first 25', 'p-sending'], good: ['Good — sending', 'p-joined'], poor: ['Weak list', 'p-notdel'], paused: ['Paused', 'p-undeliverable'] };
+function loadLists() {
+  const el = document.getElementById('lists');
+  authFetch('/api/admin/leads/lists').then(r => r.json()).then(r => {
+    const L = (r.lists || []).filter(l => l.total);
+    if (!L.length) { el.innerHTML = '<div class="empty">No lists yet. Upload one and its numbers are checked here.</div>'; return; }
+    const n = x => Number(x || 0).toLocaleString('en-IN'), pc = x => x === null || x === undefined ? '—' : Math.round(x * 100) + '%';
+    el.innerHTML = `<div class="table-wrap"><table><thead><tr><th>List</th><th>Contacts</th><th>Tried</th><th>Reached</th><th>Not on WhatsApp</th><th>Held back by Meta</th><th>Waiting</th><th>Status</th><th></th></tr></thead><tbody>` +
+      L.map(l => {
+        const [lbl, cls] = LSTATE[l.state] || [l.state, ''];
+        return `<tr><td><b>${esc(l.list)}</b></td><td>${n(l.total)}</td><td>${n(l.tried)}</td><td style="color:#11663a">${n(l.reached)} <small class="muted">${l.known ? pc(l.reachRate) : ''}</small></td><td style="color:var(--danger)">${n(l.notOnWa)} <small class="muted">${l.known ? pc(l.badRate) : ''}</small></td><td>${n(l.heldBack)}</td><td>${n(l.waiting)}${l.paused ? ` <small class="muted">+${n(l.paused)} paused</small>` : ''}</td><td><span class="pill ${cls}">${lbl}</span></td><td>${l.paused ? `<button class="btn ghost sm" onclick="resumeList(${esc(JSON.stringify(l.list))})">Resume</button>` : ''}</td></tr>`;
+      }).join('') + '</tbody></table></div>';
+  }).catch(e => { el.innerHTML = `<div class="empty">Couldn't load lists — ${esc(e.message)}</div>`; });
+}
+function resumeList(list) {
+  if (!confirm(`Resume "${list}"? Most of its numbers aren't on WhatsApp, so many invites will fail (they are not charged, but they lower your reach).`)) return;
+  post('/api/admin/leads/lists/resume', { list }).then(({ ok, d }) => { showResult('waitResult', ok ? 'ok' : 'err', d.message); loadLists(); load(true); });
+}
+
 function openEdit(id) {
   const l = data.leads.find(x => x.id === id); if (!l) return;
   editId = id;
@@ -1174,6 +1202,7 @@ function exportCsv() {
 load();
 loadWaReport(false);
 loadBalance();
+loadLists();
 </script>
 </body>
 </html>

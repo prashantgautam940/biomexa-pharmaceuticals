@@ -7296,7 +7296,8 @@ const Lead = mongoose.model('Lead', new mongoose.Schema({
   phone: { type: String, required: true, unique: true }, // canonical 91XXXXXXXXXX
   source: { type: String, default: '' },                  // e.g. "Dr Sharma clinic", "Pharmacy camp"
   status: { type: String, enum: ['new', 'sending', 'sent', 'failed', 'replied', 'joined', 'optout', 'stopped', 'undeliverable'], default: 'new', index: true }, // stopped = held by admin, never auto-invited; undeliverable = WhatsApp can't reach this number
-  inviteAttempts: { type: Number, default: 0 }, // invites accepted by MSG91 for this contact (used to allow one retry when Meta held it back)
+  inviteAttempts: { type: Number, default: 0 },
+  pausedBy: { type: String, default: '' }, // 'list-check' = held by the automatic number check // invites accepted by MSG91 for this contact (used to allow one retry when Meta held it back)
   sentAt: Date,
   repliedAt: Date,
   joinedAt: Date,
@@ -7852,6 +7853,68 @@ function parseContactsCsv(csv) {
 
 // Sorts every contact into: invite (new to Biomexa), offer (registered patient), or skipped (why),
 // and works out each new contact's profile and the message they will get.
+// ===== Number check before sending =====
+// WhatsApp gives no way to ask "is this number on WhatsApp?" before messaging it, so Biomexa
+// checks what it can: numbers that can't be real, numbers WhatsApp already refused (from any
+// message we sent, not only invites), and — learning from delivery results — whole lists whose
+// numbers mostly aren't on WhatsApp. A new list is tried with a small sample first.
+function fakeNumberReason(phone) {
+  const d = String(phone).replace(/\D/g, '').slice(-10);
+  if (d.length !== 10) return 'Not a valid mobile number';
+  if (/^(\d)\1{9}$/.test(d)) return 'Looks like a fake number (all the same digit)';
+  if (/(\d)\1{6,}/.test(d)) return 'Looks like a fake number (one digit repeated)';
+  if ('01234567890123456789'.includes(d) || '98765432109876543210'.includes(d)) return 'Looks like a fake number (counting digits)';
+  if (/^(\d{2})\1{4}$/.test(d) || /^(\d{5})\1$/.test(d)) return 'Looks like a fake number (repeating pattern)';
+  return '';
+}
+// Numbers (last 10 digits) WhatsApp refused for good — 131026 / 130472 — in any message in the MSG91 logs.
+let knownBadCache = { at: 0, set: new Set() };
+function knownUndeliverable() {
+  if (Date.now() - knownBadCache.at > 5 * 60000) {
+    const set = new Set();
+    for (const r of msg91LogRows || []) if (r.status === 'failed' && UNDELIVERABLE_RX.test(r.reason || '')) set.add(r.digits);
+    knownBadCache = { at: Date.now(), set };
+  }
+  return knownBadCache.set;
+}
+const LIST_SAMPLE = 25;        // a new list sends this many first, then waits for delivery results
+const LIST_PAUSE_RATE = 0.6;   // pause a list when this share of its tried numbers aren't on WhatsApp
+// Delivery results per uploaded list.
+async function listHealth() {
+  const rows = await Lead.aggregate([
+    { $group: {
+      _id: { $ifNull: [{ $cond: [{ $eq: ['$source', ''] }, null, '$source'] }, 'Older uploads'] },
+      total: { $sum: 1 },
+      waiting: { $sum: { $cond: [{ $eq: ['$status', 'new'] }, 1, 0] } },
+      paused: { $sum: { $cond: [{ $and: [{ $eq: ['$status', 'stopped'] }, { $eq: ['$pausedBy', 'list-check'] }] }, 1, 0] } },
+      tried: { $sum: { $cond: [{ $ne: ['$sentAt', null] }, 1, 0] } },
+      reached: { $sum: { $cond: [{ $in: ['$delivery', ['delivered', 'read']] }, 1, 0] } },
+      notOnWa: { $sum: { $cond: [{ $eq: ['$status', 'undeliverable'] }, 1, 0] } },
+      heldBack: { $sum: { $cond: [{ $and: [{ $eq: ['$delivery', 'failed'] }, { $ne: ['$status', 'undeliverable'] }] }, 1, 0] } },
+      pending: { $sum: { $cond: [{ $and: [{ $ne: ['$sentAt', null] }, { $in: ['$delivery', ['sent', '', null]] }] }, 1, 0] } },
+      lastAt: { $max: '$createdAt' }
+    } },
+    { $sort: { lastAt: -1 } }, { $limit: 40 }
+  ]);
+  return rows.map(r => {
+    const known = r.reached + r.notOnWa + r.heldBack;
+    const badRate = known ? r.notOnWa / known : 0;
+    const state = r.paused ? 'paused' : known < Math.min(Math.round(LIST_SAMPLE * 0.8), r.tried + r.waiting) ? (r.tried ? 'testing' : 'new') : badRate >= LIST_PAUSE_RATE ? 'poor' : 'good';
+    return { list: r._id, total: r.total, waiting: r.waiting, paused: r.paused, tried: r.tried, reached: r.reached, notOnWa: r.notOnWa, heldBack: r.heldBack, pending: r.pending, known, reachRate: known ? r.reached / known : null, badRate, state };
+  });
+}
+// Pause the waiting contacts of any list that has proved mostly not on WhatsApp.
+async function pausePoorLists() {
+  const lists = await listHealth();
+  for (const l of lists) {
+    if (l.waiting && l.known >= LIST_SAMPLE && l.badRate >= LIST_PAUSE_RATE) {
+      const q = l.list === 'Older uploads' ? { $or: [{ source: '' }, { source: null }] } : { source: l.list };
+      const r = await Lead.updateMany({ ...q, status: 'new', pausedBy: { $ne: 'admin-resumed' } }, { status: 'stopped', pausedBy: 'list-check', lastError: `Paused by the number check: ${Math.round(l.badRate * 100)}% of this list's numbers aren't on WhatsApp` });
+      if (r.modifiedCount) console.log(`🛡 Number check paused ${r.modifiedCount} contacts of "${l.list}" — ${l.notOnWa} of ${l.known} tried aren't on WhatsApp`);
+    }
+  }
+}
+
 async function analyzeContacts(contacts, gapDays) {
   const cutoff = new Date(Date.now() - gapDays * 86400000);
   const fmt = d => new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'Asia/Kolkata' });
@@ -7872,6 +7935,9 @@ async function analyzeContacts(contacts, gapDays) {
     if (!phone) { if (c.rawNumber || c.name) out.push({ ...base, group: 'skipped', phone: c.rawNumber, reason: 'Not a valid mobile number' }); continue; }
     if (seen.has(phone)) { out.push({ ...base, group: 'skipped', phone, reason: 'Duplicate in this file' }); continue; }
     seen.add(phone);
+    const fake = fakeNumberReason(phone);
+    if (fake) { out.push({ ...base, group: 'skipped', phone, reason: fake }); continue; }
+    if (knownUndeliverable().has(last10(phone))) { out.push({ ...base, group: 'skipped', phone, reason: 'WhatsApp could not deliver to this number before' }); continue; }
     const twins = byKey.get(last10(phone));
     if (twins) {
       const main = twins.find(p => !/\s/.test(p.phone)) || twins[0];
@@ -8060,9 +8126,39 @@ function startLeadJob(items, by) {
 async function nextQueueBatch(room, retryFailed = false) {
   if (room <= 0) return [];
   await syncJoinedLeads();
+  await pausePoorLists().catch(e => console.log('⚠️ list check error:', e.message));
   const statuses = retryFailed ? ['new', 'failed'] : ['new'];
-  const batch = await Lead.find({ status: { $in: statuses } }).sort(LEAD_QUEUE_SORT).limit(room).select('_id').lean();
-  return batch.map(l => ({ kind: 'invite', leadId: l._id }));
+  // How many more each list may send before its delivery results are in.
+  const health = new Map((await listHealth()).map(l => [l.list, l]));
+  const quota = new Map();
+  const allowFor = key => {
+    if (!quota.has(key)) {
+      const h = health.get(key);
+      quota.set(key, !h || h.state === 'good' || h.state === 'poor' ? Infinity : Math.max(0, LIST_SAMPLE - h.tried));
+    }
+    return quota.get(key);
+  };
+  const out = [], bad = [];
+  let skip = 0;
+  while (out.length < room) {
+    const cand = await Lead.find({ status: { $in: statuses } }).sort(LEAD_QUEUE_SORT).skip(skip).limit(Math.max(200, room * 3)).select('_id phone source').lean();
+    if (!cand.length) break;
+    skip += cand.length;
+    for (const l of cand) {
+      if (out.length >= room) break;
+      const why = fakeNumberReason(l.phone) || (knownUndeliverable().has(last10(l.phone)) ? 'WhatsApp could not deliver to this number before' : '');
+      if (why) { bad.push({ id: l._id, why }); continue; }
+      const key = l.source || 'Older uploads';
+      const left = allowFor(key);
+      if (left <= 0) continue; // this list is being tested — wait for its first results
+      quota.set(key, left - 1);
+      out.push({ kind: 'invite', leadId: l._id });
+    }
+    if (skip > 20000) break;
+  }
+  for (const b of bad) await Lead.updateOne({ _id: b.id }, { status: 'undeliverable', lastError: 'Skipped by the number check: ' + b.why });
+  if (bad.length) console.log(`🛡 Number check skipped ${bad.length} number(s) before sending (fake or already refused by WhatsApp)`);
+  return out;
 }
 
 async function processLeadQueue(by) {
@@ -8174,6 +8270,21 @@ app.post('/api/admin/leads/stop-sending', adminAuth, async (req, res) => {
   for (let i = 0; i < 20 && leadJob.running; i++) await new Promise(r => setTimeout(r, 250));
   const left = await Lead.countDocuments({ status: 'new' });
   res.json({ message: `Stopped after ${leadJob.sent} message${leadJob.sent === 1 ? '' : 's'}. ${left.toLocaleString('en-IN')} contacts stay waiting in the queue.`, job: leadJob });
+});
+
+// The number check: delivery results per uploaded list, and a way to resume a paused list.
+app.get('/api/admin/leads/lists', adminAuth, async (req, res) => {
+  try { res.json({ lists: await listHealth(), sample: LIST_SAMPLE, pauseRate: LIST_PAUSE_RATE }); }
+  catch (err) { res.status(500).json({ message: err.message }); }
+});
+app.post('/api/admin/leads/lists/resume', adminAuth, async (req, res) => {
+  try {
+    const list = String(req.body?.list || '');
+    const q = list === 'Older uploads' ? { $or: [{ source: '' }, { source: null }] } : { source: list };
+    const r = await Lead.updateMany({ ...q, status: 'stopped', pausedBy: 'list-check' }, { status: 'new', pausedBy: 'admin-resumed', lastError: '' });
+    console.log(`▶️ List "${list}" resumed by ${req.admin?.username || 'admin'}: ${r.modifiedCount} contacts back in the queue`);
+    res.json({ message: `${r.modifiedCount} contacts are back in the queue. The number check won't pause this list again.` });
+  } catch (err) { res.status(500).json({ message: err.message }); }
 });
 
 // Turn "replace undelivered messages" on/off. Turning it on can send replacements right away.
@@ -8299,7 +8410,8 @@ app.post('/api/admin/leads/campaign', adminAuth, async (req, res) => {
       let parsed;
       try { parsed = parseContactsCsv(req.body?.csv); } catch (e) { return res.status(400).json({ message: e.message }); }
       const gapDays = clampGap(req.body?.gapDays);
-      const source = String(req.body?.source || '').trim().slice(0, 80);
+      // Every upload gets a list name, so the number check can judge each list on its own.
+      const source = String(req.body?.source || '').trim().slice(0, 80) || ('List of ' + new Date().toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Kolkata' }));
       const rows = await analyzeContacts(parsed.contacts, gapDays);
       const profileOf = r => ({ segment: r.segment, condition: r.condition, medicine: r.medicine, city: r.city, doctor: r.doctor, age: r.age, gender: r.gender, language: r.language });
 
