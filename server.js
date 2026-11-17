@@ -4364,7 +4364,7 @@ async function syncDeliveryFromMsg91(why) {
       return msg91Report;
     }
     if (!msg91LogKeysShown && rows[0]) { msg91LogKeysShown = true; console.log('ℹ️ MSG91 log fields:', Object.keys(rows[0]).join(',')); }
-    const byStatus = {}, byTemplate = {}, reasons = {};
+    const byStatus = {}, byTemplate = {}, reasons = {}, cost = {}, payStates = {};
     let total = 0, applied = 0;
     const keepRows = [];
     // Invited contacts by number (last 10 digits) — one query, not one per log row.
@@ -4383,6 +4383,10 @@ async function syncDeliveryFromMsg91(why) {
       const st = r.status || 'unknown';
       total++;
       byStatus[st] = (byStatus[st] || 0) + 1;
+      // What MSG91 charged for this message (to show whether undelivered messages cost anything).
+      const price = parseFloat(raw.price);
+      if (!isNaN(price)) cost[st] = Math.round(((cost[st] || 0) + price) * 10000) / 10000;
+      if (raw.paymentStatus !== undefined) { const k = st + ':' + String(raw.paymentStatus); payStates[k] = (payStates[k] || 0) + 1; }
       const t = r.template || String(raw.templateName || raw.template_name || 'text / other');
       byTemplate[t] = byTemplate[t] || { sent: 0, delivered: 0, read: 0, failed: 0, unknown: 0 };
       byTemplate[t][st] = (byTemplate[t][st] || 0) + 1;
@@ -4409,7 +4413,7 @@ async function syncDeliveryFromMsg91(why) {
     msg91LogRows = keepRows.slice(-20000);
     await classifyUndelivered().catch(e => console.log('⚠️ undelivered sort error:', e.message));
     msg91Report = {
-      at: new Date(), from: ymdIST(from), to: ymdIST(to), total, byStatus, applied,
+      at: new Date(), from: ymdIST(from), to: ymdIST(to), total, byStatus, applied, cost, payStates,
       byTemplate: Object.entries(byTemplate).map(([name, c]) => ({ name, ...c, total: Object.values(c).reduce((a, b) => a + b, 0) })).sort((a, b) => b.total - a.total),
       reasons: Object.entries(reasons).map(([reason, n]) => ({ reason, n })).sort((a, b) => b.n - a.n).slice(0, 8)
     };
@@ -4417,6 +4421,7 @@ async function syncDeliveryFromMsg91(why) {
     console.log(`📊 WhatsApp (MSG91 logs ${msg91Report.from} → ${msg91Report.to}, ${why}): ${total} outbound · read ${f('read')} · delivered ${f('delivered')} · sent ${f('sent')} · failed ${f('failed')}${f('unknown') ? ` · unknown ${f('unknown')}` : ''} · ${applied} contact statuses updated`);
     msg91Report.byTemplate.slice(0, 8).forEach(t => console.log(`   • ${t.name}: ${t.total} — read ${t.read}, delivered ${t.delivered}, sent ${t.sent}, failed ${t.failed}`));
     msg91Report.reasons.forEach(x => console.log(`   ✗ ${x.n}× ${x.reason}`));
+    if (Object.keys(cost).length) console.log(`   ₹ charged by status: ${Object.entries(cost).map(([k, v]) => `${k} ${v}`).join(' · ')} | payment: ${Object.entries(payStates).map(([k, v]) => `${k}=${v}`).join(' ')}`);
     return msg91Report;
   } catch (err) {
     msg91Report = { at: new Date(), error: err.message };
