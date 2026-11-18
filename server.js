@@ -6165,6 +6165,39 @@ app.post('/api/subscription/send-link', quickPayLimiter, async (req, res) => {
     res.json({ message: sent?.success ? 'Payment link sent on WhatsApp ✅ — open WhatsApp and tap it.' : 'We could not reach your WhatsApp — use the link below instead.', url: l.url, sent: !!sent?.success });
   } catch (err) { res.status(500).json({ message: err.message }); }
 });
+// Admin: send a patient their Biomexa Care payment link on WhatsApp (Reminder Center button).
+// Free text inside the 24-hour window, otherwise the approved renewal template carries the link.
+app.post('/api/admin/patients/send-pay-link', adminAuth, async (req, res) => {
+  try {
+    if (!PAYMENTS_CONFIGURED) return res.status(503).json({ message: 'Razorpay is not set up on the server.' });
+    const plan = SUBSCRIPTION_PLANS[req.body?.plan] || SUBSCRIPTION_PLANS.monthly;
+    const phones = (Array.isArray(req.body?.phones) ? req.body.phones : [req.body?.phone]).filter(Boolean).slice(0, 300);
+    if (!phones.length) return res.status(400).json({ message: 'No patient chosen.' });
+    const results = [];
+    for (const ph of phones) {
+      const pats = await Patient.find({ phone: { $in: phoneVariants(ph) } }).select('name phone createdAt subscription').lean();
+      if (!pats.length) { results.push({ phone: ph, ok: false, why: 'not a registered patient' }); continue; }
+      const k = last10(ph);
+      if (Date.now() - (linkSendLimit.get(k) || 0) < 2 * 60000) { results.push({ phone: ph, ok: false, why: 'a link was sent in the last 2 minutes' }); continue; }
+      const l = await paymentLinkFor(ph, plan.id, 'admin');
+      if (!l) { results.push({ phone: ph, ok: false, why: 'Razorpay could not create the link' }); continue; }
+      const a = accessFor(pats);
+      const first = String(pats[0].name || '').trim().split(/\s+/)[0] || 'there';
+      const why = a.tier === 'subscribed' ? `your plan runs till ${new Date(a.expiresAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })} — renew now and it is added on top` : a.tier === 'trial' ? `your free trial ends in ${a.daysLeft} day${a.daysLeft === 1 ? '' : 's'}` : 'keep your medicine reminders, reports and doctor access going';
+      const text = `💳 Hi ${first}, here is your Biomexa Care payment link:\n\n*${plan.name} — ₹${plan.price}*\n${l.url}\n\n${why.charAt(0).toUpperCase() + why.slice(1)}. Tap the link, choose your UPI app (or card / net banking) and you're done — no login needed.\n\n- Biomexa Team`;
+      let sent = await sendWhatsAppFree(ph, text);
+      let via = 'message';
+      if (!sent?.success && MSG91_RENEWAL_TEMPLATE_NAME) { sent = await sendRenewalTemplate(ph, first, `here is your Biomexa Care ${plan.name} payment link (₹${plan.price}) — ${why}: ${l.url}`, 'tap the link, choose your UPI app and you are done'); via = 'template'; }
+      linkSendLimit.set(k, Date.now());
+      results.push({ phone: ph, ok: !!sent?.success, url: l.url, via, why: sent?.success ? '' : 'WhatsApp did not accept the message' });
+    }
+    const ok = results.filter(r => r.ok).length;
+    console.log(`💳 Payment links (${plan.id}) sent by ${req.admin?.username || 'admin'}: ${ok} of ${results.length}`);
+    res.json({ sent: ok, total: results.length, results, plan: plan.id,
+      message: results.length === 1 ? (ok ? `Payment link (${plan.name} ₹${plan.price}) sent on WhatsApp ✅` : `Not sent — ${results[0].why}.`) : `Payment link sent to ${ok} of ${results.length} patients.` });
+  } catch (err) { res.status(500).json({ message: err.message }); }
+});
+
 // Logged-in patient: their own link (used by the portal "Pay later from WhatsApp" button).
 app.post('/api/patient/subscription/link', auth, async (req, res) => {
   try {
@@ -6964,15 +6997,16 @@ function last10(phone) { return String(phone || '').replace(/\D/g, '').slice(-10
 app.get('/api/admin/reminder-center', adminAuth, async (req, res) => {
   try {
     const now = new Date();
-    const patients = await Patient.find().select('name phone medicines createdAt lastReminderInviteAt').lean();
+    const patients = await Patient.find().select('name phone medicines createdAt lastReminderInviteAt subscription').lean();
     // Duplicate records of one number ("+91X" / "+91 X") are shown as one person.
     const people = new Map();
     for (const p of patients) {
       const key = last10(p.phone) || String(p._id);
       const cur = people.get(key);
-      if (!cur) people.set(key, { ...p, phones: [p.phone], medicines: [...(p.medicines || [])] });
+      if (!cur) people.set(key, { ...p, phones: [p.phone], medicines: [...(p.medicines || [])], records: [p] });
       else {
         cur.phones.push(p.phone);
+        cur.records.push(p);
         cur.medicines.push(...(p.medicines || []));
         if (!cur.name || /test/i.test(cur.name)) cur.name = p.name || cur.name;
         if (p.lastReminderInviteAt && (!cur.lastReminderInviteAt || p.lastReminderInviteAt > cur.lastReminderInviteAt)) cur.lastReminderInviteAt = p.lastReminderInviteAt;
@@ -7024,7 +7058,8 @@ app.get('/api/admin/reminder-center', adminAuth, async (req, res) => {
         status: active.length ? 'active' : finished.length ? 'completed' : 'none',
         active, finished,
         adherence: due ? Math.round((taken / due) * 100) : null, dosesLogged: due,
-        lastReminder: lastSent, joinedAt: p.createdAt, lastInviteAt: p.lastReminderInviteAt || null
+        lastReminder: lastSent, joinedAt: p.createdAt, lastInviteAt: p.lastReminderInviteAt || null,
+        sub: (() => { const a = accessFor(p.records); return { tier: a.tier, planName: a.planName, daysLeft: a.daysLeft, expiresAt: a.expiresAt, lastExpiredAt: a.lastExpiredAt }; })()
       };
     });
     // WhatsApp campaign leads who tapped START. Those who then signed up are tagged on their

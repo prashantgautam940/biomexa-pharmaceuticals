@@ -61,6 +61,13 @@ select:focus, input:focus { outline: none; border-color: var(--navy); box-shadow
 .win.open { color: #11663a; } .win.closed { color: var(--muted); }
 .actions { display: flex; flex-direction: column; gap: .45rem; align-items: stretch; }
 .invite.leads { border-color: rgba(109,40,217,.3); background: linear-gradient(135deg, #fff 0%, #f6f2ff 100%); }
+.pill.sub-subscribed { background: #e8f6ee; color: #11663a; margin-left: 4px; } .pill.sub-trial { background: #fff6e6; color: #b45309; margin-left: 4px; } .pill.sub-free { background: #fdecec; color: #c0262d; margin-left: 4px; }
+.btn.pay { background: #fff; color: #16336b; border: 1px solid #16336b; } .btn.pay:hover { background: #e8eefb; }
+.plans { display: grid; gap: .5rem; margin: .8rem 0; }
+.plans label { display: flex; gap: .6rem; align-items: center; border: 1px solid var(--line); border-radius: 12px; padding: .7rem .8rem; cursor: pointer; font-size: .92rem; }
+.plans label:has(input:checked) { border-color: #16336b; background: #e8eefb; }
+.plans small { color: var(--muted); margin-left: auto; }
+.linkbox { margin-top: .6rem; font-size: .82rem; word-break: break-all; }
 .pill.active { background: var(--green-soft); color: #11663a; } .pill.completed { background: var(--amber-soft); color: var(--amber); } .pill.none { background: var(--inner); color: var(--muted); }
 .meds { display: grid; gap: .45rem; }
 .med { display: flex; flex-wrap: wrap; gap: .35rem .75rem; align-items: baseline; font-size: .88rem; padding: .5rem .7rem; border-radius: 10px; background: var(--inner); }
@@ -169,10 +176,30 @@ select:focus, input:focus { outline: none; border-color: var(--navy); box-shadow
       </div>
       <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;">
         <div class="search"><i class="fas fa-search"></i><input id="q" placeholder="Search name, number or medicine" oninput="render()"></div>
+        <button class="btn pay sm" onclick="openPay(null)" title="Send a payment link to every patient in this list who hasn't paid"><i class="fas fa-indian-rupee-sign"></i> Payment link to all unpaid</button>
         <button class="btn ghost sm" onclick="load()"><i class="fas fa-rotate"></i> Refresh</button>
       </div>
     </div>
+    <div id="payBulkResult" class="result"></div>
     <div class="list" id="list"><div class="loading"><i class="fas fa-spinner fa-spin"></i> Loading patients…</div></div>
+  </div>
+</div>
+
+<div class="modal-bg" id="payModal" onclick="if(event.target===this)closePay()">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="pTitle">
+    <h3 id="pTitle"><i class="fas fa-indian-rupee-sign" style="color:var(--green)"></i> Send payment link</h3>
+    <div class="for" id="pFor"></div>
+    <div class="plans">
+      <label><input type="radio" name="plan" value="monthly" checked> <b>Monthly</b> — ₹99 <small>30 days</small></label>
+      <label><input type="radio" name="plan" value="halfyearly"> <b>6 Months</b> — ₹499 <small>save 16%</small></label>
+      <label><input type="radio" name="plan" value="yearly"> <b>Yearly</b> — ₹899 <small>best value</small></label>
+    </div>
+    <div class="hint" style="font-size:.8rem;color:var(--muted)">They get a WhatsApp message with a Razorpay link — pay with any UPI app, card or net banking, no login. When they pay, their plan switches on and the receipt is sent automatically.</div>
+    <div id="pResult" class="result"></div>
+    <div class="modal-actions">
+      <button class="btn ghost" onclick="closePay()">Close</button>
+      <button class="btn wa" id="pSend" onclick="sendPay()"><i class="fab fa-whatsapp"></i> Send on WhatsApp</button>
+    </div>
   </div>
 </div>
 
@@ -281,12 +308,59 @@ function render() {
     const meds = [...p.active, ...p.finished];
     return `<div class="row">
       <div class="who"><strong>${esc(p.name)}</strong><div class="ph">${esc(p.phone)}</div>
-        <span class="pill ${p.status}">${label[p.status]}</span>${p.campaign ? '<span class="pill campaign"><i class="fab fa-whatsapp"></i> From campaign</span>' : ''}<div class="meta">${meta}</div>${p.campaign ? windowBadge(p) : ''}</div>
+        <span class="pill ${p.status}">${label[p.status]}</span>${subPill(p)}${p.campaign ? '<span class="pill campaign"><i class="fab fa-whatsapp"></i> From campaign</span>' : ''}<div class="meta">${meta}</div>${p.campaign ? windowBadge(p) : ''}</div>
       <div class="meds">${meds.length ? meds.map(medLine).join('') : '<div class="none-txt">No medicines added yet.</div>'}</div>
       <div class="actions"><button class="btn sm" onclick="openModal('${encodeURIComponent(p.phone)}')"><i class="fas fa-plus"></i> Add reminder</button>
+        <button class="btn pay sm" onclick="openPay('${encodeURIComponent(p.phone)}')"><i class="fas fa-indian-rupee-sign"></i> Send payment link</button>
         ${p.campaign ? `<button class="btn wa sm" ${p.campaign.windowClosesAt ? '' : 'disabled title="No message from them in the last 24 hours — WhatsApp would block it"'} onclick="sendLeadMsg('campaign', '${encodeURIComponent(p.phone)}', this)"><i class="fab fa-whatsapp"></i> Send portal message</button>` : ''}</div>
     </div>`;
   }).join('');
+}
+
+function subPill(p) {
+  const s = p.sub; if (!s) return '';
+  if (s.tier === 'subscribed') return `<span class="pill sub-subscribed"><i class="fas fa-crown"></i> ${esc(s.planName || 'Paid')} · ${s.daysLeft}d left</span>`;
+  if (s.tier === 'trial') return `<span class="pill sub-trial">Free trial · ${s.daysLeft}d left</span>`;
+  return `<span class="pill sub-free">${s.lastExpiredAt ? 'Plan expired' : 'Trial over — not paid'}</span>`;
+}
+let payTargets = [];
+function currentRows() {
+  const q = document.getElementById('q').value.trim().toLowerCase();
+  const inFilter = p => filter === 'campaign' ? !!(p.campaign && !p.lead) : filter === 'all' ? p.status !== 'started' : p.status === filter;
+  return data.patients.filter(p => inFilter(p) && (!q || [p.name, p.phone, p.campaign?.medicine, p.campaign?.source, ...p.active.map(m => m.name), ...p.finished.map(m => m.name)].join(' ').toLowerCase().includes(q)));
+}
+function openPay(enc) {
+  if (enc) {
+    const p = data.patients.find(x => x.phone === decodeURIComponent(enc));
+    payTargets = [p];
+    document.getElementById('pFor').innerHTML = `To <b>${esc(p.name)}</b> · ${esc(p.phone)}${p.sub ? ' · ' + subPill(p) : ''}`;
+  } else {
+    payTargets = currentRows().filter(p => !p.lead && p.sub && p.sub.tier !== 'subscribed');
+    if (!payTargets.length) return showResult('payBulkResult', true, 'Everyone in this list has already paid — nobody to send to.');
+    document.getElementById('pFor').innerHTML = `To <b>${payTargets.length}</b> patient${payTargets.length === 1 ? '' : 's'} in this list who haven't paid (on free trial or expired). Paid patients are skipped.`;
+  }
+  document.getElementById('pResult').className = 'result';
+  document.getElementById('pSend').disabled = false;
+  document.getElementById('payModal').classList.add('open');
+}
+function closePay() { document.getElementById('payModal').classList.remove('open'); }
+function sendPay() {
+  const plan = document.querySelector('input[name="plan"]:checked').value;
+  const btn = document.getElementById('pSend');
+  if (payTargets.length > 1 && !confirm(`Send the payment link to ${payTargets.length} patients on WhatsApp?`)) return;
+  btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending…';
+  authFetch('/api/admin/patients/send-pay-link', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ plan, phones: payTargets.map(p => p.phone) }) })
+    .then(r => r.json().then(d => ({ ok: r.ok, d })))
+    .then(({ ok, d }) => {
+      const el = document.getElementById('pResult');
+      el.className = 'result ' + (ok && d.sent ? 'ok' : 'err');
+      const fails = (d.results || []).filter(x => !x.ok);
+      const one = (d.results || [])[0];
+      el.innerHTML = esc(d.message || 'Done') + (payTargets.length === 1 && one && one.url ? `<div class="linkbox">Link: <a href="${esc(one.url)}" target="_blank" rel="noopener">${esc(one.url)}</a> <button class="btn ghost sm" onclick="navigator.clipboard.writeText('${esc(one.url)}');this.textContent='Copied'">Copy</button></div>` : '')
+        + (payTargets.length > 1 && fails.length ? `<div class="linkbox">Not sent: ${fails.slice(0, 8).map(f => esc(f.phone) + ' (' + esc(f.why) + ')').join(', ')}${fails.length > 8 ? '…' : ''}</div>` : '');
+    })
+    .catch(e => showResult('pResult', false, e.message))
+    .finally(() => { btn.disabled = false; btn.innerHTML = '<i class="fab fa-whatsapp"></i> Send on WhatsApp'; });
 }
 
 function windowBadge(p) {
