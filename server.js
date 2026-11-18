@@ -6159,8 +6159,8 @@ app.post('/api/subscription/send-link', quickPayLimiter, async (req, res) => {
     if (!l) return res.status(502).json({ message: 'Could not create the payment link — please try again.' });
     const first = String(f.patient.name || '').trim().split(/\s+/)[0] || 'there';
     const text = `💳 Hi ${first}, here is your Biomexa Care payment link:\n\n*${plan.name} — ₹${plan.price}*\n${l.url}\n\nTap it, choose your UPI app (or card / net banking) and you're done — no login needed. Your plan starts the moment you pay.\n\n- Biomexa Team`;
-    let sent = await sendWhatsAppFree(f.patient.phone, text);
-    if (!sent?.success && MSG91_RENEWAL_TEMPLATE_NAME) sent = await sendRenewalTemplate(f.patient.phone, first, `here is your Biomexa Care ${plan.name} payment link (₹${plan.price}) — pay in one tap: ${l.url}`, 'tap the link, choose your UPI app and you are done');
+    let sent = (await whatsappWindowOpen(f.patient.phone)) ? await sendWhatsAppFree(f.patient.phone, text) : null;
+    if (!sent?.success && MSG91_RENEWAL_TEMPLATE_NAME) sent = await sendRenewalTemplate(f.patient.phone, first, `your Biomexa Care ${plan.name} payment link (₹${plan.price}) is ${l.url} — pay in one tap`, 'tap the link, choose your UPI app and you are done');
     linkSendLimit.set(k, Date.now());
     res.json({ message: sent?.success ? 'Payment link sent on WhatsApp ✅ — open WhatsApp and tap it.' : 'We could not reach your WhatsApp — use the link below instead.', url: l.url, sent: !!sent?.success });
   } catch (err) { res.status(500).json({ message: err.message }); }
@@ -6185,9 +6185,11 @@ app.post('/api/admin/patients/send-pay-link', adminAuth, async (req, res) => {
       const first = String(pats[0].name || '').trim().split(/\s+/)[0] || 'there';
       const why = a.tier === 'subscribed' ? `your plan runs till ${new Date(a.expiresAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })} — renew now and it is added on top` : a.tier === 'trial' ? `your free trial ends in ${a.daysLeft} day${a.daysLeft === 1 ? '' : 's'}` : 'keep your medicine reminders, reports and doctor access going';
       const text = `💳 Hi ${first}, here is your Biomexa Care payment link:\n\n*${plan.name} — ₹${plan.price}*\n${l.url}\n\n${why.charAt(0).toUpperCase() + why.slice(1)}. Tap the link, choose your UPI app (or card / net banking) and you're done — no login needed.\n\n- Biomexa Team`;
-      let sent = await sendWhatsAppFree(ph, text);
-      let via = 'message';
-      if (!sent?.success && MSG91_RENEWAL_TEMPLATE_NAME) { sent = await sendRenewalTemplate(ph, first, `here is your Biomexa Care ${plan.name} payment link (₹${plan.price}) — ${why}: ${l.url}`, 'tap the link, choose your UPI app and you are done'); via = 'template'; }
+      // Plain text only reaches them if they messaged us in the last 24 h — otherwise WhatsApp drops it
+      // silently (MSG91 still says "sent"), so outside the window the approved template carries the link.
+      let sent, via;
+      if (await whatsappWindowOpen(ph)) { sent = await sendWhatsAppFree(ph, text); via = 'message'; }
+      if (!sent?.success && MSG91_RENEWAL_TEMPLATE_NAME) { sent = await sendRenewalTemplate(ph, first, `your Biomexa Care ${plan.name} payment link (₹${plan.price}) is ${l.url} — ${why}`, 'tap the link, choose your UPI app (or card / net banking) and you are done — no login needed'); via = 'template'; }
       linkSendLimit.set(k, Date.now());
       results.push({ phone: ph, ok: !!sent?.success, url: l.url, via, why: sent?.success ? '' : 'WhatsApp did not accept the message' });
     }
