@@ -63,6 +63,8 @@ select:focus, input:focus { outline: none; border-color: var(--navy); box-shadow
 .invite.leads { border-color: rgba(109,40,217,.3); background: linear-gradient(135deg, #fff 0%, #f6f2ff 100%); }
 .pill.sub-subscribed { background: #e8f6ee; color: #11663a; margin-left: 4px; } .pill.sub-trial { background: #fff6e6; color: #b45309; margin-left: 4px; } .pill.sub-free { background: #fdecec; color: #c0262d; margin-left: 4px; }
 .btn.pay { background: #fff; color: #16336b; border: 1px solid #16336b; } .btn.pay:hover { background: #e8eefb; }
+.rep-btn { margin-left: .5rem; border: 1px solid #c9d3e6; background: #fff; color: #16336b; border-radius: 999px; font: inherit; font-size: .72rem; font-weight: 700; padding: .15rem .55rem; cursor: pointer; }
+.rep-btn:hover { background: #e8eefb; }
 .plans { display: grid; gap: .5rem; margin: .8rem 0; }
 .plans label { display: flex; gap: .6rem; align-items: center; border: 1px solid var(--line); border-radius: 12px; padding: .7rem .8rem; cursor: pointer; font-size: .92rem; }
 .plans label:has(input:checked) { border-color: #16336b; background: #e8eefb; }
@@ -273,7 +275,7 @@ function load() {
 
 function setFilter(f) { filter = f; render(); }
 
-function medLine(m) {
+function medLine(m, phone) {
   const times = m.times.map(fmtTime).join(', ');
   let right = '';
   if (m.active) {
@@ -281,7 +283,8 @@ function medLine(m) {
       : `<span class="left${m.daysLeft <= 2 ? ' soon' : ''}">${m.daysLeft === 0 ? 'Ends today' : m.daysLeft + ' day' + (m.daysLeft > 1 ? 's' : '') + ' left'}</span>`;
   } else {
     const how = m.stoppedByPatient ? 'Stopped' : 'Completed';
-    right = `<span class="left over">${how}${m.completedAt ? ' ' + fmtDate(m.completedAt) : ''}${m.adherence != null ? ' · ' + m.adherence + '% taken' : ''}</span>`;
+    right = `<span class="left over">${how}${m.completedAt ? ' ' + fmtDate(m.completedAt) : ''}${m.adherence != null ? ' · ' + m.adherence + '% taken' : ''}</span>`
+      + (phone ? `<button class="rep-btn" title="Send the course report PDF on WhatsApp" onclick="sendCourseReport('${encodeURIComponent(phone)}','${encodeURIComponent(m.name)}',this)"><i class="fas fa-file-pdf"></i> Report</button>` : '');
   }
   return `<div class="med${m.active ? '' : ' done'}"><b>${esc(m.name)}</b>${m.dosage ? `<span class="d">${esc(m.dosage)}</span>` : ''}${times ? `<span class="t"><i class="far fa-clock"></i> ${times}</span>` : ''}${right}</div>`;
 }
@@ -309,7 +312,7 @@ function render() {
     return `<div class="row">
       <div class="who"><strong>${esc(p.name)}</strong><div class="ph">${esc(p.phone)}</div>
         <span class="pill ${p.status}">${label[p.status]}</span>${subPill(p)}${p.campaign ? '<span class="pill campaign"><i class="fab fa-whatsapp"></i> From campaign</span>' : ''}<div class="meta">${meta}</div>${p.campaign ? windowBadge(p) : ''}</div>
-      <div class="meds">${meds.length ? meds.map(medLine).join('') : '<div class="none-txt">No medicines added yet.</div>'}</div>
+      <div class="meds">${meds.length ? meds.map(m => medLine(m, p.phone)).join('') : '<div class="none-txt">No medicines added yet.</div>'}</div>
       <div class="actions"><button class="btn sm" onclick="openModal('${encodeURIComponent(p.phone)}')"><i class="fas fa-plus"></i> Add reminder</button>
         <button class="btn pay sm" onclick="openPay('${encodeURIComponent(p.phone)}')"><i class="fas fa-indian-rupee-sign"></i> Send payment link</button>
         ${p.campaign ? `<button class="btn wa sm" ${p.campaign.windowClosesAt ? '' : 'disabled title="No message from them in the last 24 hours — WhatsApp would block it"'} onclick="sendLeadMsg('campaign', '${encodeURIComponent(p.phone)}', this)"><i class="fab fa-whatsapp"></i> Send portal message</button>` : ''}</div>
@@ -317,6 +320,19 @@ function render() {
   }).join('');
 }
 
+function sendCourseReport(phone, med, btn) {
+  if (!confirm(`Send the ${decodeURIComponent(med)} course report (PDF) to ${decodeURIComponent(phone)} on WhatsApp?`)) return;
+  btn.disabled = true; const old = btn.innerHTML; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+  authFetch('/api/admin/patients/course-report', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone: decodeURIComponent(phone), medicine: decodeURIComponent(med) }) })
+    .then(r => r.json().then(d => ({ ok: r.ok, d })))
+    .then(({ ok, d }) => {
+      btn.innerHTML = ok && d.success ? '<i class="fas fa-check"></i> Sent' : old;
+      if (d.url) window.open(d.url, '_blank', 'noopener');
+      if (!(ok && d.success)) alert(d.message || 'Could not send');
+    })
+    .catch(e => { btn.innerHTML = old; alert(e.message); })
+    .finally(() => { btn.disabled = false; });
+}
 function subPill(p) {
   const s = p.sub; if (!s) return '';
   if (s.tier === 'subscribed') return `<span class="pill sub-subscribed"><i class="fas fa-crown"></i> ${esc(s.planName || 'Paid')} · ${s.daysLeft}d left</span>`;

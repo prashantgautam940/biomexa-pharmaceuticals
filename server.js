@@ -9,10 +9,11 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const { cleanVitals, toFahrenheit, normaliseEntry, checkVitalsDanger } = require('./vitals/calibration');
-const { summarizeAdherence } = require('./vitals/adherence');
+const { summarizeAdherence, dedupeDoses } = require('./vitals/adherence');
 const { buildVitalsProgress } = require('./vitals/progress');
 const waTpl = require('./msg91/templates');
 const { buildInvoicePdf, gstSplit, seller: invoiceSeller } = require('./invoice/invoice');
+const { buildJourneyPdf, analyseJourney } = require('./report/journey');
 const ivfCare = require('./ivf/routes'); // Biomexa IVF Care — separate module, mounted near the end of this file
 
 const app = express();
@@ -1803,6 +1804,7 @@ const patientSchema = new mongoose.Schema({
     completedAt: Date,
     stoppedByPatient: { type: Boolean, default: false }, // removed from the portal before its course ended
     followUpStage: { type: Number, default: 0 },
+    reportSentAt: Date, // course report PDF sent on WhatsApp
     lastFollowUpAt: Date,
     courseSummary: { taken: Number, missed: Number, adherence: Number }
   }],
@@ -3912,6 +3914,90 @@ function refillLine(medicineName) {
   };
 }
 
+// ===== COURSE JOURNEY REPORT (PDF on WhatsApp when a course ends) =====
+// The PDF is built on demand from the patient's own records at a signed link (no file storage
+// needed): /api/course-report/<patientId>/<medicineId>/<signature>/<file>.pdf
+function journeySig(pid, mid) {
+  return crypto.createHmac('sha256', JWT_SECRET + ':course-report').update(`${pid}:${mid}`).digest('hex').slice(0, 24);
+}
+function journeyFileName(med) { return `Biomexa-course-report-${String(med.name || 'medicine').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '')}.pdf`; }
+function journeyUrl(patient, med) {
+  return `${API_PUBLIC_URL}/api/course-report/${patient._id}/${med._id}/${journeySig(patient._id, med._id)}/${journeyFileName(med)}`;
+}
+async function journeyInputFor(patient, med) {
+  const phones = phoneVariants(patient.phone);
+  const startStr = med.startDate ? localDateStr(new Date(med.startDate)) : '0000-00-00';
+  const end = new Date(med.completedAt || med.endDate || Date.now());
+  const endStr = localDateStr(end);
+  const doses = await Dose.find({ patientPhone: { $in: phones }, medicineName: med.name, scheduledDate: { $gte: startStr, $lte: endStr } }).lean();
+  const rows = dedupeDoses(doses).filter(r => r.outcome !== 'upcoming').map(r => ({ date: r.dose.scheduledDate, time: r.dose.scheduledTime, outcome: r.outcome }));
+  const vit = await VitalsLog.find({ patientPhone: { $in: phones }, recordedAt: { $gte: new Date(med.startDate || 0), $lte: new Date(end.getTime() + 86400000) } }).sort({ recordedAt: 1 }).lean();
+  // All times this medicine was set for (one Patient.medicines entry per time).
+  const times = [...new Set(patient.medicines.filter(m => m.name === med.name && String(m.startDate) === String(med.startDate)).map(m => m.time).filter(Boolean))].sort();
+  const product = findBiomexaProduct(med.name);
+  return {
+    patientName: patient.name, phone: patient.phone,
+    medicine: { name: med.name, dosage: med.dosage, times: times.length ? times : [med.time].filter(Boolean), startDate: med.startDate, endDate: med.endDate, completedAt: med.completedAt, durationDays: med.durationDays, foodNote: med.foodNote, stoppedByPatient: !!med.stoppedByPatient },
+    rows, vitals: vit.map(v => ({ at: v.recordedAt, sys: v.bpSystolic, dia: v.bpDiastolic, glucose: v.glucose, hr: v.heartRate })),
+    refillUrl: product ? `${SITE_URL}${product.url}#orderForm` : ''
+  };
+}
+app.get('/api/course-report/:pid/:mid/:sig/:file?', async (req, res) => {
+  try {
+    const { pid, mid, sig } = req.params;
+    if (!/^[a-f0-9]{24}$/.test(pid) || !/^[a-f0-9]{24}$/.test(mid) || sig !== journeySig(pid, mid)) return res.status(404).send('Report not found');
+    const patient = await Patient.findById(pid);
+    const med = patient?.medicines?.id(mid);
+    if (!med) return res.status(404).send('Report not found');
+    sendPdf(res, await buildJourneyPdf(await journeyInputFor(patient, med)), journeyFileName(med));
+  } catch (err) { console.log('❌ Course report PDF error:', err.message); res.status(500).send('Could not create the report right now — please try again.'); }
+});
+// Sends the report: inside WhatsApp's 24-hour window as a PDF document with a short note; outside
+// it, the approved treatment-report template carries the summary and the PDF link.
+async function sendCourseJourneyReport(patient, med, opts = {}) {
+  // A twice-daily medicine is stored as one entry per time — send one report for the whole course.
+  const siblings = patient.medicines.filter(m => m.name === med.name && String(m.startDate) === String(med.startDate));
+  if (!opts.force && siblings.some(m => m.reportSentAt && Date.now() - new Date(m.reportSentAt) < 3 * 86400000)) return { success: true, already: true };
+  const input = await journeyInputFor(patient, med);
+  const a = analyseJourney(input);
+  if (!opts.force && a.due < 3) { console.log(`📄 Course report skipped for ${med.name} → ${patient.phone}: only ${a.due} dose(s) were due`); return { success: false, skipped: true }; }
+  const url = journeyUrl(patient, med);
+  const first = String(patient.name || 'there').trim().split(/\s+/)[0];
+  const level = a.pct === null ? 'not enough data' : a.pct >= 90 ? 'excellent' : a.pct >= 80 ? 'good' : a.pct >= 60 ? 'fair' : 'needs attention';
+  const caption = `📄 Your ${med.name} course report`;
+  const intro = `🏁 *Hi ${first}, your ${med.name} course ${med.stoppedByPatient ? 'has stopped' : 'is complete!'}*\n\nHere is your full course report (PDF) — your whole journey in one place:\n\n✅ Doses taken: *${a.taken} of ${a.due}* (${a.pct ?? '—'}% — ${level})\n🔥 Best streak: *${a.bestStreak} day${a.bestStreak === 1 ? '' : 's'}* in a row\n${a.bp ? `❤️ BP: ${a.bp.first.sys}/${a.bp.first.dia} → ${a.bp.last.sys}/${a.bp.last.dia}\n` : ''}${a.sugar ? `🩸 Sugar: ${a.sugar.first.glucose} → ${a.sugar.last.glucose} mg/dL\n` : ''}\nThe report explains week by week how it went, which dose times were hard, and what to do next. Please show it to your doctor at your next visit.\n\n- Biomexa Team`;
+  let r;
+  if (await whatsappWindowOpen(patient.phone)) {
+    await sendWhatsAppFree(patient.phone, intro);
+    r = await sendMsg91Document(patient.phone, url, journeyFileName(med), caption);
+  }
+  if (!r?.success && MSG91_TREATMENT_REPORT_TEMPLATE_NAME) {
+    const insight = `Your full course report (PDF): ${url} — best streak ${a.bestStreak} days. Please show it to your doctor.`;
+    r = await sendTreatmentReportTemplate(patient.phone, first, med.name, a.pct === null ? '—' : `${a.pct}% (${a.taken} of ${a.due} doses)`, med.stoppedByPatient ? 'Course stopped' : 'Course complete', insight);
+  }
+  if (!r?.success) r = await sendWhatsAppFree(patient.phone, intro + `\n\n📄 Report: ${url}`);
+  const stamp = new Date();
+  siblings.forEach(m => { m.reportSentAt = stamp; });
+  for (const m of siblings) await Patient.updateOne({ _id: patient._id, 'medicines._id': m._id }, { $set: { 'medicines.$.reportSentAt': stamp } }).catch(() => {});
+  console.log(`📄 Course report ${med.name} → ${patient.phone}: ${r?.success ? 'sent' : 'failed'} (${a.taken}/${a.due} doses, ${a.pct ?? '—'}%)`);
+  return { success: !!r?.success, url, adherence: a.pct };
+}
+// Admin: send (or re-send) the course report for one finished medicine from the Reminder Center.
+app.post('/api/admin/patients/course-report', adminAuth, async (req, res) => {
+  try {
+    const name = String(req.body?.medicine || '').trim().toLowerCase();
+    const pats = await Patient.find({ phone: { $in: phoneVariants(req.body?.phone) } });
+    let best = null;
+    for (const p of pats) for (const m of p.medicines) {
+      if (String(m.name).trim().toLowerCase() !== name || m.active) continue;
+      if (!best || new Date(m.completedAt || m.endDate || 0) > new Date(best.m.completedAt || best.m.endDate || 0)) best = { p, m };
+    }
+    if (!best) return res.status(404).json({ message: 'No finished course of this medicine found.' });
+    const r = await sendCourseJourneyReport(best.p, best.m, { force: true });
+    res.json({ ...r, message: r.success ? 'Course report sent on WhatsApp ✅' : 'WhatsApp did not accept the message — use the link instead.' });
+  } catch (err) { res.status(500).json({ message: err.message }); }
+});
+
 async function summarizeCourse(phone, med) {
   const query = { patientPhone: phone, medicineName: med.name };
   if (med.startDate) query.scheduledDate = { $gte: localDateStr(new Date(med.startDate)) };
@@ -4009,6 +4095,9 @@ async function processCompletedCourses() {
         const summary = await summarizeCourse(patient.phone, med);
         await Patient.updateOne({ _id: patient._id, 'medicines._id': med._id },
           { $set: { 'medicines.$.courseSummary': { taken: summary.taken, missed: summary.missed, adherence: summary.adherence } } });
+
+        // The course report PDF — their whole journey — goes first, then the refill message.
+        await sendCourseJourneyReport(patient, med).catch(e => console.log('⚠️ Course report error:', e.message));
 
         const { summaryLine, full } = courseMessages(patient, med);
         const result = await sendCourseMessage(patient.phone, patient.name, med.name, summaryLine, full);
