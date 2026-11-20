@@ -43,7 +43,17 @@
     btn.textContent = 'Go to Biomexa'; btn.hidden = false;
     return;
   }
-  // Load the PDF here so the address stays on biomexapharmaceuticals.com, then open it.
+  // Android (incl. WhatsApp's in-app browser) can't hand a page-made file to another app — the
+  // "Continue" in "You're leaving WhatsApp" then does nothing. There, the button opens the real PDF
+  // address, which Android passes to its PDF viewer / Downloads normally.
+  if (/Android/i.test(navigator.userAgent)) {
+    document.getElementById('spin').hidden = true;
+    document.getElementById('h').textContent = 'Your report is ready';
+    document.getElementById('p').textContent = 'Tap below to open or save your Biomexa course report (PDF). If WhatsApp asks, tap Continue. Please show it to your doctor at your next visit.';
+    btn.href = url; btn.target = '_blank'; btn.rel = 'noopener'; btn.textContent = 'Open my report'; btn.hidden = false;
+    return;
+  }
+  // Elsewhere: load the PDF here so the address stays on biomexapharmaceuticals.com, then open it.
   btn.href = url;
   fetch(url).then(function (r) { if (!r.ok) throw new Error(r.status); return r.blob(); }).then(function (b) {
     var blobUrl = URL.createObjectURL(new Blob([b], { type: 'application/pdf' }));
