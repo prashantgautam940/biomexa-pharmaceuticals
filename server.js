@@ -3921,8 +3921,14 @@ function journeySig(pid, mid) {
   return crypto.createHmac('sha256', JWT_SECRET + ':course-report').update(`${pid}:${mid}`).digest('hex').slice(0, 24);
 }
 function journeyFileName(med) { return `Biomexa-course-report-${String(med.name || 'medicine').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '')}.pdf`; }
-function journeyUrl(patient, med) {
+// The PDF itself (used as the WhatsApp document attachment — patients see only the file name).
+function journeyFileUrl(patient, med) {
   return `${API_PUBLIC_URL}/api/course-report/${patient._id}/${med._id}/${journeySig(patient._id, med._id)}/${journeyFileName(med)}`;
+}
+// The link patients SEE in messages: on the Biomexa domain (report.html opens the PDF).
+const BRAND_URL = (process.env.BRAND_URL || 'https://biomexapharmaceuticals.com').replace(/\/+$/, '');
+function journeyUrl(patient, med) {
+  return `${BRAND_URL}/report.html?c=${patient._id}.${med._id}.${journeySig(patient._id, med._id)}`;
 }
 async function journeyInputFor(patient, med) {
   const phones = phoneVariants(patient.phone);
@@ -3969,7 +3975,7 @@ async function sendCourseJourneyReport(patient, med, opts = {}) {
   let r;
   if (await whatsappWindowOpen(patient.phone)) {
     await sendWhatsAppFree(patient.phone, intro);
-    r = await sendMsg91Document(patient.phone, url, journeyFileName(med), caption);
+    r = await sendMsg91Document(patient.phone, journeyFileUrl(patient, med), journeyFileName(med), caption);
   }
   if (!r?.success && MSG91_TREATMENT_REPORT_TEMPLATE_NAME) {
     const insight = `Your full course report (PDF): ${url} — best streak ${a.bestStreak} days. Please show it to your doctor.`;
