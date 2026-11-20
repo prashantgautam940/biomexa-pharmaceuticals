@@ -4,66 +4,92 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="robots" content="noindex">
-<title>Your Biomexa report</title>
+<title>Your Biomexa course report</title>
 <link rel="icon" type="image/svg+xml" href="logo.svg">
 <style>
-  body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #f4f7fb; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: #13213d; }
-  .box { background: #fff; border: 1px solid #dfe5ef; border-radius: 16px; padding: 28px 24px; max-width: 380px; width: calc(100% - 32px); text-align: center; box-shadow: 0 10px 30px rgba(19,33,61,.08); }
-  img { height: 40px; margin-bottom: 14px; }
-  h1 { font-size: 1.15rem; margin: 0 0 6px; }
-  p { color: #5b6b86; font-size: .92rem; margin: 0 0 18px; line-height: 1.5; }
-  a.btn { display: inline-block; background: #16336b; color: #fff; text-decoration: none; font-weight: 700; padding: 12px 20px; border-radius: 10px; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #eef2f8; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: #13213d; }
+  .bar { position: sticky; top: 0; z-index: 5; background: #fff; border-bottom: 1px solid #dfe5ef; padding: 10px 14px; display: flex; align-items: center; gap: 10px; }
+  .bar img { height: 30px; }
+  .bar .t { flex: 1; font-weight: 700; font-size: .92rem; line-height: 1.2; }
+  .bar .t small { display: block; font-weight: 400; color: #5b6b86; font-size: .74rem; }
+  .btn { display: inline-flex; align-items: center; gap: 6px; background: #1c9a55; color: #fff; text-decoration: none; font-weight: 700; padding: 12px 18px; border-radius: 10px; font-size: .95rem; border: 0; white-space: nowrap; }
+  .btn.alt { background: #16336b; }
+  .pages { max-width: 860px; margin: 0 auto; padding: 12px 10px 90px; }
+  .pages canvas { display: block; width: 100%; height: auto; background: #fff; margin: 0 0 12px; border-radius: 6px; box-shadow: 0 4px 16px rgba(19,33,61,.10); }
+  .state { max-width: 380px; margin: 18vh auto 0; background: #fff; border: 1px solid #dfe5ef; border-radius: 16px; padding: 26px 22px; text-align: center; }
+  .state h1 { font-size: 1.1rem; margin: 0 0 6px; } .state p { color: #5b6b86; font-size: .92rem; line-height: 1.5; margin: 0 0 16px; }
   .spin { width: 26px; height: 26px; border: 3px solid #dfe5ef; border-top-color: #1c9a55; border-radius: 50%; margin: 0 auto 14px; animation: s .8s linear infinite; }
   @keyframes s { to { transform: rotate(360deg); } }
+  .dock { position: fixed; left: 0; right: 0; bottom: 0; background: #fff; border-top: 1px solid #dfe5ef; padding: 10px 14px calc(10px + env(safe-area-inset-bottom)); display: flex; justify-content: center; gap: 10px; }
+  [hidden] { display: none !important; }
 </style>
 </head>
 <body>
-<div class="box">
+<div class="bar">
   <img src="images/logo-full.png" alt="Biomexa Pharmaceuticals">
+  <div class="t">Your course report<small>Please show it to your doctor at your next visit</small></div>
+</div>
+
+<div class="state" id="state">
   <div class="spin" id="spin"></div>
   <h1 id="h">Opening your report…</h1>
-  <p id="p">Your Biomexa course report (PDF) is loading.</p>
-  <a class="btn" id="open" href="index.html" hidden>Open my report</a>
+  <p id="p">This takes a few seconds.</p>
+  <a class="btn alt" id="retry" href="#" hidden onclick="location.reload();return false">Try again</a>
 </div>
+<div class="pages" id="pages"></div>
+<div class="dock" id="dock" hidden>
+  <a class="btn" id="dl" href="#"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0l-5-5m5 5l5-5M4 21h16"/></svg> Download PDF</a>
+</div>
+
+<script src="js/pdfjs/pdf.min.js"></script>
 <script>
-// Biomexa report links point here, on the Biomexa domain, and open the PDF from the Biomexa server.
+// Biomexa report links point here. The report is drawn right on this page (on the Biomexa domain),
+// so it opens straight away — also inside WhatsApp's browser on Android — with a Download button.
 (function () {
   var API = 'https://biomexa-api-f9f6.onrender.com';
   var q = new URLSearchParams(location.search);
   var c = (q.get('c') || '').split('.');
-  var url = null;
-  if (c.length === 3 && /^[a-f0-9]{24}$/.test(c[0]) && /^[a-f0-9]{24}$/.test(c[1]) && /^[a-f0-9]{24}$/.test(c[2])) {
-    url = API + '/api/course-report/' + c[0] + '/' + c[1] + '/' + c[2] + '/Biomexa-course-report.pdf';
-  }
-  var btn = document.getElementById('open');
-  if (!url) {
-    document.getElementById('spin').hidden = true;
-    document.getElementById('h').textContent = 'This report link is not valid';
-    document.getElementById('p').textContent = 'Please use the link from your WhatsApp message, or reply HELP on WhatsApp.';
-    btn.textContent = 'Go to Biomexa'; btn.hidden = false;
-    return;
-  }
-  // Android (incl. WhatsApp's in-app browser) can't hand a page-made file to another app — the
-  // "Continue" in "You're leaving WhatsApp" then does nothing. There, the button opens the real PDF
-  // address, which Android passes to its PDF viewer / Downloads normally.
-  if (/Android/i.test(navigator.userAgent)) {
-    document.getElementById('spin').hidden = true;
-    document.getElementById('h').textContent = 'Your report is ready';
-    document.getElementById('p').textContent = 'Tap below to open or save your Biomexa course report (PDF). If WhatsApp asks, tap Continue. Please show it to your doctor at your next visit.';
-    btn.href = url; btn.target = '_blank'; btn.rel = 'noopener'; btn.textContent = 'Open my report'; btn.hidden = false;
-    return;
-  }
-  // Elsewhere: load the PDF here so the address stays on biomexapharmaceuticals.com, then open it.
-  btn.href = url;
-  fetch(url).then(function (r) { if (!r.ok) throw new Error(r.status); return r.blob(); }).then(function (b) {
-    var blobUrl = URL.createObjectURL(new Blob([b], { type: 'application/pdf' }));
-    document.getElementById('spin').hidden = true;
-    document.getElementById('h').textContent = 'Your report is ready';
-    document.getElementById('p').textContent = 'Tap below to open or save your Biomexa course report (PDF). Please show it to your doctor at your next visit.';
-    btn.href = blobUrl; btn.download = 'Biomexa-course-report.pdf'; btn.textContent = 'Open my report'; btn.hidden = false;
-    // Desktop browsers show the PDF straight away; phones open it from the button.
-    if (!/Android|iPhone|iPad/i.test(navigator.userAgent)) location.href = blobUrl;
-  }).catch(function () { location.replace(url); });
+  var ok = c.length === 3 && c.every(function (x) { return /^[a-f0-9]{24}$/.test(x); });
+  var $ = function (id) { return document.getElementById(id); };
+  function fail(h, p) { $('spin').hidden = true; $('h').textContent = h; $('p').textContent = p; $('state').hidden = false; }
+  if (!ok) return fail('This report link is not valid', 'Please use the link from your WhatsApp message, or reply HELP on WhatsApp.');
+
+  var path = '/api/course-report/' + c[0] + '/' + c[1] + '/' + c[2] + '/Biomexa-course-report.pdf';
+  var viewUrl = API + path;
+  // Download through the Biomexa domain (/files/… forwarded to the server) when that is set up;
+  // otherwise from the server address.
+  var sameSite = '/files' + path.replace(/^\/api/, '') + '?download=1';
+  $('dl').href = viewUrl + '?download=1';
+  fetch(sameSite, { method: 'HEAD' }).then(function (r) {
+    if (r.ok && /pdf/i.test(r.headers.get('content-type') || '')) $('dl').href = sameSite;
+  }).catch(function () {});
+
+  if (!window.pdfjsLib) { $('dock').hidden = false; return fail('Your report is ready', 'Tap Download PDF below to open it.'); }
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'js/pdfjs/pdf.worker.min.js';
+  fetch(viewUrl).then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.arrayBuffer(); })
+    .then(function (buf) { return pdfjsLib.getDocument({ data: buf }).promise; })
+    .then(function (pdf) {
+      $('state').hidden = true; $('dock').hidden = false;
+      var box = $('pages'), dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+      var width = Math.min(box.clientWidth || window.innerWidth, 860);
+      var chain = Promise.resolve();
+      for (var i = 1; i <= pdf.numPages; i++) (function (n) {
+        chain = chain.then(function () { return pdf.getPage(n); }).then(function (page) {
+          var vp1 = page.getViewport({ scale: 1 });
+          var vp = page.getViewport({ scale: (width / vp1.width) * dpr });
+          var cv = document.createElement('canvas');
+          cv.width = vp.width; cv.height = vp.height;
+          box.appendChild(cv);
+          return page.render({ canvasContext: cv.getContext('2d'), viewport: vp }).promise;
+        });
+      })(i);
+      return chain;
+    })
+    .catch(function () {
+      $('dock').hidden = false; $('retry').hidden = false;
+      fail('Could not show the report here', 'Tap Download PDF below to open it, or try again.');
+    });
 })();
 </script>
 </body>

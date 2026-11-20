@@ -3955,7 +3955,7 @@ app.get('/api/course-report/:pid/:mid/:sig/:file?', async (req, res) => {
     const patient = await Patient.findById(pid);
     const med = patient?.medicines?.id(mid);
     if (!med) return res.status(404).send('Report not found');
-    sendPdf(res, await buildJourneyPdf(await journeyInputFor(patient, med)), journeyFileName(med));
+    sendPdf(res, await buildJourneyPdf(await journeyInputFor(patient, med)), journeyFileName(med), !('download' in req.query));
   } catch (err) { console.log('❌ Course report PDF error:', err.message); res.status(500).send('Could not create the report right now — please try again.'); }
 });
 // Sends the report: inside WhatsApp's 24-hour window as a PDF document with a short note; outside
