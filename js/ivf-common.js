@@ -7,11 +7,26 @@ const IVF = {
   meta: null,
 
   async api(path, { method = 'GET', body, token } = {}) {
-    const res = await fetch(IVF_API + path, {
-      method,
-      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: 'Bearer ' + token } : {}) },
-      body: body !== undefined ? JSON.stringify(body) : undefined
-    });
+    // Reads (GET) retry twice on a dropped connection or a server that is waking up / restarting,
+    // so a weak mobile signal or a fresh deploy doesn't show an error. Writes are never repeated.
+    const tries = method === 'GET' ? 3 : 1;
+    let res;
+    for (let i = 0; i < tries; i++) {
+      try {
+        res = await fetch(IVF_API + path, {
+          method,
+          headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: 'Bearer ' + token } : {}) },
+          body: body !== undefined ? JSON.stringify(body) : undefined
+        });
+        if (![502, 503, 504].includes(res.status) || i === tries - 1) break;
+      } catch (e) {
+        if (i === tries - 1) {
+          const err = new Error(navigator.onLine === false ? 'You seem to be offline. Please check your internet and try again.' : 'Could not reach Biomexa just now. Please check your internet and try again.');
+          err.status = 0; err.network = true; throw err;
+        }
+      }
+      await new Promise(r => setTimeout(r, 1500 * (i + 1)));
+    }
     let data = {};
     try { data = await res.json(); } catch {}
     if (!res.ok) {

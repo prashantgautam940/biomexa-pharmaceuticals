@@ -112,7 +112,8 @@ function show(tab) {
   document.title = (up ? 'Create account' : 'Sign in') + ' | Biomexa IVF Care';
 }
 function note(text, kind = 'critical') { const m = $('msg'); m.className = 'notice ' + kind; m.innerHTML = text; }
-const fullPhone = v => { v = v.trim().replace(/\s+/g, ''); return v.startsWith('+') ? v : '+91' + v.replace(/^0/, ''); };
+// Accepts 98765 43210, 098765…, 919876543210, +91 98765 43210 — always sends +91XXXXXXXXXX for Indian numbers.
+const fullPhone = v => { v = String(v).trim(); const d = v.replace(/\D/g, ''); if (v.startsWith('+')) return '+' + d; return d.length >= 10 ? '+91' + d.slice(-10) : '+91' + d; };
 function saveSession(data, fallbackUser) {
   localStorage.setItem('ivfToken', data.token);
   localStorage.setItem('ivfUser', JSON.stringify(data.user || data.patient || fallbackUser || {}));

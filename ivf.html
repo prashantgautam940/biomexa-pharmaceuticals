@@ -353,7 +353,7 @@ async function load() {
     if (!state.cycle || state.cycle.status === 'declined') return showEnrol();
     showMain();
   } catch (err) {
-    $('loading').textContent = 'Could not load: ' + err.message;
+    $('loading').innerHTML = `<div class="notice critical" style="display:inline-block;text-align:left">${IVF.esc(err.message)}</div><div class="mt"><button class="btn btn-primary btn-sm" onclick="this.disabled=true;$('loading').textContent='Loading…';load()">Try again</button></div>`;
   }
 }
 
@@ -366,7 +366,7 @@ async function showEnrol() {
     $('declinedNote').classList.remove('hidden');
   }
   $('consentText').textContent = IVF.meta.consentText;
-  $('eProtocol').innerHTML += IVF.meta.protocols.filter(p => p !== 'other').map(p => `<option value="${p}">${IVF.protocolLabel(p)}</option>`).join('');
+  if (!$('eProtocol').dataset.filled) { $('eProtocol').innerHTML += IVF.meta.protocols.filter(p => p !== 'other').map(p => `<option value="${p}">${IVF.protocolLabel(p)}</option>`).join(''); $('eProtocol').dataset.filled = '1'; }
   const centres = await IVF.api('/api/ivf/centers');
   $('centreList').innerHTML = centres.length ? centres.map(c => `
     <label class="centre" data-id="${IVF.esc(c.doctorId)}">

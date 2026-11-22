@@ -3834,7 +3834,9 @@ async function generateTodaysDoses(todayStr) {
 // Refill links point to the Biomexa product page when the medicine is a Biomexa product;
 // otherwise the message introduces the Biomexa range, always framed as "ask your doctor" —
 // patients shouldn't switch medicines on the strength of a WhatsApp message alone.
-const SITE_URL = (process.env.SITE_URL || 'https://biomexa-website.onrender.com').replace(/\/+$/, '');
+// Links in WhatsApp messages always use the Biomexa domain (an old onrender website URL in the
+// environment is ignored, so patients never see a render.com address).
+const SITE_URL = (process.env.SITE_URL && !/onrender\.com/i.test(process.env.SITE_URL) ? process.env.SITE_URL : 'https://biomexapharmaceuticals.com').replace(/\/+$/, '');
 const COURSE_MSG_START_HOUR = 9, COURSE_MSG_END_HOUR = 21;
 
 // Optional approved template so these reach patients outside WhatsApp's 24-hour session window

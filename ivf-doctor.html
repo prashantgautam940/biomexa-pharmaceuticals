@@ -498,8 +498,14 @@ async function start() {
     window._center = center;
     $('centrePendingNote').classList.toggle('hidden', center.status !== 'pending');
     $('centreLabel').textContent = center.centerName + (center.city ? ' · ' + center.city : '');
-    show('dashView'); loadDash();
-  } catch (err) { if (token) IVF.toast(err.message, true); }
+    show('dashView'); loadDash().catch(err => IVF.toast(err.message, true));
+  } catch (err) {
+    if (!token) return;
+    // Couldn't reach the server (weak signal, server restarting): say so and offer a retry
+    // instead of leaving an empty page.
+    show('dashView');
+    $('kpis').innerHTML = `<div class="notice critical" style="grid-column:1/-1">${IVF.esc(err.message)} <button class="btn btn-primary btn-sm" onclick="start()">Try again</button></div>`;
+  }
 }
 
 // ---------- centre profile ----------
