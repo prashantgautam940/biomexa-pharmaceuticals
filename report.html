@@ -6,6 +6,8 @@
 <meta name="robots" content="noindex">
 <title>Your Biomexa report</title>
 <link rel="icon" type="image/svg+xml" href="logo.svg">
+<link rel="preconnect" href="https://biomexa-api-f9f6.onrender.com" crossorigin>
+<link rel="preload" href="js/pdfjs/pdf.worker.min.js" as="script">
 <style>
   * { box-sizing: border-box; }
   body { margin: 0; background: #eef2f8; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: #13213d; }
@@ -80,14 +82,18 @@
   var viewUrl = API + path, buf = null, viaDomain = false;
   var inAppAndroid = /; wv\)|FBAN|FBAV|Instagram|WhatsApp/i.test(navigator.userAgent) && /Android/i.test(navigator.userAgent);
   $('dl').href = viewUrl + '?download=1';
-  var probe = candidates.reduce(function (p, u) {
+  // The report starts loading straight away from the server; the Biomexa-domain addresses are
+  // checked at the same time and only decide where the Download button points.
+  var pdfReq = fetch(API + path, { cache: 'no-store' });
+  candidates.reduce(function (p, u) {
     return p.then(function () {
-      if (viaDomain || /^(localhost|127\.)/.test(location.hostname) && u.indexOf('https://api.') === 0) return;
+      if (viaDomain || (/^(localhost|127\.)/.test(location.hostname) && u.indexOf('https://api.') === 0)) return;
       return fetch(u, { method: 'HEAD', cache: 'no-store' }).then(function (r) {
-        if (r.ok && /pdf/i.test(r.headers.get('content-type') || '')) { viaDomain = true; viewUrl = u; $('dl').href = u + '?download=1'; }
+        if (r.ok && /pdf/i.test(r.headers.get('content-type') || '')) { viaDomain = true; $('dl').href = u + '?download=1'; }
       }).catch(function () {});
     });
   }, Promise.resolve());
+  var slow = setTimeout(function () { $('p').textContent = 'Preparing your report from your records — almost there…'; }, 4000);
   $('dl').addEventListener('click', function (e) {
     if (viaDomain || !buf || inAppAndroid) return; // real link (domain, or server inside Android in-app browsers)
     // Normal browsers: save the copy already loaded on this page, so the download stays on biomexapharmaceuticals.com.
@@ -99,11 +105,11 @@
     } catch (err) { location.href = API + path + '?download=1'; }
   });
 
-  if (!window.pdfjsLib) { probe.then(function () { $('dock').hidden = false; fail('Your report is ready', 'Tap Download PDF below to open it.'); }); return; }
+  if (!window.pdfjsLib) { $('dock').hidden = false; return fail('Your report is ready', 'Tap Download PDF below to open it.'); }
   pdfjsLib.GlobalWorkerOptions.workerSrc = 'js/pdfjs/pdf.worker.min.js';
-  probe.then(function () { return fetch(viewUrl, { cache: 'no-store' }); })
+  pdfReq
     .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.arrayBuffer(); })
-    .then(function (b) { buf = b.slice(0); return pdfjsLib.getDocument({ data: b }).promise; })
+    .then(function (b) { clearTimeout(slow); buf = b.slice(0); return pdfjsLib.getDocument({ data: b }).promise; })
     .then(function (pdf) {
       $('state').hidden = true; $('dock').hidden = false;
       var box = $('pages'), dpr = Math.min(window.devicePixelRatio || 1, 2.5);
@@ -122,7 +128,7 @@
       return chain;
     })
     .catch(function () {
-      $('dock').hidden = false; $('retry').hidden = false;
+      clearTimeout(slow); $('dock').hidden = false; $('retry').hidden = false;
       fail('Could not show the report here', 'Tap Download PDF below to open it, or try again.');
     });
 })();

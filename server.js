@@ -8,6 +8,7 @@ const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
+const reportCache = require('./report/cache');
 const { cleanVitals, toFahrenheit, normaliseEntry, checkVitalsDanger } = require('./vitals/calibration');
 const { summarizeAdherence, dedupeDoses } = require('./vitals/adherence');
 const { buildVitalsProgress } = require('./vitals/progress');
@@ -1839,6 +1840,7 @@ const doseSchema = new mongoose.Schema({
   autoMissed: Boolean, // marked missed because nobody replied (see markUnansweredDosesMissed)
   createdAt: { type: Date, default: Date.now }
 });
+doseSchema.index({ patientPhone: 1, scheduledDate: 1 }); // reports and dashboards look doses up this way
 
 const otpSchema = new mongoose.Schema({
   phone: { type: String, required: true },
@@ -1895,6 +1897,7 @@ const vitalsLogSchema = new mongoose.Schema({
   source: { type: String, default: 'whatsapp' }, // whatsapp | manual | doctor
   recordedAt: { type: Date, default: Date.now }
 });
+vitalsLogSchema.index({ patientPhone: 1, recordedAt: 1 });
 
 // Prescriptions and lab reports a patient uploads for AI analysis. Stores the file itself as
 // base64 (no external file storage configured) — kept intentionally small (5MB cap, enforced at
@@ -3957,7 +3960,8 @@ app.get('/api/course-report/:pid/:mid/:sig/:file?', async (req, res) => {
     const patient = await Patient.findById(pid);
     const med = patient?.medicines?.id(mid);
     if (!med) return res.status(404).send('Report not found');
-    sendPdf(res, await buildJourneyPdf(await journeyInputFor(patient, med)), journeyFileName(med), !('download' in req.query));
+    const buf = await reportCache.getPdf(`course:${pid}:${mid}`, async () => buildJourneyPdf(await journeyInputFor(patient, med)));
+    sendPdf(res, buf, journeyFileName(med), !('download' in req.query));
   } catch (err) { console.log('❌ Course report PDF error:', err.message); res.status(500).send('Could not create the report right now — please try again.'); }
 });
 // Sends the report: inside WhatsApp's 24-hour window as a PDF document with a short note; outside
@@ -3988,6 +3992,7 @@ async function sendCourseJourneyReport(patient, med, opts = {}) {
   siblings.forEach(m => { m.reportSentAt = stamp; });
   for (const m of siblings) await Patient.updateOne({ _id: patient._id, 'medicines._id': m._id }, { $set: { 'medicines.$.reportSentAt': stamp } }).catch(() => {});
   console.log(`📄 Course report ${med.name} → ${patient.phone}: ${r?.success ? 'sent' : 'failed'} (${a.taken}/${a.due} doses, ${a.pct ?? '—'}%)`);
+  reportCache.warm(`course:${patient._id}:${med._id}`, () => buildJourneyPdf(input)); // first open is instant
   return { success: !!r?.success, url, adherence: a.pct };
 }
 // Admin: send (or re-send) the course report for one finished medicine from the Reminder Center.

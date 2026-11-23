@@ -18,6 +18,7 @@ const {
 const { evaluateDailyLog, SEVERITY_RANK, maxSeverity } = require('./redflags');
 const { buildProgress } = require('./progress');
 const { buildIvfJourneyPdf, analyseIvfJourney } = require('./journey-report');
+const reportCache = require('../report/cache');
 const { evaluatePregnancy, gaLabel: pregGaLabel, gaOn: pregGaOn } = require('./pregnancy');
 
 const STAGE_LABEL = Object.fromEntries(IVF_STAGES.map(s => [s.key, s.label]));
@@ -641,6 +642,8 @@ async function ivfJourneyInput(cycle) {
 async function sendIvfJourneyReport(cycle, opts = {}) {
   const input = await ivfJourneyInput(cycle);
   const a = analyseIvfJourney(input);
+  reportCache.drop(`ivf:${cycle._id}`);
+  reportCache.warm(`ivf:${cycle._id}`, () => buildIvfJourneyPdf(input)); // ready before she taps the link
   const first = String(cycle.patientName || 'there').trim().split(/\s+/)[0];
   const url = ivfReportPageUrl(cycle);
   const closed = cycle.stage === 'closed' || cycle.status === 'completed';
@@ -687,7 +690,7 @@ function mount(app, deps) {
     if (!isId(cid) || sig !== D.reportSig('ivf-journey', cid)) return res.status(404).send('Report not found');
     const cycle = await IvfCycle.findById(cid);
     if (!cycle) return res.status(404).send('Report not found');
-    const buf = await buildIvfJourneyPdf(await ivfJourneyInput(cycle));
+    const buf = await reportCache.getPdf(`ivf:${cid}`, async () => buildIvfJourneyPdf(await ivfJourneyInput(cycle)));
     res.set({ 'Content-Type': 'application/pdf', 'Content-Length': buf.length, 'Content-Disposition': `${'download' in req.query ? 'attachment' : 'inline'}; filename="${ivfReportFile(cycle)}"`, 'Cache-Control': 'private, no-store' });
     res.send(buf);
   }));
@@ -695,6 +698,8 @@ function mount(app, deps) {
   app.get(`${R}/journey-report`, auth, wrap(async (req, res) => {
     const cycle = await patientCycle(req.user.phone);
     if (!cycle || cycle.status === 'pending' || cycle.status === 'declined') return res.status(404).json({ message: 'Your journey report will be ready once your IVF centre accepts you.' });
+    reportCache.drop(`ivf:${cycle._id}`); // she may have new check-ins since — build fresh, starting now
+    reportCache.warm(`ivf:${cycle._id}`, async () => buildIvfJourneyPdf(await ivfJourneyInput(cycle)));
     res.json({ url: ivfReportPageUrl(cycle), fileUrl: D.publicFileUrl(ivfReportApiPath(cycle)) + '?download=1' });
   }));
 
@@ -1241,7 +1246,11 @@ function mount(app, deps) {
   app.post(`${DR}/cycles/:id/journey-report`, doctorAuth, wrap(async (req, res) => {
     const cycle = await doctorCycle(req);
     if (!cycle) return res.status(404).json({ message: 'Patient not found.' });
-    if (req.body?.send === false) return res.json({ url: ivfReportPageUrl(cycle) });
+    if (req.body?.send === false) {
+      reportCache.drop(`ivf:${cycle._id}`);
+      reportCache.warm(`ivf:${cycle._id}`, async () => buildIvfJourneyPdf(await ivfJourneyInput(cycle)));
+      return res.json({ url: ivfReportPageUrl(cycle) });
+    }
     const r = await sendIvfJourneyReport(cycle);
     res.status(r.success ? 200 : 502).json({ message: r.success ? `Journey report sent to ${cycle.patientName || 'the patient'} on WhatsApp.` : 'Could not send on WhatsApp right now — copy the link and share it instead.', url: r.url });
   }));
