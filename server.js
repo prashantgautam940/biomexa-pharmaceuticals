@@ -5990,7 +5990,10 @@ async function checkFilesDomain() {
     FILES_VIA_DOMAIN = ok;
   } catch { /* keep the last known state */ }
 }
-if (process.env.NODE_ENV !== 'test') { setTimeout(checkFilesDomain, 15000); setInterval(checkFilesDomain, 20 * 60000); }
+if (process.env.NODE_ENV !== 'test') {
+  setTimeout(() => checkFilesDomain().then(() => console.log(`🔗 File links check at startup: ${FILES_VIA_DOMAIN ? 'biomexapharmaceuticals.com/files is forwarding ✅' : 'domain not forwarding yet — using the server address'}`)), 15000);
+  setInterval(checkFilesDomain, 5 * 60000);
+}
 // apiPath starts with /api/ — returns the link patients get for that file.
 function publicFileUrl(apiPath) {
   return FILES_VIA_DOMAIN ? `${BRAND_URL}/files${apiPath.replace(/^\/api/, '')}` : `${API_PUBLIC_URL}${apiPath}`;
