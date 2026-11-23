@@ -5978,25 +5978,37 @@ const API_PUBLIC_URL = (process.env.API_PUBLIC_URL || process.env.RENDER_EXTERNA
 // (Render static site → Redirects/Rewrites: /files/*  →  <API>/api/*  as a Rewrite). The server
 // checks that forwarding itself, so links switch to the domain automatically as soon as it works
 // and never point at a broken address before that.
-let FILES_VIA_DOMAIN = process.env.FILES_VIA_DOMAIN === 'true';
+// Two ways to serve them from the Biomexa domain, whichever is set up (checked automatically):
+//   1. https://api.biomexapharmaceuticals.com/api/…  (custom domain on this API service — one DNS CNAME)
+//   2. https://biomexapharmaceuticals.com/files/…     (website host forwarding /files/* here)
+// Until one of them answers, links fall back to the server address, so they never break.
+const FILE_BASES = [
+  process.env.FILES_BASE_URL,
+  `https://api.${BRAND_URL.replace(/^https?:\/\/(www\.)?/, '')}/api`,
+  `${BRAND_URL}/files`
+].filter(Boolean).map(u => u.replace(/\/+$/, ''));
+let FILES_BASE = null;
 app.get('/api/files-check', (req, res) => res.json({ biomexa: 'files-ok' }));
 async function checkFilesDomain() {
-  if (process.env.FILES_VIA_DOMAIN === 'true' || process.env.NODE_ENV === 'test') return;
-  try {
-    const r = await fetch(`${BRAND_URL}/files/files-check`, { signal: AbortSignal.timeout(10000), headers: { 'cache-control': 'no-cache' } });
-    const j = r.ok && /json/i.test(r.headers.get('content-type') || '') ? await r.json() : null;
-    const ok = j?.biomexa === 'files-ok';
-    if (ok !== FILES_VIA_DOMAIN) console.log(`🔗 Patient file links now use ${ok ? BRAND_URL + '/files' : API_PUBLIC_URL + '/api'}`);
-    FILES_VIA_DOMAIN = ok;
-  } catch { /* keep the last known state */ }
+  if (process.env.NODE_ENV === 'test') return;
+  let found = null;
+  for (const base of FILE_BASES) {
+    try {
+      const r = await fetch(`${base}/files-check`, { signal: AbortSignal.timeout(10000), headers: { 'cache-control': 'no-cache' } });
+      const j = r.ok && /json/i.test(r.headers.get('content-type') || '') ? await r.json() : null;
+      if (j?.biomexa === 'files-ok') { found = base; break; }
+    } catch { /* try the next one */ }
+  }
+  if (found !== FILES_BASE) console.log(`🔗 Patient file links now use ${found || API_PUBLIC_URL + '/api'}`);
+  FILES_BASE = found;
 }
 if (process.env.NODE_ENV !== 'test') {
-  setTimeout(() => checkFilesDomain().then(() => console.log(`🔗 File links check at startup: ${FILES_VIA_DOMAIN ? 'biomexapharmaceuticals.com/files is forwarding ✅' : 'domain not forwarding yet — using the server address'}`)), 15000);
+  setTimeout(() => checkFilesDomain().then(() => console.log(`🔗 File links check at startup: ${FILES_BASE ? FILES_BASE + ' ✅' : 'no Biomexa-domain address answers yet — using the server address'}`)), 15000);
   setInterval(checkFilesDomain, 5 * 60000);
 }
 // apiPath starts with /api/ — returns the link patients get for that file.
 function publicFileUrl(apiPath) {
-  return FILES_VIA_DOMAIN ? `${BRAND_URL}/files${apiPath.replace(/^\/api/, '')}` : `${API_PUBLIC_URL}${apiPath}`;
+  return FILES_BASE ? `${FILES_BASE}${apiPath.replace(/^\/api/, '')}` : `${API_PUBLIC_URL}${apiPath}`;
 }
 // Signed, unguessable keys for patient report links (no login needed to open the PDF).
 function reportSig(kind, id) {

@@ -73,13 +73,21 @@
 
   // Files come through the Biomexa domain (/files/… is forwarded to the server). Until that is set
   // up, the page falls back to the server address — the patient never sees a dead link.
-  var domainPath = '/files' + path.replace(/^\/api/, '');
+  // Files come from the Biomexa domain: api.biomexapharmaceuticals.com (custom domain on the server)
+  // or /files/… (website forwarding). Until one is set up, the server address is used — never a dead link.
+  var rest = path.replace(/^\/api/, '');
+  var candidates = ['https://api.' + location.hostname.replace(/^www\./, '') + '/api' + rest, '/files' + rest];
   var viewUrl = API + path, buf = null, viaDomain = false;
   var inAppAndroid = /; wv\)|FBAN|FBAV|Instagram|WhatsApp/i.test(navigator.userAgent) && /Android/i.test(navigator.userAgent);
   $('dl').href = viewUrl + '?download=1';
-  var probe = fetch(domainPath, { method: 'HEAD', cache: 'no-store' }).then(function (r) {
-    if (r.ok && /pdf/i.test(r.headers.get('content-type') || '')) { viaDomain = true; viewUrl = domainPath; $('dl').href = domainPath + '?download=1'; }
-  }).catch(function () {});
+  var probe = candidates.reduce(function (p, u) {
+    return p.then(function () {
+      if (viaDomain || /^(localhost|127\.)/.test(location.hostname) && u.indexOf('https://api.') === 0) return;
+      return fetch(u, { method: 'HEAD', cache: 'no-store' }).then(function (r) {
+        if (r.ok && /pdf/i.test(r.headers.get('content-type') || '')) { viaDomain = true; viewUrl = u; $('dl').href = u + '?download=1'; }
+      }).catch(function () {});
+    });
+  }, Promise.resolve());
   $('dl').addEventListener('click', function (e) {
     if (viaDomain || !buf || inAppAndroid) return; // real link (domain, or server inside Android in-app browsers)
     // Normal browsers: save the copy already loaded on this page, so the download stays on biomexapharmaceuticals.com.
