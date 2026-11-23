@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="robots" content="noindex">
-<title>Your Biomexa course report</title>
+<title>Your Biomexa report</title>
 <link rel="icon" type="image/svg+xml" href="logo.svg">
 <style>
   * { box-sizing: border-box; }
@@ -15,6 +15,8 @@
   .bar .t small { display: block; font-weight: 400; color: #5b6b86; font-size: .74rem; }
   .btn { display: inline-flex; align-items: center; gap: 6px; background: #1c9a55; color: #fff; text-decoration: none; font-weight: 700; padding: 12px 18px; border-radius: 10px; font-size: .95rem; border: 0; white-space: nowrap; }
   .btn.alt { background: #16336b; }
+  .btn.sm { padding: 9px 14px; font-size: .85rem; }
+  .btn.ghost { background: #fff; color: #16336b; border: 1.5px solid #16336b; }
   .pages { max-width: 860px; margin: 0 auto; padding: 12px 10px 90px; }
   .pages canvas { display: block; width: 100%; height: auto; background: #fff; margin: 0 0 12px; border-radius: 6px; box-shadow: 0 4px 16px rgba(19,33,61,.10); }
   .state { max-width: 380px; margin: 18vh auto 0; background: #fff; border: 1px solid #dfe5ef; border-radius: 16px; padding: 26px 22px; text-align: center; }
@@ -28,7 +30,8 @@
 <body>
 <div class="bar">
   <img src="images/logo-full.png" alt="Biomexa Pharmaceuticals">
-  <div class="t">Your course report<small>Please show it to your doctor at your next visit</small></div>
+  <div class="t" id="title">Your course report<small id="sub">Please show it to your doctor at your next visit</small></div>
+  <a class="btn alt sm" id="login" href="login.html">Log in</a>
 </div>
 
 <div class="state" id="state">
@@ -39,36 +42,60 @@
 </div>
 <div class="pages" id="pages"></div>
 <div class="dock" id="dock" hidden>
+  <a class="btn ghost" id="login2" href="login.html">Log in for updates</a>
   <a class="btn" id="dl" href="#"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0l-5-5m5 5l5-5M4 21h16"/></svg> Download PDF</a>
 </div>
 
 <script src="js/pdfjs/pdf.min.js"></script>
 <script>
-// Biomexa report links point here. The report is drawn right on this page (on the Biomexa domain),
-// so it opens straight away — also inside WhatsApp's browser on Android — with a Download button.
+// Biomexa report links point here (course reports: ?c=…, IVF journey reports: ?i=…). The report is
+// drawn right on this page on the Biomexa domain — also inside WhatsApp's browser on Android — with
+// a Download button and a Log in button so the patient can continue in her portal.
 (function () {
   var API = 'https://biomexa-api-f9f6.onrender.com';
   var q = new URLSearchParams(location.search);
-  var c = (q.get('c') || '').split('.');
-  var ok = c.length === 3 && c.every(function (x) { return /^[a-f0-9]{24}$/.test(x); });
+  var hex = function (x) { return /^[a-f0-9]{24}$/.test(x); };
   var $ = function (id) { return document.getElementById(id); };
   function fail(h, p) { $('spin').hidden = true; $('h').textContent = h; $('p').textContent = p; $('state').hidden = false; }
-  if (!ok) return fail('This report link is not valid', 'Please use the link from your WhatsApp message, or reply HELP on WhatsApp.');
+  var c = (q.get('c') || '').split('.'), iv = (q.get('i') || '').split('.');
+  var path, file, login;
+  if (iv.length === 2 && iv.every(hex)) {
+    path = '/api/ivf-report/' + iv[0] + '/' + iv[1] + '/Biomexa-IVF-journey.pdf'; file = 'Biomexa-IVF-journey.pdf'; login = 'ivf-auth.html';
+    document.title = 'Your IVF treatment journey — Biomexa';
+    $('title').firstChild.nodeValue = 'Your IVF treatment journey';
+    $('sub').textContent = 'Biomexa IVF Care · keep it for your next consultation';
+  } else if (c.length === 3 && c.every(hex)) {
+    path = '/api/course-report/' + c[0] + '/' + c[1] + '/' + c[2] + '/Biomexa-course-report.pdf'; file = 'Biomexa-course-report.pdf'; login = 'login.html';
+  } else {
+    return fail('This report link is not valid', 'Please use the link from your WhatsApp message, or reply HELP on WhatsApp.');
+  }
+  $('login').href = login; $('login2').href = login;
 
-  var path = '/api/course-report/' + c[0] + '/' + c[1] + '/' + c[2] + '/Biomexa-course-report.pdf';
-  var viewUrl = API + path;
-  // Download through the Biomexa domain (/files/… forwarded to the server) when that is set up;
-  // otherwise from the server address.
-  var sameSite = '/files' + path.replace(/^\/api/, '') + '?download=1';
+  // Files come through the Biomexa domain (/files/… is forwarded to the server). Until that is set
+  // up, the page falls back to the server address — the patient never sees a dead link.
+  var domainPath = '/files' + path.replace(/^\/api/, '');
+  var viewUrl = API + path, buf = null, viaDomain = false;
+  var inAppAndroid = /; wv\)|FBAN|FBAV|Instagram|WhatsApp/i.test(navigator.userAgent) && /Android/i.test(navigator.userAgent);
   $('dl').href = viewUrl + '?download=1';
-  fetch(sameSite, { method: 'HEAD' }).then(function (r) {
-    if (r.ok && /pdf/i.test(r.headers.get('content-type') || '')) $('dl').href = sameSite;
+  var probe = fetch(domainPath, { method: 'HEAD', cache: 'no-store' }).then(function (r) {
+    if (r.ok && /pdf/i.test(r.headers.get('content-type') || '')) { viaDomain = true; viewUrl = domainPath; $('dl').href = domainPath + '?download=1'; }
   }).catch(function () {});
+  $('dl').addEventListener('click', function (e) {
+    if (viaDomain || !buf || inAppAndroid) return; // real link (domain, or server inside Android in-app browsers)
+    // Normal browsers: save the copy already loaded on this page, so the download stays on biomexapharmaceuticals.com.
+    try {
+      e.preventDefault();
+      var u = URL.createObjectURL(new Blob([buf], { type: 'application/pdf' }));
+      var a = document.createElement('a'); a.href = u; a.download = file; document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(function () { URL.revokeObjectURL(u); }, 60000);
+    } catch (err) { location.href = API + path + '?download=1'; }
+  });
 
-  if (!window.pdfjsLib) { $('dock').hidden = false; return fail('Your report is ready', 'Tap Download PDF below to open it.'); }
+  if (!window.pdfjsLib) { probe.then(function () { $('dock').hidden = false; fail('Your report is ready', 'Tap Download PDF below to open it.'); }); return; }
   pdfjsLib.GlobalWorkerOptions.workerSrc = 'js/pdfjs/pdf.worker.min.js';
-  fetch(viewUrl).then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.arrayBuffer(); })
-    .then(function (buf) { return pdfjsLib.getDocument({ data: buf }).promise; })
+  probe.then(function () { return fetch(viewUrl, { cache: 'no-store' }); })
+    .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.arrayBuffer(); })
+    .then(function (b) { buf = b.slice(0); return pdfjsLib.getDocument({ data: b }).promise; })
     .then(function (pdf) {
       $('state').hidden = true; $('dock').hidden = false;
       var box = $('pages'), dpr = Math.min(window.devicePixelRatio || 1, 2.5);

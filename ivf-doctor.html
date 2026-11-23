@@ -310,6 +310,14 @@
         <div class="field mt"><label for="pNotes">Plan notes for the patient</label><textarea id="pNotes" maxlength="3000" placeholder="Instructions the patient sees in their IVF tab"></textarea></div>
         <button class="btn btn-primary" type="submit">Save plan</button>
       </form>
+      <div class="card">
+        <h2>Treatment journey report</h2>
+        <p class="small muted">A PDF of the patient's whole IVF journey — stages and dates, medicines confirmed, check-ins, reviewed test results and your notes. It is sent to the patient automatically on WhatsApp when you set the stage to <b>Cycle closed</b>. You can also send it any time.</p>
+        <div class="row" style="display:flex;gap:10px;flex-wrap:wrap">
+          <button class="btn btn-primary" type="button" id="jrSend">Send journey report on WhatsApp</button>
+          <button class="btn btn-ghost" type="button" id="jrView">Preview report</button>
+        </div>
+      </div>
       <div class="card" id="patientInfo"></div>
     </div>
 
@@ -731,6 +739,19 @@ $('planForm').addEventListener('submit', async e => {
     } });
     IVF.toast(r.message); openPatient(current.cycle._id, 'plan');
   } catch (err) { IVF.toast(err.message, true); }
+});
+
+$('jrSend').addEventListener('click', async () => {
+  if (!confirm(`Send the treatment journey report to ${current.cycle.patientName || 'this patient'} on WhatsApp now?`)) return;
+  $('jrSend').disabled = true;
+  try { const r = await call(`/api/ivf/doctor/cycles/${current.cycle._id}/journey-report`, { method: 'POST', body: {} }); IVF.toast(r.message); }
+  catch (err) { IVF.toast(err.message, true); }
+  finally { $('jrSend').disabled = false; }
+});
+$('jrView').addEventListener('click', async () => {
+  const w = window.open('', '_blank');
+  try { const r = await call(`/api/ivf/doctor/cycles/${current.cycle._id}/journey-report`, { method: 'POST', body: { send: false } }); if (w) w.location = r.url; else location.href = r.url; }
+  catch (err) { if (w) w.close(); IVF.toast(err.message, true); }
 });
 
 $('mTrigger').onchange = () => {

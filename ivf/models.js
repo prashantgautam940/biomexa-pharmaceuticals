@@ -91,6 +91,7 @@ const ivfCycleSchema = new mongoose.Schema({
   lastCheckInAt: Date,
   lastNudgeDate: String, // YYYY-MM-DD of the last "please do today's check-in" WhatsApp nudge
   lastProgressSummaryAt: Date, // last weekly WhatsApp progress summary
+  journeyReportSentAt: Date, // last IVF journey report (PDF) sent on WhatsApp
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
 }, { collection: 'ivf_cycles' });

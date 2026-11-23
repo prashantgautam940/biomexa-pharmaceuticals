@@ -17,6 +17,7 @@ const {
 } = require('./models');
 const { evaluateDailyLog, SEVERITY_RANK, maxSeverity } = require('./redflags');
 const { buildProgress } = require('./progress');
+const { buildIvfJourneyPdf, analyseIvfJourney } = require('./journey-report');
 const { evaluatePregnancy, gaLabel: pregGaLabel, gaOn: pregGaOn } = require('./pregnancy');
 
 const STAGE_LABEL = Object.fromEntries(IVF_STAGES.map(s => [s.key, s.label]));
@@ -599,6 +600,77 @@ async function smartSend(rawSend, phone, text, opts = {}) {
   return rawSend(phone, text);
 }
 
+
+// ---------- IVF treatment journey report (PDF) ----------
+const ivfReportFile = cycle => `Biomexa-IVF-journey-${String(cycle.patientName || 'report').trim().split(/\s+/)[0].replace(/[^A-Za-z0-9]+/g, '') || 'report'}.pdf`;
+const ivfReportApiPath = cycle => `/api/ivf-report/${cycle._id}/${D.reportSig('ivf-journey', cycle._id)}/${ivfReportFile(cycle)}`;
+// The link patients see (opens on the Biomexa domain, with Download and Login buttons).
+const ivfReportPageUrl = cycle => `${D.BRAND_URL || D.SITE_URL}/report.html?i=${cycle._id}.${D.reportSig('ivf-journey', cycle._id)}`;
+async function ivfJourneyInput(cycle) {
+  const id = String(cycle._id);
+  const [progress, meds, doses, reports, consults, preg, doctor] = await Promise.all([
+    buildProgress(cycle),
+    IvfMedication.find({ cycleId: id }).sort({ isTrigger: 1, startDate: 1, createdAt: 1 }).lean(),
+    IvfDose.find({ cycleId: id, scheduledAt: { $lte: new Date() } }).select('medicationId status').lean(),
+    IvfReport.find({ cycleId: id, reviewStatus: 'reviewed' }).select('title reportDate category doctorFindings doctorAdvice reviewedAt uploadedAt').sort({ reviewedAt: 1 }).lean(),
+    IvfConsult.find({ cycleId: id, status: 'completed' }).select('scheduledAt mode doctorSummary createdAt').sort({ scheduledAt: 1 }).lean(),
+    IvfPregnancy.findOne({ cycleId: id }).lean(),
+    D.Doctor.findById(cycle.doctorId).select('name').lean().catch(() => null)
+  ]);
+  const count = {};
+  for (const d of doses) {
+    const c = count[d.medicationId] = count[d.medicationId] || { taken: 0, missed: 0 };
+    if (d.status === 'taken') c.taken++; else if (d.status === 'missed') c.missed++;
+  }
+  let pregnancy = null;
+  if (preg) {
+    const ga = pregGaOn(preg, D.localDateStr(new Date()));
+    pregnancy = { gaLabel: Number.isFinite(ga) ? pregGaLabel(ga) : null, edd: evaluatePregnancy(preg).edd || null,
+      sharedNotes: (preg.sharedNotes || []).map(n => ({ text: n.text, by: n.by, at: n.at })) };
+  }
+  return {
+    cycle, progress, doctorName: doctor?.name ? (/^dr\.?\s/i.test(doctor.name) ? doctor.name : 'Dr. ' + doctor.name) : '',
+    medicines: meds.map(m => ({ name: m.name, dosage: m.dosage, route: m.route, isTrigger: m.isTrigger, triggerAt: m.triggerAt, startDate: m.startDate, endDate: m.endDate, ...(count[String(m._id)] || { taken: 0, missed: 0 }) })),
+    reports: reports.map(r => ({ title: r.title, date: r.reportDate || r.reviewedAt || r.uploadedAt, category: r.category, findings: r.doctorFindings, advice: r.doctorAdvice })),
+    consults: consults.map(k => ({ date: k.scheduledAt || k.createdAt, mode: k.mode, summary: k.doctorSummary })),
+    pregnancy
+  };
+}
+// Sends the journey report on WhatsApp: a short summary + the PDF (inside the 24h window), or the
+// IVF update template carrying the report link (outside it).
+async function sendIvfJourneyReport(cycle, opts = {}) {
+  const input = await ivfJourneyInput(cycle);
+  const a = analyseIvfJourney(input);
+  const first = String(cycle.patientName || 'there').trim().split(/\s+/)[0];
+  const url = ivfReportPageUrl(cycle);
+  const closed = cycle.stage === 'closed' || cycle.status === 'completed';
+  const head = closed ? `📄 *${first}, your IVF treatment journey report*` : `📄 *${first}, your IVF journey so far*`;
+  const lines = [
+    head, '',
+    `Your whole treatment with ${cycle.centerName || 'your IVF centre'} in one report — the stages you went through, key dates, your medicines, your check-ins and your doctor's notes.`, '',
+    `🗓️ Days in treatment: *${a.days}*`,
+    a.taken + a.missed ? `💉 Medicines confirmed: *${a.taken} of ${a.taken + a.missed}* (${a.adherence}%)` : null,
+    a.checkins ? `📋 Daily check-ins: *${a.checkins}*` : null,
+    `📍 Stage: *${closed ? 'Cycle closed' : STAGE_LABEL[cycle.stage]}*`, '',
+    `Open and download your report:\n${url}`, '',
+    `Log in to your IVF portal for updates, graphs and messages:\n${ivfUrl('ivf-auth.html')}`, '',
+    '- Biomexa IVF Care'
+  ].filter(l => l !== null);
+  const text = lines.join('\n');
+  let r;
+  const open = D.whatsappWindowOpen ? await D.whatsappWindowOpen(cycle.patientPhone).catch(() => false) : false;
+  if (open && D.sendMsg91Document) {
+    await D.sendWhatsAppFree(cycle.patientPhone, text);
+    r = await D.sendMsg91Document(cycle.patientPhone, D.publicFileUrl(ivfReportApiPath(cycle)), ivfReportFile(cycle), '📄 Your IVF treatment journey report').catch(() => ({ success: false }));
+    if (!r?.success) r = { success: true, linkOnly: true }; // the text with the link already went
+  } else {
+    r = await D.sendWhatsAppFree(cycle.patientPhone, text, { title: closed ? 'Your IVF journey report' : 'Your IVF journey so far', details: `Your IVF treatment report is ready: ${a.days} days, ${a.taken + a.missed ? a.adherence + '% medicines confirmed, ' : ''}stage ${closed ? 'closed' : STAGE_LABEL[cycle.stage]}. Open and download it: ${url} · Log in for updates: ${ivfUrl('ivf-auth.html')}` });
+  }
+  await IvfCycle.updateOne({ _id: cycle._id }, { $set: { journeyReportSentAt: new Date() } }).catch(() => {});
+  console.log(`📄 IVF journey report → ${cycle.patientPhone}: ${r?.success ? 'sent' : 'failed'}${opts.auto ? ' (auto, cycle closed)' : ''}`);
+  return { success: !!r?.success, url };
+}
+
 function mount(app, deps) {
   const rawSend = deps.sendWhatsAppFree;
   D = { ...deps, sendWhatsAppFree: (phone, text, opts) => smartSend(rawSend, phone, text, opts) };
@@ -607,6 +679,24 @@ function mount(app, deps) {
 
   // ---------- public ----------
   app.get(`${R}/meta`, (req, res) => res.json({ stages: IVF_STAGES, protocols: PROTOCOLS, reportCategories: REPORT_CATEGORIES, consentText: CONSENT_TEXT, reportTemplates: Object.fromEntries(Object.keys(REPORT_TEMPLATES).map(k => [k, templateRows(k)])), graphKeys: Object.keys(VALUE_LIMITS) }));
+
+  // ---------- IVF journey report (PDF) ----------
+  // Public signed link — the key in the URL is the permission, like the course report.
+  app.get('/api/ivf-report/:cid/:sig/:file?', wrap(async (req, res) => {
+    const { cid, sig } = req.params;
+    if (!isId(cid) || sig !== D.reportSig('ivf-journey', cid)) return res.status(404).send('Report not found');
+    const cycle = await IvfCycle.findById(cid);
+    if (!cycle) return res.status(404).send('Report not found');
+    const buf = await buildIvfJourneyPdf(await ivfJourneyInput(cycle));
+    res.set({ 'Content-Type': 'application/pdf', 'Content-Length': buf.length, 'Content-Disposition': `${'download' in req.query ? 'attachment' : 'inline'}; filename="${ivfReportFile(cycle)}"`, 'Cache-Control': 'private, no-store' });
+    res.send(buf);
+  }));
+  // Patient: link to her own journey report (portal button).
+  app.get(`${R}/journey-report`, auth, wrap(async (req, res) => {
+    const cycle = await patientCycle(req.user.phone);
+    if (!cycle || cycle.status === 'pending' || cycle.status === 'declined') return res.status(404).json({ message: 'Your journey report will be ready once your IVF centre accepts you.' });
+    res.json({ url: ivfReportPageUrl(cycle), fileUrl: D.publicFileUrl(ivfReportApiPath(cycle)) + '?download=1' });
+  }));
 
   // ---------- IVF centre onboarding (one step: doctor account + centre, reviewed by the admin) ----------
   app.post(`${R}/centre-signup`, ...(D.signupLimiter ? [D.signupLimiter] : []), wrap(async (req, res) => {
@@ -1141,9 +1231,19 @@ function mount(app, deps) {
     cycle.markModified('dates');
     await cycle.save();
     if (stageChanged && cycle.status !== 'pending') {
-      fire(D.sendWhatsAppFree(cycle.patientPhone, `📍 *IVF update:* you're now in the *${STAGE_LABEL[cycle.stage]}* stage.${cycle.doctorPlanNotes ? `\n\nYour centre's plan: ${cycle.doctorPlanNotes.slice(0, 400)}` : ''}\n\n${ivfUrl('ivf.html')}`));
+      if (cycle.stage === 'closed') fire(sendIvfJourneyReport(cycle, { auto: true })); // the whole journey, automatically, when the cycle closes
+      else fire(D.sendWhatsAppFree(cycle.patientPhone, `📍 *IVF update:* you're now in the *${STAGE_LABEL[cycle.stage]}* stage.${cycle.doctorPlanNotes ? `\n\nYour centre's plan: ${cycle.doctorPlanNotes.slice(0, 400)}` : ''}\n\n${ivfUrl('ivf.html')}`));
     }
     res.json({ message: 'Treatment plan updated.', cycle, stage: stageInfo(cycle.stage) });
+  }));
+
+  // Doctor: send the journey report to the patient now (any stage), or just get its link.
+  app.post(`${DR}/cycles/:id/journey-report`, doctorAuth, wrap(async (req, res) => {
+    const cycle = await doctorCycle(req);
+    if (!cycle) return res.status(404).json({ message: 'Patient not found.' });
+    if (req.body?.send === false) return res.json({ url: ivfReportPageUrl(cycle) });
+    const r = await sendIvfJourneyReport(cycle);
+    res.status(r.success ? 200 : 502).json({ message: r.success ? `Journey report sent to ${cycle.patientName || 'the patient'} on WhatsApp.` : 'Could not send on WhatsApp right now — copy the link and share it instead.', url: r.url });
   }));
 
   // Medicines
@@ -1325,4 +1425,4 @@ function mount(app, deps) {
   console.log('🧬 Biomexa IVF Care module mounted at /api/ivf');
 }
 
-module.exports = { mount, handleWhatsAppReply, ivfTick, generateAllDoses, parseCheckinText, buildProgress, sendDoctorDigest, sendPatientProgress };
+module.exports = { sendIvfJourneyReport, mount, handleWhatsAppReply, ivfTick, generateAllDoses, parseCheckinText, buildProgress, sendDoctorDigest, sendPatientProgress };

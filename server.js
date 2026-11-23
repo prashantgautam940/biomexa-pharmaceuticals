@@ -3925,7 +3925,7 @@ function journeySig(pid, mid) {
 function journeyFileName(med) { return `Biomexa-course-report-${String(med.name || 'medicine').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '')}.pdf`; }
 // The PDF itself (used as the WhatsApp document attachment — patients see only the file name).
 function journeyFileUrl(patient, med) {
-  return `${API_PUBLIC_URL}/api/course-report/${patient._id}/${med._id}/${journeySig(patient._id, med._id)}/${journeyFileName(med)}`;
+  return publicFileUrl(`/api/course-report/${patient._id}/${med._id}/${journeySig(patient._id, med._id)}/${journeyFileName(med)}`);
 }
 // The link patients SEE in messages: on the Biomexa domain (report.html opens the PDF).
 const BRAND_URL = (process.env.BRAND_URL || 'https://biomexapharmaceuticals.com').replace(/\/+$/, '');
@@ -3973,7 +3973,7 @@ async function sendCourseJourneyReport(patient, med, opts = {}) {
   const first = String(patient.name || 'there').trim().split(/\s+/)[0];
   const level = a.pct === null ? 'not enough data' : a.pct >= 90 ? 'excellent' : a.pct >= 80 ? 'good' : a.pct >= 60 ? 'fair' : 'needs attention';
   const caption = `📄 Your ${med.name} course report`;
-  const intro = `🏁 *Hi ${first}, your ${med.name} course ${med.stoppedByPatient ? 'has stopped' : 'is complete!'}*\n\nHere is your full course report (PDF) — your whole journey in one place:\n\n✅ Doses taken: *${a.taken} of ${a.due}* (${a.pct ?? '—'}% — ${level})\n🔥 Best streak: *${a.bestStreak} day${a.bestStreak === 1 ? '' : 's'}* in a row\n${a.bp ? `❤️ BP: ${a.bp.first.sys}/${a.bp.first.dia} → ${a.bp.last.sys}/${a.bp.last.dia}\n` : ''}${a.sugar ? `🩸 Sugar: ${a.sugar.first.glucose} → ${a.sugar.last.glucose} mg/dL\n` : ''}\nThe report explains week by week how it went, which dose times were hard, and what to do next. Please show it to your doctor at your next visit.\n\n- Biomexa Team`;
+  const intro = `🏁 *Hi ${first}, your ${med.name} course ${med.stoppedByPatient ? 'has stopped' : 'is complete!'}*\n\nHere is your full course report (PDF) — your whole journey in one place:\n\n✅ Doses taken: *${a.taken} of ${a.due}* (${a.pct ?? '—'}% — ${level})\n🔥 Best streak: *${a.bestStreak} day${a.bestStreak === 1 ? '' : 's'}* in a row\n${a.bp ? `❤️ BP: ${a.bp.first.sys}/${a.bp.first.dia} → ${a.bp.last.sys}/${a.bp.last.dia}\n` : ''}${a.sugar ? `🩸 Sugar: ${a.sugar.first.glucose} → ${a.sugar.last.glucose} mg/dL\n` : ''}\nThe report explains week by week how it went, which dose times were hard, and what to do next. Please show it to your doctor at your next visit.\n\n📄 Open & download: ${url}\n🔐 Log in for updates and new reminders: ${SIGNUP_SITE_URL}/login.html\n\n- Biomexa Team`;
   let r;
   if (await whatsappWindowOpen(patient.phone)) {
     await sendWhatsAppFree(patient.phone, intro);
@@ -3983,7 +3983,7 @@ async function sendCourseJourneyReport(patient, med, opts = {}) {
     const insight = `Your full course report (PDF): ${url} — best streak ${a.bestStreak} days. Please show it to your doctor.`;
     r = await sendTreatmentReportTemplate(patient.phone, first, med.name, a.pct === null ? '—' : `${a.pct}% (${a.taken} of ${a.due} doses)`, med.stoppedByPatient ? 'Course stopped' : 'Course complete', insight);
   }
-  if (!r?.success) r = await sendWhatsAppFree(patient.phone, intro + `\n\n📄 Report: ${url}`);
+  if (!r?.success) r = await sendWhatsAppFree(patient.phone, intro);
   const stamp = new Date();
   siblings.forEach(m => { m.reportSentAt = stamp; });
   for (const m of siblings) await Patient.updateOne({ _id: patient._id, 'medicines._id': m._id }, { $set: { 'medicines.$.reportSentAt': stamp } }).catch(() => {});
@@ -5972,6 +5972,33 @@ const counterSchema = new mongoose.Schema({ _id: String, seq: { type: Number, de
 const Counter = mongoose.models.Counter || mongoose.model('Counter', counterSchema);
 const INVOICE_PREFIX = (process.env.INVOICE_PREFIX || 'BX').replace(/[^A-Z0-9-]/gi, '') || 'BX';
 const API_PUBLIC_URL = (process.env.API_PUBLIC_URL || process.env.RENDER_EXTERNAL_URL || 'https://biomexa-api-f9f6.onrender.com').replace(/\/$/, '');
+// ---- Files on the Biomexa domain ----
+// PDFs sent to patients (course reports, IVF journey reports, invoices) are served from
+// https://biomexapharmaceuticals.com/files/… once the website forwards /files/* to this server
+// (Render static site → Redirects/Rewrites: /files/*  →  <API>/api/*  as a Rewrite). The server
+// checks that forwarding itself, so links switch to the domain automatically as soon as it works
+// and never point at a broken address before that.
+let FILES_VIA_DOMAIN = process.env.FILES_VIA_DOMAIN === 'true';
+app.get('/api/files-check', (req, res) => res.json({ biomexa: 'files-ok' }));
+async function checkFilesDomain() {
+  if (process.env.FILES_VIA_DOMAIN === 'true' || process.env.NODE_ENV === 'test') return;
+  try {
+    const r = await fetch(`${BRAND_URL}/files/files-check`, { signal: AbortSignal.timeout(10000), headers: { 'cache-control': 'no-cache' } });
+    const j = r.ok && /json/i.test(r.headers.get('content-type') || '') ? await r.json() : null;
+    const ok = j?.biomexa === 'files-ok';
+    if (ok !== FILES_VIA_DOMAIN) console.log(`🔗 Patient file links now use ${ok ? BRAND_URL + '/files' : API_PUBLIC_URL + '/api'}`);
+    FILES_VIA_DOMAIN = ok;
+  } catch { /* keep the last known state */ }
+}
+if (process.env.NODE_ENV !== 'test') { setTimeout(checkFilesDomain, 15000); setInterval(checkFilesDomain, 20 * 60000); }
+// apiPath starts with /api/ — returns the link patients get for that file.
+function publicFileUrl(apiPath) {
+  return FILES_VIA_DOMAIN ? `${BRAND_URL}/files${apiPath.replace(/^\/api/, '')}` : `${API_PUBLIC_URL}${apiPath}`;
+}
+// Signed, unguessable keys for patient report links (no login needed to open the PDF).
+function reportSig(kind, id) {
+  return crypto.createHmac('sha256', JWT_SECRET + ':' + kind).update(String(id)).digest('hex').slice(0, 24);
+}
 function financialYear(d) {
   const ist = new Date(new Date(d).toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
   const y = ist.getMonth() >= 3 ? ist.getFullYear() : ist.getFullYear() - 1;
@@ -5990,7 +6017,7 @@ async function ensureInvoice(pay) {
 }
 function invoiceUrlFor(pay) {
   if (!pay?.invoiceToken) return null;
-  return `${API_PUBLIC_URL}/api/invoice/${pay.invoiceToken}/${invoiceFileName(pay)}`;
+  return publicFileUrl(`/api/invoice/${pay.invoiceToken}/${invoiceFileName(pay)}`);
 }
 function invoiceFileName(pay) { return `Biomexa-invoice-${String(pay.invoiceNo || 'receipt').replace(/\//g, '-')}.pdf`; }
 async function invoicePdfFor(pay) {
@@ -9035,7 +9062,7 @@ async function notifyAdmin(subject, text) {
 // ivf-doctor.html). It only borrows the existing logins and WhatsApp senders, passed in here.
 ivfCare.mount(app, {
   auth, doctorAuth, Patient, Doctor, ConversationState,
-  phoneVariants, localDateStr, SITE_URL,
+  phoneVariants, localDateStr, SITE_URL, BRAND_URL, publicFileUrl, reportSig, sendMsg91Document,
   sendWhatsAppFree, sendDoseReminderTemplate, sendRiskAlertTemplate, sendDoctorAlertMessage,
   sendIvfUpdateTemplate, sendReportAnalysisTemplate, whatsappWindowOpen,
   analyzeDocument, extractReportResults, ALLOWED_DOCUMENT_TYPES, MAX_FILES_PER_UPLOAD, MAX_DOCUMENT_BASE64_LENGTH,
