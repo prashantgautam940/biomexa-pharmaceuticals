@@ -3995,6 +3995,26 @@ async function sendCourseJourneyReport(patient, med, opts = {}) {
   reportCache.warm(`course:${patient._id}:${med._id}`, () => buildJourneyPdf(input)); // first open is instant
   return { success: !!r?.success, url, adherence: a.pct };
 }
+// Patient asked for their report on WhatsApp (they just messaged, so a normal reply always goes).
+async function replyWithCourseReport(phone) {
+  const pats = await Patient.find({ phone: { $in: phoneVariants(phone) } });
+  let best = null, bestP = null;
+  for (const p of pats) for (const m of p.medicines || []) {
+    if (m.active) continue;
+    const end = new Date(m.completedAt || m.endDate || 0);
+    if (!best || end > new Date(best.completedAt || best.endDate || 0)) { best = m; bestP = p; }
+  }
+  const login = `${SIGNUP_SITE_URL}/login.html`;
+  if (best) {
+    const r = await sendCourseJourneyReport(bestP, best, { force: true });
+    if (r?.success) return r;
+    return sendWhatsAppFree(phone, `📄 Your ${best.name} course report: ${journeyUrl(bestP, best)}\n\n🔐 Log in for all your reports and reminders: ${login}\n\n- Biomexa Team`);
+  }
+  if (pats.some(p => (p.medicines || []).some(m => m.active))) {
+    return sendWhatsAppFree(phone, `📄 Your full course report is sent here automatically when your current medicine course ends.\n\nTo see your progress right now — doses taken, charts and readings — log in: ${login}\n\n- Biomexa Team`);
+  }
+  return sendWhatsAppFree(phone, `📄 We don't have a report for this number yet. Log in to your Biomexa portal to see your health records: ${login}\n\nNew here? Reply *HI* and we'll help you set up free medicine reminders.\n\n- Biomexa Team`);
+}
 // Admin: send (or re-send) the course report for one finished medicine from the Reminder Center.
 app.post('/api/admin/patients/course-report', adminAuth, async (req, res) => {
   try {
@@ -4696,7 +4716,8 @@ app.post('/api/webhooks/msg91-whatsapp', async (req, res) => {
 
     // IVF Care replies (IVF medicine / trigger-shot buttons, WhatsApp check-ins, and the CHECKIN /
     // PROGRESS keywords) are handled by the IVF module.
-    const ivfKeyword = /^\s*(check\s*-?\s*in|checkin|progress|my progress|summary)\s*$/i.test(freeText || buttonText || '') || /^\s*hi\s+biomexa\s+ivf/i.test(freeText || '');
+    const reportAsk = /^\s*(my\s+)?(ivf\s+|course\s+|journey\s+)*report(\s+pdf)?\s*$|^\s*(send|provide|give)\s+(me\s+)?(my\s+)?(ivf\s+|course\s+|journey\s+)*report|रिपोर्ट/i.test(freeText || buttonText || '');
+    const ivfKeyword = reportAsk || /^\s*(check\s*-?\s*in|checkin|progress|my progress|summary)\s*$/i.test(freeText || buttonText || '') || /^\s*hi\s+biomexa\s+ivf/i.test(freeText || '');
     if ((convo && typeof convo.state === 'string' && convo.state.startsWith('ivf_')) || ivfKeyword) {
       if (await ivfCare.handleWhatsAppReply({ phone, convo, buttonText, freeText })) return;
     }
@@ -4781,6 +4802,9 @@ app.post('/api/webhooks/msg91-whatsapp', async (req, res) => {
       await ConversationState.findOneAndUpdate({ patientPhone: phone }, { state: null, doseId: null, updatedAt: new Date() });
       return;
     }
+
+    // "Send my report" from a reminder patient: their latest course report, or how to see it.
+    if (reportAsk) { await replyWithCourseReport(phone); return; }
 
     // No active conversation state — unsolicited message, just acknowledge quietly in logs.
     console.log(`ℹ️ Unsolicited WhatsApp message from ${phone}, no active flow: "${freeText || buttonText}"`);
@@ -9083,6 +9107,7 @@ async function notifyAdmin(subject, text) {
 ivfCare.mount(app, {
   auth, doctorAuth, Patient, Doctor, ConversationState,
   phoneVariants, localDateStr, SITE_URL, BRAND_URL, publicFileUrl, reportSig, sendMsg91Document,
+  WA_NUMBER: String(process.env.BIOMEXA_WA_NUMBER || MSG91_INTEGRATED_NUMBER || '919625339181').replace(/\D/g, ''),
   sendWhatsAppFree, sendDoseReminderTemplate, sendRiskAlertTemplate, sendDoctorAlertMessage,
   sendIvfUpdateTemplate, sendReportAnalysisTemplate, whatsappWindowOpen,
   analyzeDocument, extractReportResults, ALLOWED_DOCUMENT_TYPES, MAX_FILES_PER_UPLOAD, MAX_DOCUMENT_BASE64_LENGTH,

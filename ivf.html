@@ -301,7 +301,7 @@
         <button class="btn btn-ghost btn-sm" id="progressWaBtn" type="button">Send summary to my WhatsApp</button></div>
       </div>
       <div id="progressView"><div class="empty">Loading your progress…</div></div>
-      <div class="notice info">💬 <b>Check in on WhatsApp too.</b> Reply to the evening reminder with your readings, for example <b>61.5 kg, pain 3, bloating mild</b>, or send <b>CHECKIN</b> any time. Send <b>PROGRESS</b> to get this summary on WhatsApp.</div>
+      <div class="notice info">💬 <b>Check in on WhatsApp too.</b> Reply to the evening reminder with your readings, for example <b>61.5 kg, pain 3, bloating mild</b>, or send <b>CHECKIN</b> any time. Send <b>PROGRESS</b> to get this summary on WhatsApp, or <b>REPORT</b> for your full treatment journey report.</div>
       <div class="card"><h2>Past check-ins</h2><div id="logList" class="list mt"></div></div>
     </div>
   </section>
@@ -597,7 +597,11 @@ $('journeyBtn').addEventListener('click', async () => {
 });
 $('progressWaBtn').addEventListener('click', async () => {
   $('progressWaBtn').disabled = true;
-  try { const r = await call('/api/ivf/progress/whatsapp', { method: 'POST' }); IVF.toast(r.message); } catch (err) { IVF.toast(err.message, true); }
+  try {
+    const r = await call('/api/ivf/progress/whatsapp', { method: 'POST' });
+    IVF.toast(r.message);
+    if (r.waLink) setTimeout(() => { location.href = r.waLink; }, 900); // WhatsApp opens with PROGRESS ready — one tap
+  } catch (err) { IVF.toast(err.message, true); }
   finally { $('progressWaBtn').disabled = false; }
 });
 

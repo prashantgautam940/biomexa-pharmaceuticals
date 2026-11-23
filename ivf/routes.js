@@ -175,6 +175,13 @@ async function handleWhatsAppReply({ phone, convo, buttonText, freeText }) {
       : `👋 Hi from Biomexa IVF Care! Join an IVF centre in the app to start getting reminders here: ${ivfUrl('ivf.html')}`);
     return true;
   }
+  // "REPORT" — the IVF treatment journey report (PDF link + summary), any time after acceptance.
+  if (/^(my\s+)?(ivf\s+)?(journey\s+)?report(\s+pdf)?$|^(send|provide|give)\s+(me\s+)?(my\s+)?(ivf\s+)?(journey\s+)?report|रिपोर्ट/i.test(text)) {
+    const cycle = await IvfCycle.findOne({ patientPhone: { $in: D.phoneVariants(phone) }, status: { $in: ['active', 'completed'] } }).sort({ createdAt: -1 });
+    if (!cycle) return false;
+    await sendIvfJourneyReport(cycle);
+    return true;
+  }
   // Keywords work at any time for patients in an active IVF cycle.
   if (/^(check\s*-?\s*in|checkin|log|daily check\s*-?\s*in)$/i.test(text) || /^(progress|summary|my progress)$/i.test(text)) {
     const cycle = await activeCycleFor(phone);
@@ -888,8 +895,15 @@ function mount(app, deps) {
   }));
   // Send my progress summary to my WhatsApp now.
   app.post(`${R}/progress/whatsapp`, auth, withCycle(async (req, res, cycle) => {
+    // Inside WhatsApp's 24-hour window the summary goes straight away as a normal message. Outside
+    // it, Meta only allows template messages and often holds them back for numbers that got several
+    // recently (error 131049) — so instead we open WhatsApp with "PROGRESS" ready to send: one tap
+    // and the summary arrives instantly, every time, at no template cost.
+    const open = D.whatsappWindowOpen ? await D.whatsappWindowOpen(cycle.patientPhone).catch(() => false) : true;
+    const waLink = `https://wa.me/${D.WA_NUMBER}?text=${encodeURIComponent('PROGRESS')}`;
+    if (!open) return res.json({ waLink, message: 'Opening WhatsApp — just tap Send and your summary arrives in a few seconds.' });
     const r = await sendPatientProgress(cycle);
-    res.json({ message: r && r.success ? 'Progress summary sent to your WhatsApp.' : 'Could not send on WhatsApp right now. Message "Hi" to Biomexa on WhatsApp first, then try again.' });
+    res.json(r && r.success ? { message: 'Progress summary sent to your WhatsApp.' } : { waLink, message: 'Opening WhatsApp — tap Send and your summary arrives in a few seconds.' });
   }));
 
   app.get(`${R}/logs`, auth, withCycle(async (req, res, cycle) => {
